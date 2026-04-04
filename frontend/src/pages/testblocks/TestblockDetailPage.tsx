@@ -412,6 +412,14 @@ export function TestblockDetailPage() {
             <p className="text-sm text-muted-foreground">{tb.codigo}</p>
           </div>
           <StatusBadge status={tb.estado || "activo"} />
+          {tb.temporada_inicio && (
+            <span className="text-[10px] bg-garces-cherry-pale text-garces-cherry px-2 py-0.5 rounded-full font-medium">
+              {tb.temporada_inicio}
+            </span>
+          )}
+          <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+            {hileras}H x {maxPos}P = {total} pos
+          </span>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button size="sm" variant="ghost" onClick={() => setEditTbOpen(true)} title="Editar TestBlock">
@@ -548,6 +556,7 @@ export function TestblockDetailPage() {
           <TabsTrigger value="hileras">Resumen Hileras</TabsTrigger>
           <TabsTrigger value="variedades">Variedades</TabsTrigger>
           <TabsTrigger value="inventario-tb">Inventario TB</TabsTrigger>
+          <TabsTrigger value="mediciones">Mediciones</TabsTrigger>
         </TabsList>
 
         {/* Grilla */}
@@ -781,6 +790,27 @@ export function TestblockDetailPage() {
                 </tbody>
               </table>
             )}
+          </div>
+        </TabsContent>
+
+        {/* Mediciones */}
+        <TabsContent value="mediciones">
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex flex-col items-center justify-center text-center py-8">
+              <FlaskConical className="h-12 w-12 text-muted-foreground/30 mb-3" />
+              <h4 className="font-semibold text-sm">Mediciones de Calidad</h4>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                Aun no hay mediciones registradas para este TestBlock. Las mediciones se registran desde el modulo Laboratorio.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => navigate("/laboratorio")}
+              >
+                <FlaskConical className="h-4 w-4 mr-1" /> Ir a Mediciones Lab
+              </Button>
+            </div>
           </div>
         </TabsContent>
       </Tabs>
