@@ -1146,13 +1146,31 @@ export function TestblockDetailPage() {
               )}
             </div>
 
-            {/* Action buttons */}
+            {/* Action buttons — direct action for THIS position */}
             <div className="flex gap-2 mt-3 pt-3 border-t">
+              {selectedPos.estado === "vacia" && (
+                <button
+                  onClick={() => {
+                    // Pre-select this position and enter alta mode
+                    const id = selectedPos.id_posicion;
+                    setSelectedPos(null);
+                    setSelectedPositions(new Set([id]));
+                    setSelectionMode("alta");
+                    setAltaConfirmOpen(true);
+                  }}
+                  className="flex-1 py-1.5 rounded-md border border-green-200 bg-green-50 text-green-600 text-[11px] font-semibold hover:bg-green-100 transition-colors"
+                >
+                  + Alta
+                </button>
+              )}
               {selectedPos.estado === "alta" && (
                 <button
                   onClick={() => {
+                    const id = selectedPos.id_posicion;
                     setSelectedPos(null);
-                    enterSelectionMode("baja");
+                    setSelectedPositions(new Set([id]));
+                    setSelectionMode("baja");
+                    setBajaConfirmOpen(true);
                   }}
                   className="flex-1 py-1.5 rounded-md border border-red-200 bg-red-50 text-red-600 text-[11px] font-semibold hover:bg-red-100 transition-colors"
                 >
@@ -1162,17 +1180,27 @@ export function TestblockDetailPage() {
               {(selectedPos.estado === "baja" || selectedPos.estado === "replante") && (
                 <button
                   onClick={() => {
+                    const id = selectedPos.id_posicion;
                     setSelectedPos(null);
-                    enterSelectionMode("replante");
+                    setSelectedPositions(new Set([id]));
+                    setSelectionMode("replante");
+                    setReplanteConfirmOpen(true);
                   }}
                   className="flex-1 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-semibold hover:bg-blue-100 transition-colors"
                 >
                   Replantar
                 </button>
               )}
-              <button className="flex-1 py-1.5 rounded-md border border-border bg-white text-muted-foreground text-[11px] hover:bg-muted/50 transition-colors">
-                Generar QR
-              </button>
+              {selectedPos.id_posicion && (
+                <a
+                  href={`${import.meta.env.VITE_API_BASE_URL || "/api/v1"}/posiciones/${selectedPos.id_posicion}/qr`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 py-1.5 rounded-md border border-border bg-white text-muted-foreground text-[11px] text-center hover:bg-muted/50 transition-colors"
+                >
+                  QR
+                </a>
+              )}
             </div>
           </div>
         )}

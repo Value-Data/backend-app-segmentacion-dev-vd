@@ -218,6 +218,18 @@ function FilterBar({
 
 /* ─── AI Analysis Card ─────────────────────────────────────────────────── */
 
+const DETAIL_LEVELS = [
+  { value: "ejecutivo", label: "Resumen Ejecutivo", desc: "3-5 lineas con conclusion y recomendacion clave" },
+  { value: "estandar", label: "Informe Estandar", desc: "Evaluacion completa con datos y recomendaciones" },
+  { value: "detallado", label: "Informe Detallado", desc: "Analisis profundo con comparaciones y tendencias" },
+] as const;
+
+const DETAIL_PROMPTS: Record<string, string> = {
+  ejecutivo: "Genera SOLO un resumen ejecutivo de 3-5 lineas con la conclusion principal y la recomendacion clave. Se muy conciso y directo.",
+  estandar: "Genera un informe estandar con todas las secciones: resumen ejecutivo, evaluacion de cosecha, susceptibilidad, y recomendaciones concretas.",
+  detallado: "Genera un informe detallado y exhaustivo. Incluye comparaciones entre campos, tendencias temporales, analisis de cada metrica, susceptibilidad a defectos con porcentajes, evaluacion poscosecha completa, y recomendaciones especificas para plantacion, manejo, comercializacion y proxima temporada.",
+};
+
 function AIAnalysisCard({
   tipo,
   idEntidad,
@@ -228,12 +240,14 @@ function AIAnalysisCard({
   enabled: boolean;
 }) {
   const [triggered, setTriggered] = useState(false);
+  const [detailLevel, setDetailLevel] = useState<string>("estandar");
 
   const mutation = useMutation({
     mutationFn: () =>
       reportesService.aiAnalisis({
         tipo_reporte: tipo,
         id_entidad: idEntidad!,
+        pregunta: DETAIL_PROMPTS[detailLevel],
       }),
   });
 
@@ -244,20 +258,44 @@ function AIAnalysisCard({
   };
 
   return (
-    <div className="mt-6 flex gap-2">
-      <Button
-        onClick={handleClick}
-        disabled={!enabled || mutation.isPending}
-        className="bg-garces-cherry hover:bg-garces-cherry-dark text-white gap-2"
-      >
-        {mutation.isPending ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Sparkles className="h-4 w-4" />
-        )}
-        Analisis AI
-      </Button>
-      <Button
+    <div className="mt-6 space-y-3">
+      {/* Detail level selector + buttons */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <div>
+          <label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
+            Nivel de detalle
+          </label>
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            {DETAIL_LEVELS.map((lvl) => (
+              <button
+                key={lvl.value}
+                onClick={() => setDetailLevel(lvl.value)}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  detailLevel === lvl.value
+                    ? "bg-garces-cherry text-white"
+                    : "bg-white text-muted-foreground hover:bg-muted/50"
+                }`}
+                title={lvl.desc}
+              >
+                {lvl.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Button
+          onClick={handleClick}
+          disabled={!enabled || mutation.isPending}
+          className="bg-garces-cherry hover:bg-garces-cherry-dark text-white gap-2"
+        >
+          {mutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          Generar Analisis
+        </Button>
+        <Button
         variant="outline"
         onClick={() => idEntidad && reportesService.downloadPdf(tipo, idEntidad)}
         disabled={!enabled}
@@ -265,7 +303,8 @@ function AIAnalysisCard({
       >
         <Download className="h-4 w-4" />
         Descargar PDF
-      </Button>
+        </Button>
+      </div>
 
       {triggered && mutation.isPending && (
         <div className="mt-4 rounded-lg border border-garces-cherry-pale bg-garces-cherry-pale/20 p-5">
