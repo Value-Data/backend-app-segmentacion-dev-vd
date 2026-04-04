@@ -57,6 +57,9 @@ const AlertasPage = lazy(() => import("@/pages/alertas/AlertasPage").then(m => (
 const UsuariosPage = lazy(() => import("@/pages/sistema/UsuariosPage").then(m => ({ default: m.UsuariosPage })));
 const AuditLogPage = lazy(() => import("@/pages/sistema/AuditLogPage").then(m => ({ default: m.AuditLogPage })));
 
+// Mockup
+const MockupPage = lazy(() => import("@/pages/MockupPage").then(m => ({ default: m.MockupPage })));
+
 // 404
 const NotFoundPage = lazy(() => import("@/pages/NotFound").then(m => ({ default: m.NotFoundPage })));
 
@@ -119,6 +122,10 @@ export function App() {
         {/* Sistema */}
         <Route path="sistema/usuarios" element={<UsuariosPage />} />
         <Route path="sistema/audit-log" element={<AuditLogPage />} />
+
+        {/* 404 */}
+        {/* Mockup */}
+        <Route path="mockup" element={<MockupPage />} />
 
         {/* 404 */}
         <Route path="*" element={<NotFoundPage />} />

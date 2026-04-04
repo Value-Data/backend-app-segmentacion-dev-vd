@@ -21,6 +21,10 @@ import {
   AlertCircle,
   Microscope,
   FileText,
+  WandSparkles,
+  Clock,
+  Thermometer,
+  Globe,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -78,12 +82,6 @@ const BANDA_LABEL: Record<number, string> = {
   3: "B3",
   4: "B4",
 };
-
-/* ─────────────────────────────────────────────────────────────────────────
- * Table columns for mediciones list
- * ────────────────────────────────────────────────────────────────────── */
-
-/* Column defs are built inside the component to access lookups — see useMedicionColumns below */
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Form state type
@@ -189,21 +187,22 @@ const INITIAL_FORM: MedicionFormState = {
 };
 
 /* ─────────────────────────────────────────────────────────────────────────
- * Main page component
+ * Table columns for mediciones list
  * ────────────────────────────────────────────────────────────────────── */
 
 function useMedicionColumns(lk: ReturnType<typeof useLookups>) {
   return useMemo(() => [
-    { accessorKey: "id_medicion", header: "ID" },
+    {
+      accessorKey: "id_variedad",
+      header: "Variedad",
+      cell: ({ getValue }: any) => (
+        <span className="font-semibold text-foreground">{lk.variedad(getValue())}</span>
+      ),
+    },
     {
       accessorKey: "id_especie",
       header: "Especie",
       cell: ({ getValue }: any) => lk.especie(getValue()),
-    },
-    {
-      accessorKey: "id_variedad",
-      header: "Variedad",
-      cell: ({ getValue }: any) => lk.variedad(getValue()),
     },
     { accessorKey: "temporada", header: "Temporada" },
     {
@@ -212,8 +211,26 @@ function useMedicionColumns(lk: ReturnType<typeof useLookups>) {
       cell: ({ getValue }: any) => formatDate(getValue() as string),
     },
     {
+      accessorKey: "n_muestra",
+      header: "Frutos",
+      cell: ({ getValue }: any) =>
+        getValue() != null ? getValue() : "-",
+    },
+    {
+      accessorKey: "peso",
+      header: "Peso(g)",
+      cell: ({ getValue }: any) =>
+        getValue() != null ? formatNumber(getValue() as number, 1) : "-",
+    },
+    {
+      accessorKey: "calibre",
+      header: "Diam(mm)",
+      cell: ({ getValue }: any) =>
+        getValue() != null ? formatNumber(getValue() as number, 1) : "-",
+    },
+    {
       accessorKey: "brix",
-      header: "Brix",
+      header: "SS(%)",
       cell: ({ getValue }: any) =>
         getValue() != null ? formatNumber(getValue() as number, 1) : "-",
     },
@@ -224,31 +241,157 @@ function useMedicionColumns(lk: ReturnType<typeof useLookups>) {
         getValue() != null ? formatNumber(getValue() as number, 1) : "-",
     },
     {
-      accessorKey: "calibre",
-      header: "Calibre",
-      cell: ({ getValue }: any) =>
-        getValue() != null ? formatNumber(getValue() as number, 1) + " mm" : "-",
-    },
-    {
       accessorKey: "acidez",
       header: "Acidez",
       cell: ({ getValue }: any) =>
         getValue() != null ? formatNumber(getValue() as number, 2) : "-",
     },
     {
+      accessorKey: "id_medicion",
+      header: "",
+      cell: ({ getValue }: any) => (
+        <Link
+          to={`/laboratorio/analisis`}
+          className="text-violet-600 hover:text-violet-800 text-xs font-semibold hover:underline"
+        >
+          Analizar
+        </Link>
+      ),
+    },
+  ], [lk]);
+}
+
+/* Poscosecha-specific columns — add periodo_almacenaje */
+function usePoscosechaColumns(lk: ReturnType<typeof useLookups>) {
+  return useMemo(() => [
+    {
+      accessorKey: "id_variedad",
+      header: "Variedad",
+      cell: ({ getValue }: any) => (
+        <span className="font-semibold text-foreground">{lk.variedad(getValue())}</span>
+      ),
+    },
+    {
+      accessorKey: "id_especie",
+      header: "Especie",
+      cell: ({ getValue }: any) => lk.especie(getValue()),
+    },
+    {
+      accessorKey: "periodo_almacenaje",
+      header: "Dias",
+      cell: ({ getValue }: any) =>
+        getValue() != null ? `${getValue()} d` : "-",
+    },
+    {
+      accessorKey: "fecha_medicion",
+      header: "Fecha",
+      cell: ({ getValue }: any) => formatDate(getValue() as string),
+    },
+    {
       accessorKey: "peso",
-      header: "Peso (g)",
+      header: "Peso(g)",
       cell: ({ getValue }: any) =>
         getValue() != null ? formatNumber(getValue() as number, 1) : "-",
     },
     {
-      accessorKey: "n_muestra",
-      header: "Muestra",
+      accessorKey: "brix",
+      header: "SS(%)",
       cell: ({ getValue }: any) =>
-        getValue() != null ? `#${getValue()}` : "-",
+        getValue() != null ? formatNumber(getValue() as number, 1) : "-",
+    },
+    {
+      accessorKey: "firmeza",
+      header: "Firmeza",
+      cell: ({ getValue }: any) =>
+        getValue() != null ? formatNumber(getValue() as number, 1) : "-",
+    },
+    {
+      accessorKey: "pardeamiento",
+      header: "Pardea.(%)",
+      cell: ({ getValue }: any) =>
+        getValue() != null ? (
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+            (getValue() as number) > 10
+              ? "bg-red-50 text-red-700"
+              : "bg-emerald-50 text-emerald-700"
+          }`}>
+            {formatNumber(getValue() as number, 1)}%
+          </span>
+        ) : "-",
+    },
+    {
+      accessorKey: "harinosidad",
+      header: "Harin.(%)",
+      cell: ({ getValue }: any) =>
+        getValue() != null ? (
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+            (getValue() as number) > 10
+              ? "bg-red-50 text-red-700"
+              : "bg-emerald-50 text-emerald-700"
+          }`}>
+            {formatNumber(getValue() as number, 1)}%
+          </span>
+        ) : "-",
+    },
+    {
+      accessorKey: "id_medicion",
+      header: "",
+      cell: () => (
+        <Link
+          to={`/laboratorio/analisis`}
+          className="text-violet-600 hover:text-violet-800 text-xs font-semibold hover:underline"
+        >
+          Analizar
+        </Link>
+      ),
     },
   ], [lk]);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Inline filter component — mockup style
+ * ────────────────────────────────────────────────────────────────────── */
+
+function InlineFilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = "Todos",
+  className = "",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: number | string; label: string }[];
+  placeholder?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-1 ${className}`}>
+      <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">
+        {label}
+      </span>
+      <Select value={value} onValueChange={(v) => onChange(v === "__all__" ? "" : v)}>
+        <SelectTrigger className="h-8 min-w-[120px] text-xs">
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">{placeholder}</SelectItem>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={String(o.value)}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Main page component
+ * ────────────────────────────────────────────────────────────────────── */
 
 export function LaboratorioPage() {
   const queryClient = useQueryClient();
@@ -258,19 +401,34 @@ export function LaboratorioPage() {
     useState<ClasificacionResult | null>(null);
   const lk = useLookups();
   const medicionColumns = useMedicionColumns(lk);
+  const poscosechaColumns = usePoscosechaColumns(lk);
 
   // ── Mediciones list filters ──
   const [filterEspecie, setFilterEspecie] = useState("");
   const [filterCampo, setFilterCampo] = useState("");
   const [filterTemporada, setFilterTemporada] = useState("");
+  const [filterVariedad, setFilterVariedad] = useState("");
+  const [filterPmg, setFilterPmg] = useState("");
+  const [filterColor, setFilterColor] = useState("");
+
+  // ── Poscosecha dias range ──
+  const [diasMin, setDiasMin] = useState("");
+  const [diasMax, setDiasMax] = useState("");
+
+  // ── Applied filters (only sent to API on "Aplicar") ──
+  const [appliedFilters, setAppliedFilters] = useState<{
+    especie: string;
+    campo: string;
+    temporada: string;
+  }>({ especie: "", campo: "", temporada: "" });
 
   const medicionesParams = useMemo(() => {
     const p: { especie?: number; campo?: number; temporada?: string } = {};
-    if (filterEspecie) p.especie = Number(filterEspecie);
-    if (filterCampo) p.campo = Number(filterCampo);
-    if (filterTemporada) p.temporada = filterTemporada;
+    if (appliedFilters.especie) p.especie = Number(appliedFilters.especie);
+    if (appliedFilters.campo) p.campo = Number(appliedFilters.campo);
+    if (appliedFilters.temporada) p.temporada = appliedFilters.temporada;
     return p;
-  }, [filterEspecie, filterCampo, filterTemporada]);
+  }, [appliedFilters]);
 
   const { data: mediciones, isLoading } = useQuery({
     queryKey: ["laboratorio", "mediciones", medicionesParams],
@@ -307,32 +465,111 @@ export function LaboratorioPage() {
     [createMut]
   );
 
+  const handleApplyFilters = useCallback(() => {
+    setAppliedFilters({
+      especie: filterEspecie,
+      campo: filterCampo,
+      temporada: filterTemporada,
+    });
+  }, [filterEspecie, filterCampo, filterTemporada]);
+
+  const handleClearFilters = useCallback(() => {
+    setFilterEspecie("");
+    setFilterCampo("");
+    setFilterTemporada("");
+    setFilterVariedad("");
+    setFilterPmg("");
+    setFilterColor("");
+    setDiasMin("");
+    setDiasMax("");
+    setAppliedFilters({ especie: "", campo: "", temporada: "" });
+  }, []);
+
+  // ── Client-side filtering for variedad/pmg/color (not in API) ──
+  const filteredMediciones = useMemo(() => {
+    let data = mediciones || [];
+    if (filterVariedad) {
+      data = data.filter((m: any) => String(m.id_variedad) === filterVariedad);
+    }
+    // Note: pmg and color are client-side filters when data includes those fields
+    if (filterColor) {
+      data = data.filter((m: any) => m.color_pulpa === filterColor);
+    }
+    return data;
+  }, [mediciones, filterVariedad, filterColor]);
+
+  // ── Poscosecha data: filter for periodo_almacenaje > 0 + range ──
+  const poscosechaData = useMemo(() => {
+    let data = (mediciones || []).filter(
+      (m: any) => m.periodo_almacenaje != null && m.periodo_almacenaje > 0
+    );
+    const minDias = diasMin ? parseInt(diasMin, 10) : null;
+    const maxDias = diasMax ? parseInt(diasMax, 10) : null;
+    if (minDias != null && !isNaN(minDias)) {
+      data = data.filter((m: any) => m.periodo_almacenaje >= minDias);
+    }
+    if (maxDias != null && !isNaN(maxDias)) {
+      data = data.filter((m: any) => m.periodo_almacenaje <= maxDias);
+    }
+    return data;
+  }, [mediciones, diasMin, diasMax]);
+
+  // ── Filtered variedades based on especie selection ──
+  const filteredVariedadOptions = useMemo(() => {
+    if (!filterEspecie || !lk.rawData.variedades) return lk.options.variedades;
+    const espId = Number(filterEspecie);
+    return lk.rawData.variedades
+      .filter((v) => (v as any).id_especie === espId)
+      .map((v) => ({
+        value: (v as any).id_variedad as number,
+        label: (v as any).nombre as string,
+      }));
+  }, [filterEspecie, lk.rawData.variedades, lk.options.variedades]);
+
   return (
     <div className="space-y-4">
+      {/* ── Header: mockup style ── */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-garces-cherry flex items-center gap-2">
-          <FlaskConical className="h-5 w-5" />
-          Laboratorio
-        </h2>
+        <div>
+          <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+            <FlaskConical className="h-5 w-5 text-garces-cherry" />
+            Mediciones de Calidad
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Evaluaciones de laboratorio, poscosecha y externas
+          </p>
+        </div>
         <div className="flex gap-2">
           <Button
             size="sm"
             variant="outline"
             onClick={() => setBulkOpen(true)}
+            className="text-xs"
           >
-            <Upload className="h-4 w-4 mr-1" /> Importar Excel
+            <Upload className="h-3.5 w-3.5 mr-1.5" />
+            Importar Excel
           </Button>
           <Button
             size="sm"
             onClick={() => setFormOpen(true)}
-            className="bg-garces-cherry hover:bg-garces-cherry/90"
+            className="bg-violet-600 hover:bg-violet-700 text-white text-xs"
           >
-            <Plus className="h-4 w-4 mr-1" /> Nueva Medicion
+            <WandSparkles className="h-3.5 w-3.5 mr-1.5" />
+            Nueva Medicion
           </Button>
+          <Link to="/laboratorio/analisis">
+            <Button
+              size="sm"
+              className="bg-violet-600 hover:bg-violet-700 text-white text-xs"
+            >
+              <Microscope className="h-3.5 w-3.5 mr-1.5" />
+              Analizar
+            </Button>
+          </Link>
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* ── KPIs ── */}
       {kpis && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <KpiCard
@@ -379,8 +616,337 @@ export function LaboratorioPage() {
         </div>
       )}
 
+      {/* Cluster result toast banner */}
+      {lastClasificacion && (
+        <ClusterResultBanner
+          clasificacion={lastClasificacion}
+          onDismiss={() => setLastClasificacion(null)}
+        />
+      )}
+
+      {/* ── Tabs ── */}
+      <Tabs defaultValue="laboratorio">
+        <TabsList className="bg-transparent border-b border-border rounded-none p-0 h-auto gap-0">
+          <TabsTrigger
+            value="laboratorio"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-garces-cherry data-[state=active]:text-garces-cherry data-[state=active]:shadow-none data-[state=active]:bg-transparent text-muted-foreground text-sm font-medium px-4 py-2"
+          >
+            Laboratorio (Cosecha)
+          </TabsTrigger>
+          <TabsTrigger
+            value="poscosecha"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-garces-cherry data-[state=active]:text-garces-cherry data-[state=active]:shadow-none data-[state=active]:bg-transparent text-muted-foreground text-sm font-medium px-4 py-2 gap-1.5"
+          >
+            <Snowflake className="h-3.5 w-3.5" />
+            Poscosecha
+          </TabsTrigger>
+          <TabsTrigger
+            value="ambiente"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-garces-cherry data-[state=active]:text-garces-cherry data-[state=active]:shadow-none data-[state=active]:bg-transparent text-muted-foreground text-sm font-medium px-4 py-2 gap-1.5"
+          >
+            <Thermometer className="h-3.5 w-3.5" />
+            Ambiente (+N dias)
+          </TabsTrigger>
+          <TabsTrigger
+            value="externos"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-garces-cherry data-[state=active]:text-garces-cherry data-[state=active]:shadow-none data-[state=active]:bg-transparent text-muted-foreground text-sm font-medium px-4 py-2 gap-1.5"
+          >
+            <Globe className="h-3.5 w-3.5" />
+            Externos
+          </TabsTrigger>
+          <TabsTrigger
+            value="ingreso-rapido"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-garces-cherry data-[state=active]:text-garces-cherry data-[state=active]:shadow-none data-[state=active]:bg-transparent text-muted-foreground text-sm font-medium px-4 py-2 gap-1.5"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            Ingreso Rapido
+          </TabsTrigger>
+          <TabsTrigger
+            value="toma-muestra"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-garces-cherry data-[state=active]:text-garces-cherry data-[state=active]:shadow-none data-[state=active]:bg-transparent text-muted-foreground text-sm font-medium px-4 py-2 gap-1.5"
+          >
+            <Beaker className="h-3.5 w-3.5" />
+            Toma de Muestra
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+         *  Tab 1: Laboratorio (Cosecha)
+         * ═══════════════════════════════════════════════════════════════════ */}
+        <TabsContent value="laboratorio" className="mt-4">
+          {/* Inline filters */}
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <InlineFilterSelect
+              label="Temporada"
+              value={filterTemporada}
+              onChange={setFilterTemporada}
+              options={lk.options.temporadas.map((o) => ({ value: o.label, label: o.label }))}
+              placeholder="Todas"
+            />
+            <InlineFilterSelect
+              label="Especie"
+              value={filterEspecie}
+              onChange={(v) => {
+                setFilterEspecie(v);
+                setFilterVariedad("");
+                setFilterCampo("");
+              }}
+              options={lk.options.especies}
+              placeholder="Todas"
+            />
+            <InlineFilterSelect
+              label="Campo"
+              value={filterCampo}
+              onChange={setFilterCampo}
+              options={lk.options.campos}
+              placeholder="Todos"
+            />
+            <InlineFilterSelect
+              label="Variedad"
+              value={filterVariedad}
+              onChange={setFilterVariedad}
+              options={filteredVariedadOptions}
+              placeholder="Todas"
+            />
+            <InlineFilterSelect
+              label="PMG"
+              value={filterPmg}
+              onChange={setFilterPmg}
+              options={lk.options.pmgs}
+              placeholder="Todos"
+            />
+            <InlineFilterSelect
+              label="Color"
+              value={filterColor}
+              onChange={setFilterColor}
+              options={COLOR_PULPA_OPTIONS.map((c) => ({ value: c, label: c }))}
+              placeholder="Todos"
+            />
+            <div className="flex gap-2 self-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleApplyFilters}
+                className="h-8 text-xs font-semibold border-garces-cherry/30 text-garces-cherry hover:bg-garces-cherry/5"
+              >
+                Aplicar
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleClearFilters}
+                className="h-8 text-xs text-muted-foreground"
+              >
+                Limpiar
+              </Button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="bg-white rounded-xl border border-border overflow-hidden">
+            <CrudTable
+              data={filteredMediciones}
+              columns={medicionColumns as any}
+              isLoading={isLoading}
+              searchPlaceholder="Buscar medicion..."
+              exportFilename="mediciones_laboratorio"
+            />
+          </div>
+        </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+         *  Tab 2: Poscosecha
+         * ═══════════════════════════════════════════════════════════════════ */}
+        <TabsContent value="poscosecha" className="mt-4">
+          <p className="text-sm text-muted-foreground mb-3">
+            Evaluaciones despues de almacenamiento en frio. Filtre por periodo de almacenaje.
+          </p>
+
+          {/* Inline filters + dias range */}
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <InlineFilterSelect
+              label="Temporada"
+              value={filterTemporada}
+              onChange={setFilterTemporada}
+              options={lk.options.temporadas.map((o) => ({ value: o.label, label: o.label }))}
+              placeholder="Todas"
+            />
+            <InlineFilterSelect
+              label="Especie"
+              value={filterEspecie}
+              onChange={(v) => {
+                setFilterEspecie(v);
+                setFilterCampo("");
+              }}
+              options={lk.options.especies}
+              placeholder="Todas"
+            />
+            <InlineFilterSelect
+              label="Campo"
+              value={filterCampo}
+              onChange={setFilterCampo}
+              options={lk.options.campos}
+              placeholder="Todos"
+            />
+            <InlineFilterSelect
+              label="Variedad"
+              value={filterVariedad}
+              onChange={setFilterVariedad}
+              options={filteredVariedadOptions}
+              placeholder="Todas"
+            />
+
+            {/* Dias almacenaje range inputs */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Dias almacenaje
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  placeholder="30"
+                  value={diasMin}
+                  onChange={(e) => setDiasMin(e.target.value)}
+                  className="h-8 w-14 text-xs"
+                  min={0}
+                />
+                <span className="text-xs text-muted-foreground">a</span>
+                <Input
+                  type="number"
+                  placeholder="45"
+                  value={diasMax}
+                  onChange={(e) => setDiasMax(e.target.value)}
+                  className="h-8 w-14 text-xs"
+                  min={0}
+                />
+                <span className="text-[10px] text-muted-foreground">dias</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 self-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleApplyFilters}
+                className="h-8 text-xs font-semibold border-garces-cherry/30 text-garces-cherry hover:bg-garces-cherry/5"
+              >
+                Aplicar
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleClearFilters}
+                className="h-8 text-xs text-muted-foreground"
+              >
+                Limpiar
+              </Button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-border overflow-hidden">
+            <CrudTable
+              data={poscosechaData}
+              columns={poscosechaColumns as any}
+              isLoading={isLoading}
+              searchPlaceholder="Buscar variedad, campo..."
+              exportFilename="mediciones_poscosecha"
+            />
+          </div>
+        </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+         *  Tab 3: Ambiente (+N dias)
+         * ═══════════════════════════════════════════════════════════════════ */}
+        <TabsContent value="ambiente" className="mt-4">
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="rounded-full bg-amber-50 p-4 mb-4">
+              <Clock className="h-8 w-8 text-amber-500" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Ambiente (+N dias)
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-md">
+              Evaluaciones de comportamiento de fruta en condiciones ambientales
+              despues de N dias de almacenamiento. Este modulo estara disponible proximamente.
+            </p>
+            <div className="mt-6 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 px-6 py-3">
+              <p className="text-xs text-amber-700">
+                Permite registrar y comparar mediciones de brix, firmeza y condicion
+                de fruta tras diferentes periodos de exposicion a temperatura ambiente.
+              </p>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+         *  Tab 4: Externos
+         * ═══════════════════════════════════════════════════════════════════ */}
+        <TabsContent value="externos" className="mt-4">
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50/50 p-4">
+              <Info className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <h4 className="text-sm font-semibold text-blue-800 mb-1">
+                  Evaluaciones Externas
+                </h4>
+                <p className="text-xs text-blue-700">
+                  Datos de calidad provistos por laboratorios externos, viveros de origen
+                  o programas de mejoramiento genetico (PMG). Estos datos complementan las
+                  evaluaciones internas y permiten comparar resultados con fuentes externas.
+                </p>
+              </div>
+            </div>
+
+            {/* Sample table structure */}
+            <div className="bg-white rounded-xl border border-border overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/40">
+                    {["Variedad", "PMG", "P.Injerto", "Origen", "Fecha", "Frutos", "Peso(g)", "Diam(mm)", "SS(%)", "Firmeza", ""].map((h) => (
+                      <th
+                        key={h}
+                        className="px-3 py-2.5 text-left font-semibold text-muted-foreground text-[11px] uppercase tracking-wider border-b border-border"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colSpan={11} className="px-3 py-12 text-center text-sm text-muted-foreground">
+                      <div className="flex flex-col items-center gap-2">
+                        <Globe className="h-8 w-8 text-muted-foreground/40" />
+                        <span>No hay evaluaciones externas registradas</span>
+                        <span className="text-xs text-muted-foreground/60">
+                          Importe datos externos via Excel o registrelos manualmente
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+         *  Tab 5: Ingreso Rapido
+         * ═══════════════════════════════════════════════════════════════════ */}
+        <TabsContent value="ingreso-rapido" className="mt-4">
+          <IngresoRapidoTab />
+        </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+         *  Tab 6: Toma de Muestra
+         * ═══════════════════════════════════════════════════════════════════ */}
+        <TabsContent value="toma-muestra" className="mt-4">
+          <TomaDeMuestraTab />
+        </TabsContent>
+      </Tabs>
+
       {/* ── Cross-navigation links ── */}
-      <div className="flex items-center gap-4 text-sm">
+      <div className="flex items-center gap-4 text-sm pt-2 border-t border-border">
         <Link
           to="/laboratorio/analisis"
           className="inline-flex items-center gap-1.5 text-garces-cherry hover:text-garces-cherry/80 font-medium hover:underline"
@@ -399,189 +965,6 @@ export function LaboratorioPage() {
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </div>
-
-      <Tabs defaultValue="mediciones">
-        <TabsList>
-          <TabsTrigger value="mediciones">Laboratorio</TabsTrigger>
-          <TabsTrigger value="poscosecha" className="gap-1">
-            <Snowflake className="h-3.5 w-3.5" />
-            Poscosecha
-          </TabsTrigger>
-          <TabsTrigger value="ingreso-rapido" className="gap-1">
-            <Zap className="h-3.5 w-3.5" />
-            Ingreso Rapido
-          </TabsTrigger>
-          <TabsTrigger value="toma-muestra" className="gap-1">
-            <Beaker className="h-3.5 w-3.5" />
-            Toma de Muestra
-          </TabsTrigger>
-          <TabsTrigger value="plantas">Plantas Disponibles</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="mediciones">
-          {/* Filter bar */}
-          <div className="flex flex-wrap items-end gap-3 mb-4">
-            <div className="w-44">
-              <Label className="text-xs">Especie</Label>
-              <Select
-                value={filterEspecie}
-                onValueChange={(v) => {
-                  setFilterEspecie(v === "__all__" ? "" : v);
-                  setFilterCampo("");
-                }}
-              >
-                <SelectTrigger className="mt-1 h-9">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todas</SelectItem>
-                  {lk.options.especies.map((o) => (
-                    <SelectItem key={o.value} value={String(o.value)}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="w-44">
-              <Label className="text-xs">Campo</Label>
-              <Select
-                value={filterCampo}
-                onValueChange={(v) => setFilterCampo(v === "__all__" ? "" : v)}
-              >
-                <SelectTrigger className="mt-1 h-9">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todos</SelectItem>
-                  {lk.options.campos.map((o) => (
-                    <SelectItem key={o.value} value={String(o.value)}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="w-44">
-              <Label className="text-xs">Temporada</Label>
-              <Select
-                value={filterTemporada}
-                onValueChange={(v) => setFilterTemporada(v === "__all__" ? "" : v)}
-              >
-                <SelectTrigger className="mt-1 h-9">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todas</SelectItem>
-                  {lk.options.temporadas.map((o) => (
-                    <SelectItem key={o.value} value={o.label}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {(filterEspecie || filterCampo || filterTemporada) && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-9 text-xs"
-                onClick={() => {
-                  setFilterEspecie("");
-                  setFilterCampo("");
-                  setFilterTemporada("");
-                }}
-              >
-                <X className="h-3.5 w-3.5 mr-1" />
-                Limpiar
-              </Button>
-            )}
-          </div>
-          <CrudTable
-            data={mediciones || []}
-            columns={medicionColumns as any}
-            isLoading={isLoading}
-            searchPlaceholder="Buscar medicion..."
-            exportFilename="mediciones_laboratorio"
-          />
-        </TabsContent>
-
-        {/* Poscosecha tab */}
-        <TabsContent value="poscosecha">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Evaluaciones despues de almacenamiento en frio. Filtre por periodo de almacenaje.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-end gap-3 mb-4">
-              <div className="w-44">
-                <Label className="text-xs">Especie</Label>
-                <Select
-                  value={filterEspecie}
-                  onValueChange={(v) => {
-                    setFilterEspecie(v === "__all__" ? "" : v);
-                    setFilterCampo("");
-                  }}
-                >
-                  <SelectTrigger className="mt-1 h-9">
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Todas</SelectItem>
-                    {lk.options.especies.map((o) => (
-                      <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-36">
-                <Label className="text-xs">Periodo Almacenaje</Label>
-                <Select value="" onValueChange={() => {}}>
-                  <SelectTrigger className="mt-1 h-9">
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Todos</SelectItem>
-                    <SelectItem value="30-40">30-40 dias</SelectItem>
-                    <SelectItem value="40-50">40-50 dias</SelectItem>
-                    <SelectItem value="50-60">50-60 dias</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <CrudTable
-              data={(mediciones || []).filter((m: any) =>
-                m.periodo_almacenaje != null && m.periodo_almacenaje > 0
-              )}
-              columns={medicionColumns as any}
-              isLoading={isLoading}
-              searchPlaceholder="Buscar variedad, campo..."
-              exportFilename="mediciones_poscosecha"
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="ingreso-rapido">
-          <IngresoRapidoTab />
-        </TabsContent>
-
-        <TabsContent value="toma-muestra">
-          <TomaDeMuestraTab />
-        </TabsContent>
-
-        <TabsContent value="plantas">
-          <PlantasTab />
-        </TabsContent>
-      </Tabs>
-
-      {/* Cluster result toast banner */}
-      {lastClasificacion && (
-        <ClusterResultBanner
-          clasificacion={lastClasificacion}
-          onDismiss={() => setLastClasificacion(null)}
-        />
-      )}
 
       {/* New measurement dialog */}
       <NuevaMedicionDialog
@@ -652,50 +1035,7 @@ function ClusterResultBanner({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * Plantas tab (unchanged)
- * ────────────────────────────────────────────────────────────────────── */
-
-function PlantasTab() {
-  const { data: plantas, isLoading } = useQuery({
-    queryKey: ["laboratorio", "plantas"],
-    queryFn: () => laboratorioService.plantas(),
-  });
-  const lk = useLookups();
-
-  const plantaCols = [
-    { accessorKey: "id_planta", header: "ID" },
-    { accessorKey: "codigo", header: "Codigo" },
-    {
-      accessorKey: "id_variedad",
-      header: "Variedad",
-      cell: ({ getValue }: any) => lk.variedad(getValue()),
-    },
-    {
-      accessorKey: "id_portainjerto",
-      header: "Portainjerto",
-      cell: ({ getValue }: any) => lk.portainjerto(getValue()),
-    },
-    {
-      accessorKey: "id_especie",
-      header: "Especie",
-      cell: ({ getValue }: any) => lk.especie(getValue()),
-    },
-    { accessorKey: "condicion", header: "Condicion" },
-    { accessorKey: "ano_plantacion", header: "Ano" },
-  ];
-
-  return (
-    <CrudTable
-      data={plantas || []}
-      columns={plantaCols as any}
-      isLoading={isLoading}
-      searchPlaceholder="Buscar planta..."
-    />
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
- * Section heading helper — icon + colored title + bottom border
+ * Section heading helper
  * ────────────────────────────────────────────────────────────────────── */
 
 function SectionHeading({
@@ -725,8 +1065,8 @@ function SectionHeading({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * ClusterFieldLabel — label with optional "Requerido para cluster" badge
- * ────────────────────────────────────────────────────────────────────── */
+ * ClusterFieldLabel
+ * ───��────────────────────────────────────────────────────────────────── */
 
 function ClusterFieldLabel({
   htmlFor,
@@ -756,7 +1096,7 @@ function ClusterFieldLabel({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * RulePreviewBox — shows which clustering rule will apply
+ * RulePreviewBox
  * ────────────────────────────────────────────────────────────────────── */
 
 function RulePreviewBox({

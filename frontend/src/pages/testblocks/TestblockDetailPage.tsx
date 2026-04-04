@@ -1,11 +1,11 @@
 import { useState, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Grid3X3, Plus, MinusCircle, RefreshCw,
   Package, CheckCircle2, XCircle, ExternalLink, FlaskConical,
   AlertTriangle, Repeat2, MapPin, Settings2, PlusCircle, Rows3,
-  Calendar, FileText, Pencil, Trash2,
+  Calendar, FileText, Pencil, Trash2, QrCode, X, Clock,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -19,16 +19,28 @@ import { useLookups } from "@/hooks/useLookups";
 import { testblockService } from "@/services/testblock";
 import { laboratorioService } from "@/services/laboratorio";
 import { formatNumber } from "@/lib/utils";
-import type { PosicionTestBlock, ColorMode } from "@/types/testblock";
+import type { PosicionTestBlock, ColorMode, HistorialPosicion } from "@/types/testblock";
 import { parseQr } from "@/types/testblock";
 import type { FieldDef } from "@/types";
 import { PlantaMedicionesDialog } from "@/components/shared/PlantaMedicionesDialog";
+
+/* ------------------------------------------------------------------ */
+/*  Constants                                                          */
+/* ------------------------------------------------------------------ */
 
 const ESTADO_COLORS: Record<string, string> = {
   alta: "bg-green-500",
   baja: "bg-red-400",
   replante: "bg-blue-500",
   vacia: "bg-gray-200",
+};
+
+const HISTORIAL_ACTION_COLORS: Record<string, string> = {
+  alta: "bg-green-500",
+  baja: "bg-red-500",
+  replante: "bg-blue-500",
+  fenologia: "bg-purple-500",
+  medicion: "bg-amber-500",
 };
 
 /** Small colored dot indicating cluster quality for a plant. */
@@ -46,12 +58,17 @@ function ClusterDot({ cluster }: { cluster?: number | null }) {
 
 type SelectionMode = "none" | "alta" | "baja" | "replante" | "eliminar";
 
+/* ------------------------------------------------------------------ */
+/*  Main Component                                                     */
+/* ------------------------------------------------------------------ */
+
 export function TestblockDetailPage() {
   const { id } = useParams<{ id: string }>();
   const tbId = Number(id);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  /* --- Data queries --- */
   const { data: tb, isLoading: tbLoading, isError: tbError } = useTestblock(tbId);
   const { data: grilla } = useGrilla(tbId);
   const { data: resumenHileras } = useResumenHileras(tbId);
@@ -63,15 +80,18 @@ export function TestblockDetailPage() {
   const [colorMode] = useState<ColorMode>("estado");
   const [selectedPos, setSelectedPos] = useState<PosicionTestBlock | null>(null);
 
-  // --- Selection mode state ---
+  /* --- Estado toggle (Formacion / Produccion) --- */
+  const [estadoTB, setEstadoTB] = useState<"formacion" | "produccion">("formacion");
+
+  /* --- Selection mode state --- */
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("none");
   const [selectedPositions, setSelectedPositions] = useState<Set<number>>(new Set());
 
-  // --- Plant mediciones dialog state ---
+  /* --- Plant mediciones dialog state --- */
   const [medDialogOpen, setMedDialogOpen] = useState(false);
   const [medPlanta, setMedPlanta] = useState<PosicionTestBlock | null>(null);
 
-  // --- Confirmation dialog state ---
+  /* --- Confirmation dialog state --- */
   const [altaConfirmOpen, setAltaConfirmOpen] = useState(false);
   const [bajaConfirmOpen, setBajaConfirmOpen] = useState(false);
   const [replanteConfirmOpen, setReplanteConfirmOpen] = useState(false);
@@ -80,6 +100,17 @@ export function TestblockDetailPage() {
   const [delHileraOpen, setDelHileraOpen] = useState(false);
   const [editTbOpen, setEditTbOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  /* --- Historial query for selected position --- */
+  const { data: historialPos } = useQuery({
+    queryKey: ["posiciones", selectedPos?.id_posicion, "historial"],
+    queryFn: () => testblockService.historial(selectedPos!.id_posicion),
+    enabled: !!selectedPos?.id_posicion && selectionMode === "none",
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  Mutations                                                        */
+  /* ---------------------------------------------------------------- */
 
   const genPosMut = useMutation({
     mutationFn: () => testblockService.generarPosiciones(tbId),
@@ -142,6 +173,10 @@ export function TestblockDetailPage() {
       setEditTbOpen(false);
     },
   });
+
+  /* ---------------------------------------------------------------- */
+  /*  Derived / memoised data                                          */
+  /* ---------------------------------------------------------------- */
 
   // Build lote options from inventarioTb (only lotes with disponible > 0)
   const loteOptions = useMemo(() => {
@@ -217,11 +252,14 @@ export function TestblockDetailPage() {
     { key: "notas", label: "Notas / Observaciones", type: "textarea" },
   ], [lk.options.campos]);
 
-  // --- Selection mode handlers ---
+  /* ---------------------------------------------------------------- */
+  /*  Selection mode handlers                                          */
+  /* ---------------------------------------------------------------- */
+
   const enterSelectionMode = useCallback((mode: SelectionMode) => {
     setSelectionMode(mode);
     setSelectedPositions(new Set());
-    setSelectedPos(null); // close detail panel
+    setSelectedPos(null);
   }, []);
 
   const exitSelectionMode = useCallback(() => {
@@ -243,26 +281,16 @@ export function TestblockDetailPage() {
 
   const handleGridCellClick = useCallback((pos: PosicionTestBlock | undefined) => {
     if (selectionMode === "none") {
-      // Normal behavior: open detail panel
       if (pos) setSelectedPos(pos);
       return;
     }
 
     if (!pos) return;
 
-    // In selection mode, validate and toggle
-    if (selectionMode === "alta" && pos.estado !== "vacia") {
-      return; // can only select empty positions for alta
-    }
-    if (selectionMode === "baja" && pos.estado !== "alta") {
-      return; // can only select active positions for baja
-    }
-    if (selectionMode === "replante" && pos.estado !== "baja" && pos.estado !== "replante") {
-      return; // can only select baja/replante positions for replante
-    }
-    if (selectionMode === "eliminar" && pos.estado !== "vacia" && pos.estado !== "baja") {
-      return; // can only delete empty/baja positions
-    }
+    if (selectionMode === "alta" && pos.estado !== "vacia") return;
+    if (selectionMode === "baja" && pos.estado !== "alta") return;
+    if (selectionMode === "replante" && pos.estado !== "baja" && pos.estado !== "replante") return;
+    if (selectionMode === "eliminar" && pos.estado !== "vacia" && pos.estado !== "baja") return;
 
     togglePosition(pos.id_posicion);
   }, [selectionMode, togglePosition]);
@@ -368,6 +396,10 @@ export function TestblockDetailPage() {
     return [{ id: tbId, lat: Number(tb.latitud), lng: Number(tb.longitud), label: tb.nombre || "", detail: tb.codigo || "" }];
   }, [tb?.latitud, tb?.longitud, tb?.nombre, tb?.codigo, tbId]);
 
+  /* ---------------------------------------------------------------- */
+  /*  Loading / error states                                           */
+  /* ---------------------------------------------------------------- */
+
   if (tbLoading) {
     return <div className="text-center py-8 text-muted-foreground">Cargando...</div>;
   }
@@ -380,9 +412,11 @@ export function TestblockDetailPage() {
     );
   }
 
-  const total = (tb.pos_alta || 0) + (tb.pos_baja || 0) + (tb.pos_vacia || 0) + (tb.pos_replante || 0);
+  /* ---------------------------------------------------------------- */
+  /*  Derived grid data                                                */
+  /* ---------------------------------------------------------------- */
 
-  // Build grid matrix
+  const total = (tb.pos_alta || 0) + (tb.pos_baja || 0) + (tb.pos_vacia || 0) + (tb.pos_replante || 0);
   const hileras = grilla?.hileras || tb.num_hileras || 0;
   const maxPos = grilla?.max_pos || tb.posiciones_por_hilera || 0;
   const posMap = new Map<string, PosicionTestBlock>();
@@ -390,7 +424,6 @@ export function TestblockDetailPage() {
     posMap.set(`${p.hilera}-${p.posicion}`, p);
   });
 
-  // Helper: determine if a cell is selectable in current mode
   const isCellSelectable = (estado: string): boolean => {
     if (selectionMode === "alta") return estado === "vacia";
     if (selectionMode === "baja") return estado === "alta";
@@ -399,511 +432,676 @@ export function TestblockDetailPage() {
     return false;
   };
 
+  // Resolve detail-panel data for selectedPos
+  const detailQr = selectedPos ? parseQr(selectedPos) : null;
+  const detailHasPlant = !!selectedPos?.planta_id;
+  const detailVarName = selectedPos
+    ? (detailHasPlant
+      ? lk.variedad(selectedPos.planta_variedad)
+      : detailQr?.var || lk.variedad(selectedPos.id_variedad))
+    : "-";
+  const detailPiName = selectedPos
+    ? (detailHasPlant
+      ? lk.portainjerto(selectedPos.planta_portainjerto)
+      : detailQr?.pi || lk.portainjerto(selectedPos.id_portainjerto))
+    : "-";
+  const detailEspecie = selectedPos && detailHasPlant && selectedPos.planta_especie
+    ? lk.especie(selectedPos.planta_especie)
+    : null;
+  const detailLote = selectedPos
+    ? (detailQr?.lote || (selectedPos.id_lote ? `ID ${selectedPos.id_lote}` : "-"))
+    : "-";
+
+  const showDetailPanel = selectionMode === "none" && selectedPos != null;
+
+  /* ================================================================ */
+  /*  RENDER                                                           */
+  /* ================================================================ */
+
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/testblocks")}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+      {/* ============================================================ */}
+      {/*  HEADER                                                       */}
+      {/* ============================================================ */}
+      <div>
+        {/* Back link */}
+        <button
+          onClick={() => navigate("/testblocks")}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-1 flex items-center gap-1"
+        >
+          <ArrowLeft className="h-3 w-3" />
+          TestBlocks
+        </button>
+
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          {/* Left: name, badges, estado toggle */}
           <div>
-            <h2 className="text-xl font-bold text-garces-cherry">{tb.nombre}</h2>
-            <p className="text-sm text-muted-foreground">{tb.codigo}</p>
-          </div>
-          <StatusBadge status={tb.estado || "activo"} />
-          {tb.temporada_inicio && (
-            <span className="text-[10px] bg-garces-cherry-pale text-garces-cherry px-2 py-0.5 rounded-full font-medium">
-              {tb.temporada_inicio}
-            </span>
-          )}
-          <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
-            {hileras}H x {maxPos}P = {total} pos
-          </span>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button size="sm" variant="ghost" onClick={() => setEditTbOpen(true)} title="Editar TestBlock">
-            <Pencil className="h-4 w-4" />
-          </Button>
-          {selectionMode === "none" ? (
-            <>
-              <Button size="sm" onClick={() => enterSelectionMode("alta")}>
-                <Plus className="h-4 w-4" /> Alta
-              </Button>
-              <Button size="sm" variant="destructive" onClick={() => enterSelectionMode("baja")}>
-                <MinusCircle className="h-4 w-4" /> Baja
-              </Button>
-              <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => enterSelectionMode("replante")}>
-                <Repeat2 className="h-4 w-4" /> Replante
-              </Button>
-            </>
-          ) : (
-            <Button size="sm" variant="outline" onClick={exitSelectionMode}>
-              <XCircle className="h-4 w-4" /> Cancelar Seleccion
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Testblock Info Card */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
-              <FileText className="h-4 w-4" /> Caracteristicas del TestBlock
-            </h3>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm">
-            <div><span className="text-muted-foreground">Campo:</span> {lk.campo(tb.id_campo)}</div>
-            <div><span className="text-muted-foreground">Cuartel:</span> {tb.id_cuartel ? `#${tb.id_cuartel}` : "-"}</div>
-            <div><span className="text-muted-foreground">Temporada:</span> {tb.temporada_inicio || "-"}</div>
-            <div><span className="text-muted-foreground">Hileras:</span> {hileras || "-"}</div>
-            <div><span className="text-muted-foreground">Pos/Hilera:</span> {maxPos || "-"}</div>
-            <div><span className="text-muted-foreground">Total Posiciones:</span> {total || "-"}</div>
-            {tb.latitud && tb.longitud && (
-              <div className="flex items-center gap-1">
-                <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-muted-foreground">Coord:</span> {Number(tb.latitud).toFixed(5)}, {Number(tb.longitud).toFixed(5)}
-              </div>
-            )}
-            {tb.fecha_creacion_tb && (
-              <div><span className="text-muted-foreground">Creado:</span> {new Date(tb.fecha_creacion_tb).toLocaleDateString("es-CL")}</div>
-            )}
-            {tb.notas && (
-              <div className="col-span-2 sm:col-span-3"><span className="text-muted-foreground">Notas:</span> {tb.notas}</div>
-            )}
-          </div>
-          {/* Grid management buttons */}
-          <div className="flex gap-2 mt-4 pt-3 border-t">
-            <Button size="sm" variant="outline" onClick={() => genPosMut.mutate()} disabled={genPosMut.isPending}>
-              <Grid3X3 className="h-4 w-4" /> Generar Posiciones
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setAddHileraOpen(true)}>
-              <Rows3 className="h-4 w-4" /> Agregar Hilera
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setAddPosOpen(true)} disabled={hileras === 0}>
-              <PlusCircle className="h-4 w-4" /> Agregar Posiciones
-            </Button>
-            <span className="border-l mx-1" />
-            <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDelHileraOpen(true)} disabled={hileras === 0}>
-              <Trash2 className="h-4 w-4" /> Quitar Hilera
-            </Button>
-            <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => enterSelectionMode("eliminar")} disabled={hileras === 0}>
-              <Trash2 className="h-4 w-4" /> Quitar Posiciones
-            </Button>
-          </div>
-        </div>
-
-        {/* Map */}
-        <div className="bg-white rounded-lg border overflow-hidden min-h-[250px]">
-          {mapPins.length > 0 ? (
-            <div className="flex flex-col items-center justify-center h-[250px] text-sm gap-1 p-4">
-              <MapPin className="h-8 w-8 text-garces-cherry opacity-70" />
-              <p className="font-medium">{Number(mapPins[0].lat).toFixed(5)}, {Number(mapPins[0].lng).toFixed(5)}</p>
-              <p className="text-muted-foreground text-xs">Coordenadas del testblock</p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-[250px] text-muted-foreground text-sm gap-2">
-              <MapPin className="h-8 w-8 opacity-40" />
-              <p>Sin coordenadas</p>
-              <Button size="sm" variant="ghost" onClick={() => setEditTbOpen(true)}>
-                Agregar ubicacion
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Alert: pending positions */}
-      {(tb.pos_vacia || 0) > 0 && selectionMode === "none" && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
-          <div>
-            <span className="font-semibold">{tb.pos_vacia} posicion{(tb.pos_vacia || 0) !== 1 ? "es" : ""} pendiente{(tb.pos_vacia || 0) !== 1 ? "s" : ""} de plantar.</span>
-            {" "}Seleccione &quot;Alta&quot; para asignar plantas a las posiciones vacias.
-          </div>
-          <Button size="sm" variant="outline" className="ml-auto shrink-0 border-amber-400 text-amber-700 hover:bg-amber-100" onClick={() => enterSelectionMode("alta")}>
-            <Plus className="h-4 w-4" /> Plantar ahora
-          </Button>
-        </div>
-      )}
-
-      {/* Alert: positions needing replant */}
-      {(tb.pos_baja || 0) > 0 && selectionMode === "none" && (
-        <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-          <Repeat2 className="h-5 w-5 shrink-0 text-blue-500" />
-          <div>
-            <span className="font-semibold">{tb.pos_baja} posicion{(tb.pos_baja || 0) !== 1 ? "es" : ""} con baja</span> disponible{(tb.pos_baja || 0) !== 1 ? "s" : ""} para replante.
-          </div>
-          <Button size="sm" variant="outline" className="ml-auto shrink-0 border-blue-400 text-blue-700 hover:bg-blue-100" onClick={() => enterSelectionMode("replante")}>
-            <Repeat2 className="h-4 w-4" /> Replantar
-          </Button>
-        </div>
-      )}
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <KpiCard title="Total" value={formatNumber(total)} icon={Grid3X3} />
-        <KpiCard title="Alta" value={tb.pos_alta || 0} icon={Plus} />
-        <KpiCard title="Pendientes" value={tb.pos_vacia || 0} icon={AlertTriangle} />
-        <KpiCard title="Baja" value={tb.pos_baja || 0} icon={MinusCircle} />
-        <KpiCard title="Replante" value={tb.pos_replante || 0} icon={RefreshCw} />
-      </div>
-
-      <Tabs defaultValue="grilla">
-        <TabsList>
-          <TabsTrigger value="grilla">Grilla</TabsTrigger>
-          <TabsTrigger value="hileras">Resumen Hileras</TabsTrigger>
-          <TabsTrigger value="variedades">Variedades</TabsTrigger>
-          <TabsTrigger value="inventario-tb">Inventario TB</TabsTrigger>
-          <TabsTrigger value="mediciones">Mediciones</TabsTrigger>
-        </TabsList>
-
-        {/* Grilla */}
-        <TabsContent value="grilla">
-          <div className="bg-white rounded-lg border p-4 overflow-auto">
-            {/* Selection mode banner */}
-            {selectionMode !== "none" && (
-              <div
-                className={`rounded-md px-4 py-2 mb-3 text-sm font-medium flex items-center justify-between ${
-                  selectionMode === "alta"
-                    ? "bg-green-50 text-green-800 border border-green-200"
-                    : selectionMode === "replante"
-                      ? "bg-blue-50 text-blue-800 border border-blue-200"
-                      : "bg-red-50 text-red-800 border border-red-200"
-                }`}
-              >
-                <span>
-                  {selectionMode === "alta"
-                    ? "Seleccione posiciones vacias para plantar"
-                    : selectionMode === "replante"
-                      ? "Seleccione posiciones con baja para replantar"
-                      : selectionMode === "eliminar"
-                        ? "Seleccione posiciones vacias/baja para eliminar"
-                        : "Seleccione posiciones activas para dar de baja"}
+            <h2 className="text-xl font-bold leading-tight">{tb.nombre}</h2>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <StatusBadge status={tb.estado || "activo"} />
+              {detailEspecie && (
+                <span className="inline-flex items-center rounded-full bg-red-50 text-red-700 px-2 py-0.5 text-[11px] font-semibold">
+                  {detailEspecie}
                 </span>
-                {selectedPositions.size > 0 && (
-                  <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded-full text-xs font-semibold border">
-                    <CheckCircle2 className="h-3 w-3" />
-                    {selectedPositions.size} seleccionadas
-                  </span>
-                )}
-              </div>
-            )}
+              )}
+              {tb.temporada_inicio && (
+                <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-semibold">
+                  {tb.temporada_inicio}
+                </span>
+              )}
+              <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-600 px-2 py-0.5 text-[11px] font-medium">
+                {lk.campo(tb.id_campo)}
+              </span>
 
-            {hileras === 0 ? (
-              <div className="text-center py-8 space-y-3">
-                <Grid3X3 className="h-10 w-10 mx-auto text-muted-foreground/50" />
-                <p className="text-muted-foreground">No hay posiciones generadas.</p>
-                <Button size="sm" onClick={() => genPosMut.mutate()} disabled={genPosMut.isPending}>
-                  <Grid3X3 className="h-4 w-4" /> Generar Grilla de Posiciones
+              {/* Formacion / Produccion segmented control */}
+              <span className="inline-flex rounded-full border border-border overflow-hidden ml-1">
+                <button
+                  onClick={() => setEstadoTB("formacion")}
+                  className={`px-2.5 py-0.5 text-[11px] font-semibold transition-colors border-none ${
+                    estadoTB === "formacion"
+                      ? "bg-amber-500 text-white"
+                      : "bg-white text-muted-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  Formacion
+                </button>
+                <button
+                  onClick={() => setEstadoTB("produccion")}
+                  className={`px-2.5 py-0.5 text-[11px] font-semibold transition-colors border-none ${
+                    estadoTB === "produccion"
+                      ? "bg-green-500 text-white"
+                      : "bg-white text-muted-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  Produccion
+                </button>
+              </span>
+            </div>
+          </div>
+
+          {/* Right: action buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="ghost" onClick={() => setEditTbOpen(true)} title="Editar TestBlock">
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditTbOpen(true)} title="Configuracion">
+              <Settings2 className="h-4 w-4" />
+            </Button>
+
+            {selectionMode === "none" ? (
+              <>
+                <Button size="sm" variant="outline" className="text-muted-foreground">
+                  <QrCode className="h-4 w-4" /> QR Etiquetas
                 </Button>
-              </div>
+                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => enterSelectionMode("alta")}>
+                  <Plus className="h-4 w-4" /> Alta
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => enterSelectionMode("baja")}>
+                  <MinusCircle className="h-4 w-4" /> Baja
+                </Button>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => enterSelectionMode("replante")}>
+                  <Repeat2 className="h-4 w-4" /> Replante
+                </Button>
+              </>
             ) : (
-              <div className="space-y-1">
-                {/* Header row */}
-                <div className="flex gap-1 mb-2">
-                  <div className="w-10 text-xs text-muted-foreground font-medium text-right pr-1">H\P</div>
-                  {Array.from({ length: maxPos }, (_, i) => (
-                    <div key={i} className="w-8 text-center text-[10px] text-muted-foreground">{i + 1}</div>
-                  ))}
-                </div>
-                {/* Grid rows */}
-                {Array.from({ length: hileras }, (_, hi) => (
-                  <div key={hi} className="flex gap-1 items-center">
-                    <div className="w-10 text-xs text-muted-foreground font-medium text-right pr-1">{hi + 1}</div>
-                    {Array.from({ length: maxPos }, (_, pi) => {
-                      const pos = posMap.get(`${hi + 1}-${pi + 1}`);
-                      const estado = pos?.estado || "vacia";
-                      const qrInfo = pos ? parseQr(pos) : null;
-                      // Prefer plant data for label/tooltip, fallback to QR, then generic letter
-                      const varName = pos?.planta_variedad
-                        ? lk.variedad(pos.planta_variedad)
-                        : qrInfo?.var || null;
-                      const piName = pos?.planta_portainjerto
-                        ? lk.portainjerto(pos.planta_portainjerto)
-                        : qrInfo?.pi || null;
-                      const label = varName && varName !== "-"
-                        ? varName.substring(0, 3)
-                        : (estado === "alta" ? "A" : estado === "baja" ? "B" : estado === "replante" ? "R" : "");
-                      const tip = pos
-                        ? `${pos.codigo_unico} - ${estado}${varName && varName !== "-" ? ` | ${varName}` : ""}${piName && piName !== "-" ? ` / ${piName}` : ""}`
-                        : `H${hi + 1}P${pi + 1} - vacia`;
-
-                      const isInSelectionMode = selectionMode !== "none";
-                      const selectable = isInSelectionMode && pos && isCellSelectable(estado);
-                      const isSelected = pos ? selectedPositions.has(pos.id_posicion) : false;
-                      const dimmed = isInSelectionMode && !selectable;
-
-                      return (
-                        <button
-                          key={pi}
-                          className={`relative w-8 h-8 rounded text-[9px] font-medium transition-all ${
-                            ESTADO_COLORS[estado] || "bg-gray-100"
-                          } ${estado !== "vacia" ? "text-white" : "text-gray-400"} ${
-                            isSelected
-                              ? "ring-2 ring-yellow-400 animate-pulse scale-110 z-10"
-                              : isInSelectionMode && selectable
-                                ? "hover:ring-2 hover:ring-yellow-400 cursor-pointer"
-                                : isInSelectionMode
-                                  ? "opacity-30 cursor-not-allowed"
-                                  : "hover:ring-2 hover:ring-garces-cherry cursor-pointer"
-                          }`}
-                          title={tip}
-                          onClick={() => handleGridCellClick(pos)}
-                          disabled={isInSelectionMode && !selectable && !pos}
-                        >
-                          {label}
-                          {(estado === "alta" || estado === "replante") && (
-                            <ClusterDot cluster={pos?.cluster_actual} />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Leyenda */}
-            <div className="flex flex-wrap gap-4 mt-4 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500" /> Alta</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-400" /> Baja</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500" /> Replante</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-200" /> Vacia</span>
-              {selectionMode !== "none" && (
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded ring-2 ring-yellow-400 bg-yellow-100" /> Seleccionada</span>
-              )}
-              <span className="border-l pl-4 ml-2 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-300" /> Cluster 1-2</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-300" /> Cluster 3</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-300" /> Cluster 4</span>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Resumen Hileras */}
-        <TabsContent value="hileras">
-          <div className="bg-white rounded-lg border overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-3 py-2 text-left">Hilera</th>
-                  <th className="px-3 py-2 text-right">Total</th>
-                  <th className="px-3 py-2 text-right">Alta</th>
-                  <th className="px-3 py-2 text-right">Baja</th>
-                  <th className="px-3 py-2 text-right">Replante</th>
-                  <th className="px-3 py-2 text-right">Vacia</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(resumenHileras || []).map((h) => (
-                  <tr key={h.hilera} className="border-b hover:bg-muted/30">
-                    <td className="px-3 py-2 font-medium">Hilera {h.hilera}</td>
-                    <td className="px-3 py-2 text-right">{h.total}</td>
-                    <td className="px-3 py-2 text-right text-green-600">{h.alta}</td>
-                    <td className="px-3 py-2 text-right text-red-500">{h.baja}</td>
-                    <td className="px-3 py-2 text-right text-blue-500">{h.replante}</td>
-                    <td className="px-3 py-2 text-right text-gray-400">{h.vacia}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </TabsContent>
-
-        {/* Resumen Variedades */}
-        <TabsContent value="variedades">
-          <div className="bg-white rounded-lg border overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-3 py-2 text-left">Variedad</th>
-                  <th className="px-3 py-2 text-right">Cantidad</th>
-                  <th className="px-3 py-2 text-right">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(resumenVariedades || []).map((v) => (
-                  <tr key={v.id_variedad} className="border-b hover:bg-muted/30">
-                    <td className="px-3 py-2">{v.variedad}</td>
-                    <td className="px-3 py-2 text-right">{v.cantidad}</td>
-                    <td className="px-3 py-2 text-right">{v.pct.toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </TabsContent>
-
-        {/* Inventario TestBlock */}
-        <TabsContent value="inventario-tb">
-          <div className="bg-white rounded-lg border overflow-auto">
-            {(!inventarioTb || inventarioTb.length === 0) ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>No hay inventario asignado a este testblock.</p>
-                <p className="text-xs mt-1">Realice un despacho desde Inventario para asignar stock.</p>
-              </div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-3 py-2 text-left">Lote</th>
-                    <th className="px-3 py-2 text-left">Variedad</th>
-                    <th className="px-3 py-2 text-left">Portainjerto</th>
-                    <th className="px-3 py-2 text-right">Asignadas</th>
-                    <th className="px-3 py-2 text-right">Plantadas</th>
-                    <th className="px-3 py-2 text-right">Disponibles</th>
-                    <th className="px-3 py-2 text-center">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inventarioTb.map((item) => (
-                    <tr key={item.id_inventario_tb} className="border-b hover:bg-muted/30">
-                      <td className="px-3 py-2 font-medium">
-                        {item.id_inventario ? (
-                          <button
-                            onClick={() => navigate(`/inventario/${item.id_inventario}`)}
-                            className="text-garces-cherry hover:underline inline-flex items-center gap-1"
-                          >
-                            {item.codigo_lote || `Lote #${item.id_inventario}`}
-                            <ExternalLink className="h-3 w-3" />
-                          </button>
-                        ) : (
-                          item.codigo_lote || "-"
-                        )}
-                      </td>
-                      <td className="px-3 py-2">{item.variedad || "-"}</td>
-                      <td className="px-3 py-2">{item.portainjerto || "-"}</td>
-                      <td className="px-3 py-2 text-right">{formatNumber(item.cantidad_asignada)}</td>
-                      <td className="px-3 py-2 text-right">{formatNumber(item.cantidad_plantada)}</td>
-                      <td className="px-3 py-2 text-right font-semibold">
-                        <span className={item.disponible > 0 ? "text-green-600" : "text-gray-400"}>
-                          {formatNumber(item.disponible)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <StatusBadge status={item.estado} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Mediciones */}
-        <TabsContent value="mediciones">
-          <div className="bg-white rounded-lg border p-6">
-            <div className="flex flex-col items-center justify-center text-center py-8">
-              <FlaskConical className="h-12 w-12 text-muted-foreground/30 mb-3" />
-              <h4 className="font-semibold text-sm">Mediciones de Calidad</h4>
-              <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                Aun no hay mediciones registradas para este TestBlock. Las mediciones se registran desde el modulo Laboratorio.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => navigate("/laboratorio")}
-              >
-                <FlaskConical className="h-4 w-4 mr-1" /> Ir a Mediciones Lab
+              <Button size="sm" variant="outline" onClick={exitSelectionMode}>
+                <XCircle className="h-4 w-4" /> Cancelar
               </Button>
-            </div>
+            )}
           </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
 
-      {/* Selected position detail (only when NOT in selection mode) */}
-      {selectionMode === "none" && selectedPos && (() => {
-        const qr = parseQr(selectedPos);
-        const hasPlantData = !!selectedPos.planta_id;
-        return (
-          <div className="bg-white rounded-lg border p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-sm">{selectedPos.codigo_unico}</h3>
-              <div className="flex gap-1">
-                {hasPlantData && selectedPos.planta_id && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-garces-cherry"
-                      onClick={() => {
-                        setMedPlanta(selectedPos);
-                        setMedDialogOpen(true);
-                      }}
-                    >
-                      <FlaskConical className="h-3.5 w-3.5 mr-1" />
-                      Ver Mediciones
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(laboratorioService.reportePlantaPdfUrl(selectedPos.planta_id!), "_blank")}
-                    >
-                      <FileText className="h-3.5 w-3.5 mr-1" />
-                      PDF Planta
-                    </Button>
-                  </>
-                )}
-                <Button variant="ghost" size="sm" onClick={() => setSelectedPos(null)}>Cerrar</Button>
+      {/* ============================================================ */}
+      {/*  KPI CARDS (4)                                                */}
+      {/* ============================================================ */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <KpiCard title="Total" value={formatNumber(total)} icon={Grid3X3} />
+        <KpiCard
+          title="Alta"
+          value={tb.pos_alta || 0}
+          icon={CheckCircle2}
+          className="border-green-200"
+          iconBg="bg-green-50"
+          iconColor="text-green-600"
+        />
+        <KpiCard
+          title="Baja"
+          value={tb.pos_baja || 0}
+          icon={MinusCircle}
+          className="border-red-200"
+          iconBg="bg-red-50"
+          iconColor="text-red-600"
+        />
+        <KpiCard
+          title="Vacia"
+          value={tb.pos_vacia || 0}
+          icon={AlertTriangle}
+          className="border-gray-200"
+          iconBg="bg-gray-100"
+          iconColor="text-gray-400"
+        />
+      </div>
+
+      {/* ============================================================ */}
+      {/*  TWO-COLUMN: Grid area + Detail panel                        */}
+      {/* ============================================================ */}
+      <div className="flex gap-4 items-start">
+        {/* ----- LEFT: Tabs area (flex-1) ----- */}
+        <div className="flex-1 min-w-0">
+          <Tabs defaultValue="grilla">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+              <TabsList>
+                <TabsTrigger value="grilla">Grilla</TabsTrigger>
+                <TabsTrigger value="hileras">Resumen</TabsTrigger>
+                <TabsTrigger value="variedades">Variedades</TabsTrigger>
+                <TabsTrigger value="mediciones">Mediciones</TabsTrigger>
+                <TabsTrigger value="inventario-tb">Inventario</TabsTrigger>
+                <TabsTrigger value="historial">Historial</TabsTrigger>
+              </TabsList>
+
+              {/* Legend (shown next to tabs) */}
+              <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-500" /> Alta</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400" /> Baja</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-300" /> Vacia</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-500" /> Polinizante</span>
               </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
-              <div><span className="text-muted-foreground">Estado:</span> <StatusBadge status={selectedPos.estado} /></div>
-              <div><span className="text-muted-foreground">Hilera:</span> {selectedPos.hilera}</div>
-              <div><span className="text-muted-foreground">Posicion:</span> {selectedPos.posicion}</div>
-              {hasPlantData && (
-                <>
-                  <div><span className="text-muted-foreground">Planta ID:</span> {selectedPos.planta_id}</div>
-                  <div><span className="text-muted-foreground">Planta Codigo:</span> {selectedPos.planta_codigo || "-"}</div>
-                  <div><span className="text-muted-foreground">Condicion:</span> {selectedPos.planta_condicion || "-"}</div>
-                </>
-              )}
+
+            {/* --- GRILLA TAB --- */}
+            <TabsContent value="grilla">
+              <div className="bg-white rounded-xl border p-4 overflow-auto">
+                {/* Selection mode banner */}
+                {selectionMode !== "none" && (
+                  <div
+                    className={`rounded-md px-4 py-2 mb-3 text-sm font-medium flex items-center justify-between ${
+                      selectionMode === "alta"
+                        ? "bg-green-50 text-green-800 border border-green-200"
+                        : selectionMode === "replante"
+                          ? "bg-blue-50 text-blue-800 border border-blue-200"
+                          : "bg-red-50 text-red-800 border border-red-200"
+                    }`}
+                  >
+                    <span>
+                      {selectionMode === "alta"
+                        ? "Seleccione posiciones vacias para plantar"
+                        : selectionMode === "replante"
+                          ? "Seleccione posiciones con baja para replantar"
+                          : selectionMode === "eliminar"
+                            ? "Seleccione posiciones vacias/baja para eliminar"
+                            : "Seleccione posiciones activas para dar de baja"}
+                    </span>
+                    {selectedPositions.size > 0 && (
+                      <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded-full text-xs font-semibold border">
+                        <CheckCircle2 className="h-3 w-3" />
+                        {selectedPositions.size} seleccionadas
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {hileras === 0 ? (
+                  <div className="text-center py-8 space-y-3">
+                    <Grid3X3 className="h-10 w-10 mx-auto text-muted-foreground/50" />
+                    <p className="text-muted-foreground">No hay posiciones generadas.</p>
+                    <Button size="sm" onClick={() => genPosMut.mutate()} disabled={genPosMut.isPending}>
+                      <Grid3X3 className="h-4 w-4" /> Generar Grilla de Posiciones
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-0.5">
+                    {/* Grid header row */}
+                    <div
+                      className="grid gap-0.5"
+                      style={{ gridTemplateColumns: `28px repeat(${maxPos}, 1fr)` }}
+                    >
+                      <div className="text-[8px] font-bold text-muted-foreground text-center">H\P</div>
+                      {Array.from({ length: maxPos }, (_, i) => (
+                        <div key={i} className="text-center text-[8px] font-semibold text-muted-foreground">{i + 1}</div>
+                      ))}
+                    </div>
+
+                    {/* Grid rows */}
+                    {Array.from({ length: hileras }, (_, hi) => (
+                      <div
+                        key={hi}
+                        className="grid gap-0.5"
+                        style={{ gridTemplateColumns: `28px repeat(${maxPos}, 1fr)` }}
+                      >
+                        <div className="text-[8px] font-bold text-muted-foreground flex items-center justify-center">
+                          {hi + 1}
+                        </div>
+                        {Array.from({ length: maxPos }, (_, pi) => {
+                          const pos = posMap.get(`${hi + 1}-${pi + 1}`);
+                          const estado = pos?.estado || "vacia";
+                          const qrInfo = pos ? parseQr(pos) : null;
+                          const varName = pos?.planta_variedad
+                            ? lk.variedad(pos.planta_variedad)
+                            : qrInfo?.var || null;
+                          const label = varName && varName !== "-"
+                            ? varName.substring(0, 3)
+                            : (estado === "alta" ? "A" : estado === "baja" ? "B" : estado === "replante" ? "R" : "");
+                          const piName = pos?.planta_portainjerto
+                            ? lk.portainjerto(pos.planta_portainjerto)
+                            : qrInfo?.pi || null;
+                          const tip = pos
+                            ? `${pos.codigo_unico} - ${estado}${varName && varName !== "-" ? ` | ${varName}` : ""}${piName && piName !== "-" ? ` / ${piName}` : ""}`
+                            : `H${hi + 1}P${pi + 1} - vacia`;
+
+                          const isInSelectionMode = selectionMode !== "none";
+                          const selectable = isInSelectionMode && pos && isCellSelectable(estado);
+                          const isSelected = pos ? selectedPositions.has(pos.id_posicion) : false;
+                          const isDetailSelected = selectionMode === "none" && selectedPos?.id_posicion === pos?.id_posicion;
+
+                          // Determine cell color
+                          const bgColor = estado === "vacia"
+                            ? "bg-gray-200/40"
+                            : estado === "baja"
+                              ? "bg-red-500"
+                              : estado === "replante"
+                                ? "bg-blue-500"
+                                : "bg-green-500";
+
+                          return (
+                            <button
+                              key={pi}
+                              className={`relative rounded-[3px] text-[8px] font-semibold py-[3px] transition-all ${bgColor} ${
+                                estado !== "vacia" ? "text-white" : "text-gray-400"
+                              } ${
+                                isSelected
+                                  ? "ring-2 ring-yellow-400 animate-pulse scale-110 z-10"
+                                  : isDetailSelected
+                                    ? "ring-2 ring-black"
+                                    : isInSelectionMode && selectable
+                                      ? "hover:ring-2 hover:ring-yellow-400 cursor-pointer"
+                                      : isInSelectionMode
+                                        ? "opacity-30 cursor-not-allowed"
+                                        : "hover:ring-2 hover:ring-garces-cherry cursor-pointer"
+                              }`}
+                              style={{ opacity: estado === "vacia" && !isInSelectionMode ? 0.4 : undefined }}
+                              title={tip}
+                              onClick={() => handleGridCellClick(pos)}
+                              disabled={isInSelectionMode && !selectable && !pos}
+                            >
+                              {label}
+                              {(estado === "alta" || estado === "replante") && (
+                                <ClusterDot cluster={pos?.cluster_actual} />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Grid management bar */}
+                <div className="flex gap-2 mt-4 pt-3 border-t flex-wrap">
+                  <Button size="sm" variant="outline" onClick={() => genPosMut.mutate()} disabled={genPosMut.isPending}>
+                    <Grid3X3 className="h-3.5 w-3.5" /> Generar Pos
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setAddHileraOpen(true)}>
+                    <Rows3 className="h-3.5 w-3.5" /> +Hilera
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setAddPosOpen(true)} disabled={hileras === 0}>
+                    <PlusCircle className="h-3.5 w-3.5" /> +Posiciones
+                  </Button>
+                  <span className="border-l mx-1" />
+                  <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDelHileraOpen(true)} disabled={hileras === 0}>
+                    <Trash2 className="h-3.5 w-3.5" /> -Hilera
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => enterSelectionMode("eliminar")} disabled={hileras === 0}>
+                    <Trash2 className="h-3.5 w-3.5" /> -Posiciones
+                  </Button>
+                </div>
+
+                {/* Mobile legend */}
+                <div className="flex sm:hidden flex-wrap gap-3 mt-3 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-500" /> Alta</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400" /> Baja</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-500" /> Replante</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-200" /> Vacia</span>
+                  {selectionMode !== "none" && (
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded ring-2 ring-yellow-400 bg-yellow-100" /> Seleccionada</span>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* --- RESUMEN HILERAS TAB --- */}
+            <TabsContent value="hileras">
+              <div className="bg-white rounded-xl border overflow-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="px-3 py-2 text-left">Hilera</th>
+                      <th className="px-3 py-2 text-right">Total</th>
+                      <th className="px-3 py-2 text-right">Alta</th>
+                      <th className="px-3 py-2 text-right">Baja</th>
+                      <th className="px-3 py-2 text-right">Replante</th>
+                      <th className="px-3 py-2 text-right">Vacia</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(resumenHileras || []).map((h) => (
+                      <tr key={h.hilera} className="border-b hover:bg-muted/30">
+                        <td className="px-3 py-2 font-medium">Hilera {h.hilera}</td>
+                        <td className="px-3 py-2 text-right">{h.total}</td>
+                        <td className="px-3 py-2 text-right text-green-600">{h.alta}</td>
+                        <td className="px-3 py-2 text-right text-red-500">{h.baja}</td>
+                        <td className="px-3 py-2 text-right text-blue-500">{h.replante}</td>
+                        <td className="px-3 py-2 text-right text-gray-400">{h.vacia}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </TabsContent>
+
+            {/* --- VARIEDADES TAB --- */}
+            <TabsContent value="variedades">
+              <div className="bg-white rounded-xl border overflow-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="px-3 py-2 text-left">Variedad</th>
+                      <th className="px-3 py-2 text-right">Cantidad</th>
+                      <th className="px-3 py-2 text-right">%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(resumenVariedades || []).map((v) => (
+                      <tr key={v.id_variedad} className="border-b hover:bg-muted/30">
+                        <td className="px-3 py-2">{v.variedad}</td>
+                        <td className="px-3 py-2 text-right">{v.cantidad}</td>
+                        <td className="px-3 py-2 text-right">{v.pct.toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </TabsContent>
+
+            {/* --- MEDICIONES TAB --- */}
+            <TabsContent value="mediciones">
+              <div className="bg-white rounded-xl border p-6">
+                <div className="flex flex-col items-center justify-center text-center py-8">
+                  <FlaskConical className="h-12 w-12 text-muted-foreground/30 mb-3" />
+                  <h4 className="font-semibold text-sm">Mediciones de Calidad</h4>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                    Aun no hay mediciones registradas para este TestBlock. Las mediciones se registran desde el modulo Laboratorio.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => navigate("/laboratorio")}
+                  >
+                    <FlaskConical className="h-4 w-4 mr-1" /> Ir a Mediciones Lab
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* --- INVENTARIO TB TAB --- */}
+            <TabsContent value="inventario-tb">
+              <div className="bg-white rounded-xl border overflow-auto">
+                {(!inventarioTb || inventarioTb.length === 0) ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>No hay inventario asignado a este testblock.</p>
+                    <p className="text-xs mt-1">Realice un despacho desde Inventario para asignar stock.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="px-3 py-2 text-left">Lote</th>
+                        <th className="px-3 py-2 text-left">Variedad</th>
+                        <th className="px-3 py-2 text-left">Portainjerto</th>
+                        <th className="px-3 py-2 text-right">Asignadas</th>
+                        <th className="px-3 py-2 text-right">Plantadas</th>
+                        <th className="px-3 py-2 text-right">Disponibles</th>
+                        <th className="px-3 py-2 text-center">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inventarioTb.map((item) => (
+                        <tr key={item.id_inventario_tb} className="border-b hover:bg-muted/30">
+                          <td className="px-3 py-2 font-medium">
+                            {item.id_inventario ? (
+                              <button
+                                onClick={() => navigate(`/inventario/${item.id_inventario}`)}
+                                className="text-garces-cherry hover:underline inline-flex items-center gap-1"
+                              >
+                                {item.codigo_lote || `Lote #${item.id_inventario}`}
+                                <ExternalLink className="h-3 w-3" />
+                              </button>
+                            ) : (
+                              item.codigo_lote || "-"
+                            )}
+                          </td>
+                          <td className="px-3 py-2">{item.variedad || "-"}</td>
+                          <td className="px-3 py-2">{item.portainjerto || "-"}</td>
+                          <td className="px-3 py-2 text-right">{formatNumber(item.cantidad_asignada)}</td>
+                          <td className="px-3 py-2 text-right">{formatNumber(item.cantidad_plantada)}</td>
+                          <td className="px-3 py-2 text-right font-semibold">
+                            <span className={item.disponible > 0 ? "text-green-600" : "text-gray-400"}>
+                              {formatNumber(item.disponible)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <StatusBadge status={item.estado} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* --- HISTORIAL TAB (testblock-level) --- */}
+            <TabsContent value="historial">
+              <div className="bg-white rounded-xl border p-6">
+                <div className="flex flex-col items-center justify-center text-center py-8">
+                  <Clock className="h-12 w-12 text-muted-foreground/30 mb-3" />
+                  <h4 className="font-semibold text-sm">Historial del TestBlock</h4>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                    Seleccione una posicion en la grilla para ver su historial detallado en el panel lateral.
+                  </p>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* ----- RIGHT: Detail panel (w-[280px]) ----- */}
+        {showDetailPanel && selectedPos && (
+          <div className="w-[280px] shrink-0 bg-white rounded-xl border p-4 self-start sticky top-4">
+            {/* Panel header */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-bold text-sm">
+                H{selectedPos.hilera} - P{selectedPos.posicion}
+              </span>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={selectedPos.estado} />
+                <button
+                  onClick={() => setSelectedPos(null)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="Cerrar"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Fields */}
+            <div className="space-y-2.5 text-xs">
               <div>
                 <span className="text-muted-foreground">Variedad:</span>{" "}
-                {hasPlantData
-                  ? lk.variedad(selectedPos.planta_variedad)
-                  : qr?.var || lk.variedad(selectedPos.id_variedad)}
+                <span className="font-semibold">{detailVarName}</span>
               </div>
               <div>
                 <span className="text-muted-foreground">Portainjerto:</span>{" "}
-                {hasPlantData
-                  ? lk.portainjerto(selectedPos.planta_portainjerto)
-                  : qr?.pi || lk.portainjerto(selectedPos.id_portainjerto)}
+                <span className="font-semibold">{detailPiName}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground">Especie:</span>{" "}
-                {hasPlantData && selectedPos.planta_especie
-                  ? lk.especie(selectedPos.planta_especie)
-                  : "-"}
-              </div>
-              {!hasPlantData && (
-                <div><span className="text-muted-foreground">Planta:</span> {qr?.plt || "-"}</div>
+              {selectedPos.planta_condicion && (
+                <div>
+                  <span className="text-muted-foreground">Tipo planta:</span>{" "}
+                  <span className="font-semibold">{selectedPos.planta_condicion}</span>
+                </div>
               )}
-              <div><span className="text-muted-foreground">Cluster:</span> {selectedPos.cluster_actual ?? "-"}</div>
-              <div><span className="text-muted-foreground">Fecha Alta:</span> {selectedPos.fecha_alta || "-"}</div>
-              <div><span className="text-muted-foreground">Lote:</span> {qr?.lote || (selectedPos.id_lote ? `ID ${selectedPos.id_lote}` : "-")}</div>
               {selectedPos.conduccion && (
-                <div><span className="text-muted-foreground">Conduccion:</span> {selectedPos.conduccion}</div>
+                <div>
+                  <span className="text-muted-foreground">Conduccion:</span>{" "}
+                  <span className="font-semibold">{selectedPos.conduccion}</span>
+                </div>
               )}
               {selectedPos.marco_plantacion && (
-                <div><span className="text-muted-foreground">Marco:</span> {selectedPos.marco_plantacion}</div>
+                <div>
+                  <span className="text-muted-foreground">Marco:</span>{" "}
+                  <span className="font-semibold">{selectedPos.marco_plantacion}</span>
+                </div>
+              )}
+              <div>
+                <span className="text-muted-foreground">Estado:</span>{" "}
+                <StatusBadge
+                  status={estadoTB === "formacion" ? "Formacion" : "Produccion"}
+                  className={estadoTB === "formacion" ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}
+                />
+              </div>
+              <div>
+                <span className="text-muted-foreground">Lote origen:</span>{" "}
+                {selectedPos.id_lote ? (
+                  <button
+                    onClick={() => navigate(`/inventario/${selectedPos.id_lote}`)}
+                    className="text-blue-600 font-semibold hover:underline"
+                  >
+                    {detailLote}
+                  </button>
+                ) : (
+                  <span className="font-semibold">{detailLote}</span>
+                )}
+              </div>
+              {selectedPos.fecha_alta && (
+                <div>
+                  <span className="text-muted-foreground">Fecha Alta:</span>{" "}
+                  <span className="font-semibold">{selectedPos.fecha_alta}</span>
+                </div>
+              )}
+              {selectedPos.cluster_actual != null && (
+                <div>
+                  <span className="text-muted-foreground">Cluster:</span>{" "}
+                  <span className="font-semibold">{selectedPos.cluster_actual}</span>
+                </div>
               )}
               {selectedPos.motivo_baja && (
-                <div><span className="text-muted-foreground">Motivo Baja:</span> {selectedPos.motivo_baja}</div>
+                <div>
+                  <span className="text-muted-foreground">Motivo Baja:</span>{" "}
+                  <span className="font-semibold">{selectedPos.motivo_baja}</span>
+                </div>
               )}
               {selectedPos.observaciones && (
-                <div className="col-span-2 sm:col-span-3"><span className="text-muted-foreground">Obs:</span> {selectedPos.observaciones}</div>
+                <div>
+                  <span className="text-muted-foreground">Obs:</span>{" "}
+                  <span className="font-semibold">{selectedPos.observaciones}</span>
+                </div>
               )}
             </div>
-          </div>
-        );
-      })()}
 
-      {/* Floating action bar for selection mode */}
+            {/* Mediciones button for plants */}
+            {detailHasPlant && selectedPos.planta_id && (
+              <div className="flex gap-2 mt-3 pt-3 border-t">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs flex-1"
+                  onClick={() => {
+                    setMedPlanta(selectedPos);
+                    setMedDialogOpen(true);
+                  }}
+                >
+                  <FlaskConical className="h-3 w-3" />
+                  Mediciones
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs flex-1"
+                  onClick={() => window.open(laboratorioService.reportePlantaPdfUrl(selectedPos.planta_id!), "_blank")}
+                >
+                  <FileText className="h-3 w-3" />
+                  PDF
+                </Button>
+              </div>
+            )}
+
+            {/* Historial section */}
+            <div className="border-t mt-3 pt-3">
+              <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                Historial
+              </div>
+              {(!historialPos || historialPos.length === 0) ? (
+                <p className="text-[10px] text-muted-foreground">Sin historial registrado</p>
+              ) : (
+                <div className="space-y-2">
+                  {historialPos.slice(0, 8).map((ev) => (
+                    <div key={ev.id_historial} className="flex gap-2">
+                      <div
+                        className={`w-2 h-2 rounded-full mt-1 shrink-0 ${
+                          HISTORIAL_ACTION_COLORS[ev.accion?.toLowerCase()] || "bg-gray-400"
+                        }`}
+                      />
+                      <div>
+                        <div className="text-[11px] font-semibold leading-tight">{ev.accion}</div>
+                        <div className="text-[10px] text-muted-foreground leading-tight">
+                          {new Date(ev.fecha).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" })}
+                          {ev.motivo ? ` - ${ev.motivo}` : ""}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2 mt-3 pt-3 border-t">
+              {selectedPos.estado === "alta" && (
+                <button
+                  onClick={() => {
+                    setSelectedPos(null);
+                    enterSelectionMode("baja");
+                  }}
+                  className="flex-1 py-1.5 rounded-md border border-red-200 bg-red-50 text-red-600 text-[11px] font-semibold hover:bg-red-100 transition-colors"
+                >
+                  Dar de baja
+                </button>
+              )}
+              {(selectedPos.estado === "baja" || selectedPos.estado === "replante") && (
+                <button
+                  onClick={() => {
+                    setSelectedPos(null);
+                    enterSelectionMode("replante");
+                  }}
+                  className="flex-1 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-semibold hover:bg-blue-100 transition-colors"
+                >
+                  Replantar
+                </button>
+              )}
+              <button className="flex-1 py-1.5 rounded-md border border-border bg-white text-muted-foreground text-[11px] hover:bg-muted/50 transition-colors">
+                Generar QR
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ============================================================ */}
+      {/*  Floating action bar for selection mode                      */}
+      {/* ============================================================ */}
       {selectionMode !== "none" && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 flex items-center justify-between z-50 ml-0 md:ml-60">
           <div className="flex items-center gap-3">
@@ -951,6 +1149,10 @@ export function TestblockDetailPage() {
 
       {/* Add bottom padding when floating bar is visible */}
       {selectionMode !== "none" && <div className="h-16" />}
+
+      {/* ============================================================ */}
+      {/*  DIALOGS                                                      */}
+      {/* ============================================================ */}
 
       {/* Alta confirmation dialog */}
       <CrudForm

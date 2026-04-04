@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Hammer, CheckCircle2, Clock, AlertTriangle, Plus, CalendarDays,
   TrendingUp, QrCode, Camera, FileText, Download, X, Image as ImageIcon,
-  Calendar,
+  Calendar, MoreHorizontal, Leaf, Scissors,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -33,10 +33,60 @@ import type { EjecucionLabor } from "@/types/laboratorio";
 import { LaborCalendar } from "@/components/labores/LaborCalendar";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Pauta data for Cerezo species (hardcoded from agronomic calendar) */
+const PAUTA_CEREZO = [
+  { id: 1, tipo: "Fenologia", nombre: "Inicio caida de hoja", icon: "L", mes: "Abr", cat: "fenologia" },
+  { id: 2, tipo: "Fenologia", nombre: "50% caida de hoja", icon: "L", mes: "May", cat: "fenologia" },
+  { id: 3, tipo: "Fenologia", nombre: "100% caida de hoja", icon: "L", mes: "Jun", cat: "fenologia" },
+  { id: 4, tipo: "Labor", nombre: "Poda de formacion", icon: "P", mes: "Jun-Jul", cat: "poda" },
+  { id: 5, tipo: "Fenologia", nombre: "Yema dormante", icon: "Y", mes: "Jul", cat: "fenologia" },
+  { id: 6, tipo: "Labor", nombre: "Aplicacion Dormex", icon: "D", mes: "Jul", cat: "fitosanidad" },
+  { id: 7, tipo: "Labor", nombre: "Fertilizacion base", icon: "F", mes: "Ago", cat: "fertilizacion" },
+  { id: 8, tipo: "Fenologia", nombre: "Yema hinchada", icon: "Y", mes: "Ago", cat: "fenologia" },
+  { id: 9, tipo: "Fenologia", nombre: "Punta verde", icon: "P", mes: "Sep", cat: "fenologia" },
+  { id: 10, tipo: "Fenologia", nombre: "Inicio floracion", icon: "F", mes: "Sep", cat: "fenologia" },
+  { id: 11, tipo: "Fenologia", nombre: "Plena floracion", icon: "F", mes: "Oct", cat: "fenologia" },
+  { id: 12, tipo: "Labor", nombre: "Aplicacion GA3", icon: "G", mes: "Oct", cat: "fitosanidad" },
+  { id: 13, tipo: "Fenologia", nombre: "Cuaja", icon: "C", mes: "Oct-Nov", cat: "fenologia" },
+  { id: 14, tipo: "Labor", nombre: "Raleo", icon: "R", mes: "Nov", cat: "manejo" },
+  { id: 15, tipo: "Fenologia", nombre: "Pinta / Envero", icon: "E", mes: "Nov", cat: "fenologia" },
+  { id: 16, tipo: "Labor", nombre: "Cosecha", icon: "C", mes: "Nov-Dic", cat: "cosecha" },
+];
+
+const SPECIES_PILLS = ["Cerezo", "Ciruela", "Nectarin", "Durazno"] as const;
+
+const CAT_COLORS: Record<string, string> = {
+  fenologia: "bg-violet-100 text-violet-700 border-violet-200",
+  poda: "bg-green-100 text-green-700 border-green-200",
+  fitosanidad: "bg-orange-100 text-orange-700 border-orange-200",
+  fertilizacion: "bg-blue-100 text-blue-700 border-blue-200",
+  manejo: "bg-amber-100 text-amber-700 border-amber-200",
+  cosecha: "bg-red-100 text-red-700 border-red-200",
+};
+
+const CAT_DOT_COLORS: Record<string, string> = {
+  fenologia: "bg-violet-500",
+  poda: "bg-green-500",
+  fitosanidad: "bg-orange-500",
+  fertilizacion: "bg-blue-500",
+  manejo: "bg-amber-500",
+  cosecha: "bg-red-500",
+};
+
+const CHART_COLORS = {
+  planificadas: "#3B82F6",
+  ejecutadas: "#22C55E",
+  atrasadas: "#EF4444",
+};
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Determine display status — atrasada if planificada + past date */
+/** Determine display status -- atrasada if planificada + past date */
 function displayStatus(labor: EjecucionLabor): string {
   if (labor.estado === "planificada" && labor.fecha_programada) {
     const programmed = new Date(labor.fecha_programada);
@@ -47,11 +97,16 @@ function displayStatus(labor: EjecucionLabor): string {
   return labor.estado;
 }
 
-const CHART_COLORS = {
-  planificadas: "#3B82F6",
-  ejecutadas: "#22C55E",
-  atrasadas: "#EF4444",
-};
+/** Today's date formatted in locale style */
+function todayFormatted(): string {
+  const d = new Date();
+  const days = ["Domingo", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado"];
+  const months = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  ];
+  return `${days[d.getDay()]} ${d.getDate()} de ${months[d.getMonth()]}, ${d.getFullYear()}`;
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -78,6 +133,10 @@ export function LaboresPage() {
   const [qrLabor, setQrLabor] = useState<EjecucionLabor | null>(null);
   const [addEvidOpen, setAddEvidOpen] = useState(false);
   const [qrBlobUrl, setQrBlobUrl] = useState<string | null>(null);
+  const [selectedPauta, setSelectedPauta] = useState<string | null>(null);
+  const [pautaChecked, setPautaChecked] = useState<Set<number>>(
+    () => new Set(PAUTA_CEREZO.map((p) => p.id)),
+  );
 
   const tbFilterNum = tbFilter && tbFilter !== "all" ? Number(tbFilter) : undefined;
 
@@ -159,6 +218,32 @@ export function LaboresPage() {
     () => allLabores.filter((l) => displayStatus(l) === "atrasada"),
     [allLabores],
   );
+
+  /** Labores for the "Hoy" tab: today's scheduled + overdue */
+  const laboresHoy = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return allLabores.filter((l) => {
+      const st = displayStatus(l);
+      if (st === "atrasada") return true;
+      if (l.estado === "planificada" && l.fecha_programada?.slice(0, 10) === todayStr) return true;
+      if (l.estado === "ejecutada" && l.fecha_ejecucion?.slice(0, 10) === todayStr) return true;
+      return false;
+    });
+  }, [allLabores]);
+
+  /** Labores for the "Semana" tab */
+  const laboresSemana = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfWeek = new Date(today);
+    endOfWeek.setDate(endOfWeek.getDate() + (7 - endOfWeek.getDay()));
+    return allLabores.filter((l) => {
+      if (l.estado === "ejecutada") return false;
+      if (!l.fecha_programada) return false;
+      const fp = new Date(l.fecha_programada);
+      return fp <= endOfWeek;
+    });
+  }, [allLabores]);
 
   // Chart data: por mes
   const chartPorMes = useMemo(() => {
@@ -344,11 +429,55 @@ export function LaboresPage() {
     }
   };
 
+  // --- Quick execute handler ---
+  const handleQuickExecute = (labor: EjecucionLabor) => {
+    ejecutarMut.mutate({
+      id: labor.id_ejecucion,
+      data: {
+        fecha_ejecucion: new Date().toISOString().slice(0, 10),
+        ejecutor: useAuthStore.getState().user?.username || "sistema",
+      },
+    });
+  };
+
+  // --- Pauta checkbox toggle ---
+  const togglePautaItem = (id: number) => {
+    setPautaChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Count pending/ejecutada for Hoy summary
+  const hoyPendientes = laboresHoy.filter((l) => displayStatus(l) !== "ejecutada").length;
+  const hoyEjecutadas = laboresHoy.filter((l) => displayStatus(l) === "ejecutada").length;
+
+  // Guess labor "tipo" from labor name for badge display
+  const guessTipo = (labor: EjecucionLabor): "Labor" | "Fenologia" => {
+    const name = resolvLabor(labor.id_labor).toLowerCase();
+    if (
+      name.includes("fenolog") || name.includes("floraci") ||
+      name.includes("caida") || name.includes("yema") ||
+      name.includes("cuaja") || name.includes("pinta") ||
+      name.includes("envero") || name.includes("verde")
+    ) {
+      return "Fenologia";
+    }
+    return "Labor";
+  };
+
   return (
     <div className="space-y-6">
-      {/* --- Header --- */}
+      {/* ==================== HEADER ==================== */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-garces-cherry">Gestion de Labores</h2>
+        <div>
+          <h2 className="text-xl font-bold text-garces-cherry">Gestion de Labores</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Labores y registro fenologico integrado
+          </p>
+        </div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> Planificar Posicion
@@ -359,77 +488,48 @@ export function LaboresPage() {
         </div>
       </div>
 
-      {/* --- KPI Cards --- */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KpiCard title="Total Labores" value={dashboard?.total ?? 0} icon={Hammer} />
-        <KpiCard title="Planificadas" value={dashboard?.planificadas ?? 0} icon={Clock} />
-        <KpiCard title="Ejecutadas" value={dashboard?.ejecutadas ?? 0} icon={CheckCircle2} />
+      {/* ==================== KPI CARDS (4 in a row, mockup style) ==================== */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          title="Hoy"
+          value={hoyPendientes}
+          icon={CalendarDays}
+          className="border-blue-200"
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
+          trend="labores programadas"
+        />
+        <KpiCard
+          title="Esta semana"
+          value={dashboard?.esta_semana ?? laboresSemana.length}
+          icon={Clock}
+          trend="pendientes"
+        />
         <KpiCard
           title="Atrasadas"
-          value={dashboard?.atrasadas ?? 0}
+          value={dashboard?.atrasadas ?? atrasadas.length}
           icon={AlertTriangle}
-          className={dashboard?.atrasadas ? "border-red-300 bg-red-50" : ""}
+          className={
+            (dashboard?.atrasadas ?? atrasadas.length) > 0
+              ? "border-red-300 bg-red-50"
+              : ""
+          }
+          iconBg="bg-red-50"
+          iconColor="text-red-600"
+          trend="vencidas"
         />
-        <KpiCard title="Esta Semana" value={dashboard?.esta_semana ?? 0} icon={CalendarDays} />
         <KpiCard
-          title="% Cumplimiento"
+          title="Cumplimiento"
           value={`${dashboard?.pct_cumplimiento ?? 0}%`}
           icon={TrendingUp}
           className="border-green-300 bg-green-50"
+          iconBg="bg-green-50"
+          iconColor="text-green-600"
+          trend="este mes"
         />
       </div>
 
-      {/* --- Charts --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Bar chart: por mes */}
-        <div className="bg-white rounded-lg border p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-garces-cherry mb-3">Labores por Mes</h3>
-          {chartPorMes.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={chartPorMes}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <RechartsTooltip />
-                <Legend />
-                <Bar dataKey="planificadas" name="Planificadas" fill={CHART_COLORS.planificadas} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="ejecutadas" name="Ejecutadas" fill={CHART_COLORS.ejecutadas} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-10">Sin datos</p>
-          )}
-        </div>
-
-        {/* Horizontal bar: por tipo */}
-        <div className="bg-white rounded-lg border p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-garces-cherry mb-3">Labores por Tipo</h3>
-          {chartPorTipo.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={chartPorTipo} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="nombre" type="category" width={120} tick={{ fontSize: 10 }} />
-                <RechartsTooltip />
-                <Legend />
-                <Bar dataKey="ejecutadas" name="Ejecutadas" stackId="a" fill={CHART_COLORS.ejecutadas} />
-                <Bar dataKey="atrasadas" name="Atrasadas" stackId="a" fill={CHART_COLORS.atrasadas} />
-                <Bar
-                  dataKey="planificadas"
-                  name="Planificadas"
-                  stackId="a"
-                  fill={CHART_COLORS.planificadas}
-                  radius={[0, 4, 4, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-10">Sin datos</p>
-          )}
-        </div>
-      </div>
-
-      {/* --- TestBlock filter --- */}
+      {/* ==================== TB FILTER ==================== */}
       <div className="flex items-center gap-3">
         <label className="text-sm text-muted-foreground">Filtrar por TestBlock:</label>
         <Select value={tbFilter} onValueChange={setTbFilter}>
@@ -448,28 +548,42 @@ export function LaboresPage() {
         )}
       </div>
 
-      {/* --- Tabs --- */}
+      {/* ==================== TABS ==================== */}
       <Tabs defaultValue="hoy">
         <TabsList>
           <TabsTrigger value="hoy" className="gap-1">
             <CheckCircle2 className="h-3.5 w-3.5" /> Hoy
           </TabsTrigger>
-          <TabsTrigger value="plan">Plan ({allLabores.length})</TabsTrigger>
-          <TabsTrigger value="atrasadas" className={atrasadas.length > 0 ? "text-red-600" : ""}>
-            Atrasadas ({atrasadas.length})
+          <TabsTrigger value="semana" className="gap-1">
+            <CalendarDays className="h-3.5 w-3.5" /> Semana
           </TabsTrigger>
-          <TabsTrigger value="por-tipo">Por Tipo</TabsTrigger>
-          <TabsTrigger value="calendario">
-            <Calendar className="h-3.5 w-3.5 mr-1" /> Calendario
+          <TabsTrigger value="pauta" className="gap-1">
+            <Leaf className="h-3.5 w-3.5" /> Pauta por Especie
+          </TabsTrigger>
+          <TabsTrigger value="plan">Plan ({allLabores.length})</TabsTrigger>
+          <TabsTrigger value="calendario" className="gap-1">
+            <Calendar className="h-3.5 w-3.5" /> Calendario
+          </TabsTrigger>
+          <TabsTrigger
+            value="atrasadas"
+            className={atrasadas.length > 0 ? "text-red-600 gap-1" : "gap-1"}
+          >
+            Atrasadas
+            {atrasadas.length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1">
+                {atrasadas.length}
+              </span>
+            )}
           </TabsTrigger>
         </TabsList>
 
-        {/* Tab: Hoy — vista operativa con ejecucion rapida */}
+        {/* ==================== TAB: HOY ==================== */}
         <TabsContent value="hoy">
           <div className="space-y-3">
+            {/* Date summary line */}
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Labores programadas para hoy o vencidas. Marca como ejecutada con un click.
+              <p className="text-sm font-semibold text-muted-foreground">
+                {todayFormatted()} -- {hoyPendientes} pendiente{hoyPendientes !== 1 ? "s" : ""}, {hoyEjecutadas} ejecutada{hoyEjecutadas !== 1 ? "s" : ""}
               </p>
               {atrasadas.length > 0 && (
                 <Button
@@ -477,9 +591,6 @@ export function LaboresPage() {
                   variant="outline"
                   onClick={() => {
                     const ids = atrasadas.slice(0, 50).map((l) => l.id_ejecucion);
-                    ejecutarMut.mutate({ id: 0, data: {} }, {
-                      onSuccess: () => {},
-                    });
                     laboresService.ejecutarMasivo(ids).then(() => {
                       queryClient.invalidateQueries({ queryKey: ["labores"] });
                       toast.success(`${ids.length} labores marcadas como ejecutadas`);
@@ -490,67 +601,292 @@ export function LaboresPage() {
                 </Button>
               )}
             </div>
-            {atrasadas.length === 0 ? (
-              <div className="bg-white rounded-lg border p-8 text-center">
-                <CheckCircle2 className="h-12 w-12 text-estado-success mx-auto mb-3" />
+
+            {/* Checklist items */}
+            {laboresHoy.length === 0 ? (
+              <div className="bg-white rounded-xl border p-8 text-center">
+                <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
                 <h4 className="font-semibold">Todo al dia</h4>
-                <p className="text-sm text-muted-foreground mt-1">No hay labores pendientes para hoy.</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  No hay labores pendientes para hoy.
+                </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {atrasadas.map((labor) => (
-                  <div
-                    key={labor.id_ejecucion}
-                    className="bg-white rounded-lg border p-3 flex items-center justify-between hover:shadow-sm transition-shadow"
-                  >
-                    <div className="flex items-center gap-3">
-                      <StatusBadge status={displayStatus(labor)} />
-                      <div>
-                        <p className="text-sm font-medium">{resolvLabor(labor.id_labor)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {labor.temporada} — Pos. {labor.id_posicion} — {formatDate(labor.fecha_programada)}
+              <div className="flex flex-col gap-2">
+                {laboresHoy.map((labor) => {
+                  const st = displayStatus(labor);
+                  const isEjecutada = st === "ejecutada";
+                  const tipo = guessTipo(labor);
+
+                  return (
+                    <div
+                      key={labor.id_ejecucion}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-shadow hover:shadow-sm ${
+                        isEjecutada
+                          ? "bg-green-50 border-green-200"
+                          : "bg-white border-gray-200"
+                      }`}
+                    >
+                      {/* Circular check button */}
+                      <button
+                        onClick={() => !isEjecutada && handleQuickExecute(labor)}
+                        disabled={isEjecutada || ejecutarMut.isPending}
+                        className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                          isEjecutada
+                            ? "bg-green-500 text-white cursor-default"
+                            : "border-2 border-gray-300 bg-white hover:border-green-400 hover:bg-green-50 cursor-pointer"
+                        }`}
+                        title={isEjecutada ? "Ejecutada" : "Marcar como ejecutada"}
+                      >
+                        {isEjecutada && (
+                          <CheckCircle2 className="h-5 w-5" />
+                        )}
+                      </button>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span
+                            className={`font-semibold text-sm ${
+                              isEjecutada
+                                ? "line-through text-muted-foreground"
+                                : "text-gray-900"
+                            }`}
+                          >
+                            {resolvLabor(labor.id_labor)}
+                          </span>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                              tipo === "Fenologia"
+                                ? "bg-violet-100 text-violet-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}
+                          >
+                            {tipo}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {labor.temporada ? `${labor.temporada} - ` : ""}
+                          Pos. {labor.id_posicion} - {formatDate(labor.fecha_programada)}
                         </p>
                       </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {tipo === "Fenologia" && !isEjecutada && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-violet-600 border-violet-200 bg-violet-50/50 hover:bg-violet-100 text-xs font-semibold h-8 px-2.5"
+                            onClick={() => {
+                              setEvidenciaLabor(labor);
+                              setEvidenciaOpen(true);
+                            }}
+                          >
+                            <Camera className="h-3.5 w-3.5 mr-1" /> Foto
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-muted-foreground border-gray-200 text-xs h-8 w-8 p-0"
+                          onClick={() => {
+                            setSelectedLabor(labor);
+                            setEjecutarOpen(true);
+                          }}
+                          title="Mas opciones"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-green-600 hover:bg-green-50 hover:text-green-700"
-                        onClick={() => {
-                          ejecutarMut.mutate({
-                            id: labor.id_ejecucion,
-                            data: {
-                              fecha_ejecucion: new Date().toISOString().slice(0, 10),
-                              ejecutor: useAuthStore.getState().user?.username || "sistema",
-                            },
-                          });
-                        }}
-                        disabled={ejecutarMut.isPending}
-                        title="Marcar como ejecutada"
-                      >
-                        <CheckCircle2 className="h-5 w-5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setSelectedLabor(labor);
-                          setEjecutarOpen(true);
-                        }}
-                        title="Ejecutar con detalle"
-                      >
-                        <FileText className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         </TabsContent>
 
-        {/* Tab: Plan */}
+        {/* ==================== TAB: SEMANA ==================== */}
+        <TabsContent value="semana">
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Labores pendientes hasta fin de semana. {laboresSemana.length} labor(es).
+            </p>
+            {laboresSemana.length === 0 ? (
+              <div className="bg-white rounded-xl border p-8 text-center">
+                <CalendarDays className="h-12 w-12 text-blue-400 mx-auto mb-3" />
+                <h4 className="font-semibold">Sin labores esta semana</h4>
+                <p className="text-sm text-muted-foreground mt-1">
+                  No hay labores planificadas hasta fin de semana.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {laboresSemana.map((labor) => {
+                  const st = displayStatus(labor);
+                  const tipo = guessTipo(labor);
+
+                  return (
+                    <div
+                      key={labor.id_ejecucion}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:shadow-sm transition-shadow"
+                    >
+                      <button
+                        onClick={() => handleQuickExecute(labor)}
+                        disabled={ejecutarMut.isPending}
+                        className="flex-shrink-0 w-9 h-9 rounded-full border-2 border-gray-300 bg-white hover:border-green-400 hover:bg-green-50 cursor-pointer flex items-center justify-center transition-colors"
+                        title="Marcar como ejecutada"
+                      />
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="font-semibold text-sm text-gray-900">
+                            {resolvLabor(labor.id_labor)}
+                          </span>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                              tipo === "Fenologia"
+                                ? "bg-violet-100 text-violet-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}
+                          >
+                            {tipo}
+                          </span>
+                          {st === "atrasada" && (
+                            <StatusBadge status="atrasada" />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          Pos. {labor.id_posicion} - {formatDate(labor.fecha_programada)}
+                        </p>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-muted-foreground border-gray-200 text-xs h-8 w-8 p-0"
+                        onClick={() => {
+                          setSelectedLabor(labor);
+                          setEjecutarOpen(true);
+                        }}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ==================== TAB: PAUTA POR ESPECIE ==================== */}
+        <TabsContent value="pauta">
+          <div className="space-y-4">
+            {/* Species selector pills */}
+            <div className="flex gap-2 flex-wrap">
+              {SPECIES_PILLS.map((especie) => {
+                const key = especie.toLowerCase();
+                const isSelected = selectedPauta === key;
+                return (
+                  <button
+                    key={especie}
+                    onClick={() => setSelectedPauta(isSelected ? null : key)}
+                    className={`px-4 py-1.5 rounded-full border text-xs font-semibold transition-colors ${
+                      isSelected
+                        ? "border-garces-cherry bg-garces-cherry/10 text-garces-cherry"
+                        : "border-gray-200 bg-white text-muted-foreground hover:border-gray-300"
+                    }`}
+                  >
+                    {especie}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Pauta table when species selected */}
+            {selectedPauta === "cerezo" && (
+              <div className="bg-white rounded-xl border overflow-hidden">
+                {/* Pauta header */}
+                <div className="flex items-center justify-between px-5 py-3.5 border-b bg-gray-50/80">
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-sm">
+                      Pauta Cerezo -- Temporada 2025-2026
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      16 items (9 fenologia + 7 labores)
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => setPlanTbOpen(true)}
+                  >
+                    Aplicar pauta a TestBlock
+                  </Button>
+                </div>
+
+                {/* Pauta items */}
+                <div className="divide-y divide-gray-100">
+                  {PAUTA_CEREZO.map((p) => {
+                    const catClass = CAT_COLORS[p.cat] || "bg-gray-100 text-gray-700";
+                    const dotClass = CAT_DOT_COLORS[p.cat] || "bg-gray-400";
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex items-center gap-3 px-5 py-2.5 hover:bg-gray-50/50 transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={pautaChecked.has(p.id)}
+                          onChange={() => togglePautaItem(p.id)}
+                          className="h-4 w-4 rounded border-gray-300 text-garces-cherry focus:ring-garces-cherry"
+                        />
+                        <span className="flex-1 font-semibold text-sm">
+                          {p.nombre}
+                        </span>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${catClass}`}
+                        >
+                          {p.tipo}
+                        </span>
+                        <span className="text-xs text-muted-foreground w-16 text-right">
+                          {p.mes}
+                        </span>
+                        <span
+                          className={`w-2 h-2 rounded-full ${dotClass} opacity-60`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Placeholder for other species */}
+            {selectedPauta && selectedPauta !== "cerezo" && (
+              <div className="bg-white rounded-xl border p-12 text-center">
+                <Scissors className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-sm font-semibold text-muted-foreground">
+                  Pauta para {selectedPauta.charAt(0).toUpperCase() + selectedPauta.slice(1)} en desarrollo
+                </p>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!selectedPauta && (
+              <div className="bg-white rounded-xl border p-16 text-center">
+                <Plus className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                <p className="text-sm font-semibold text-muted-foreground">
+                  Selecciona una especie para ver su pauta
+                </p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ==================== TAB: PLAN (existing CrudTable) ==================== */}
         <TabsContent value="plan">
           <CrudTable
             data={allLabores}
@@ -560,71 +896,7 @@ export function LaboresPage() {
           />
         </TabsContent>
 
-        {/* Tab: Atrasadas */}
-        <TabsContent value="atrasadas">
-          {atrasadas.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-green-500" />
-              <p className="font-medium">Sin labores atrasadas</p>
-              <p className="text-sm">Todas las labores estan al dia.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
-                <AlertTriangle className="inline h-4 w-4 mr-1" />
-                {atrasadas.length} labor(es) con fecha programada vencida. Requieren atencion inmediata.
-              </div>
-              <CrudTable
-                data={atrasadas}
-                columns={planColumns as any}
-                isLoading={loadingPlan}
-                searchPlaceholder="Buscar atrasada..."
-              />
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Tab: Por Tipo */}
-        <TabsContent value="por-tipo">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {chartPorTipo.map((t) => {
-              const total = t.planificadas + t.ejecutadas;
-              return (
-                <div key={t.nombre} className="bg-white rounded-lg border p-4 shadow-sm">
-                  <h4 className="font-medium text-sm text-garces-cherry">{t.nombre}</h4>
-                  <div className="mt-3 space-y-2">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Cumplimiento</span>
-                      <span className="font-semibold text-foreground">{t.pct}%</span>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2.5">
-                      <div
-                        className="h-2.5 rounded-full transition-all"
-                        style={{
-                          width: `${t.pct}%`,
-                          backgroundColor: t.pct >= 80 ? "#22C55E" : t.pct >= 50 ? "#F59E0B" : "#EF4444",
-                        }}
-                      />
-                    </div>
-                    <div className="flex gap-3 text-xs mt-2">
-                      <span className="text-blue-600">Plan: {t.planificadas}</span>
-                      <span className="text-green-600">Ejec: {t.ejecutadas}</span>
-                      {t.atrasadas > 0 && (
-                        <span className="text-red-600 font-semibold">Atras: {t.atrasadas}</span>
-                      )}
-                      <span className="text-muted-foreground">Total: {total}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {chartPorTipo.length === 0 && (
-              <p className="col-span-full text-center text-muted-foreground py-10">Sin datos de labores por tipo.</p>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Tab: Calendario */}
+        {/* ==================== TAB: CALENDARIO (existing LaborCalendar) ==================== */}
         <TabsContent value="calendario">
           <LaborCalendar
             labores={allLabores}
@@ -641,7 +913,193 @@ export function LaboresPage() {
             }}
           />
         </TabsContent>
+
+        {/* ==================== TAB: ATRASADAS ==================== */}
+        <TabsContent value="atrasadas">
+          {atrasadas.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-green-500" />
+              <p className="font-medium">Sin labores atrasadas</p>
+              <p className="text-sm">Todas las labores estan al dia.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span>
+                  {atrasadas.length} labor(es) con fecha programada vencida. Requieren atencion inmediata.
+                </span>
+              </div>
+
+              {/* Checklist-style atrasadas */}
+              <div className="flex flex-col gap-2">
+                {atrasadas.map((labor) => {
+                  const tipo = guessTipo(labor);
+                  return (
+                    <div
+                      key={labor.id_ejecucion}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl border border-red-200 bg-red-50/50 hover:shadow-sm transition-shadow"
+                    >
+                      <button
+                        onClick={() => handleQuickExecute(labor)}
+                        disabled={ejecutarMut.isPending}
+                        className="flex-shrink-0 w-9 h-9 rounded-full border-2 border-red-300 bg-white hover:border-green-400 hover:bg-green-50 cursor-pointer flex items-center justify-center transition-colors"
+                        title="Marcar como ejecutada"
+                      />
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="font-semibold text-sm text-gray-900">
+                            {resolvLabor(labor.id_labor)}
+                          </span>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                              tipo === "Fenologia"
+                                ? "bg-violet-100 text-violet-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}
+                          >
+                            {tipo}
+                          </span>
+                          <StatusBadge status="atrasada" />
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {labor.temporada ? `${labor.temporada} - ` : ""}
+                          Pos. {labor.id_posicion} - {formatDate(labor.fecha_programada)}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-green-600 hover:bg-green-50 h-8"
+                          onClick={() => handleQuickExecute(labor)}
+                          disabled={ejecutarMut.isPending}
+                          title="Ejecutar rapido"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-muted-foreground border-gray-200 text-xs h-8 w-8 p-0"
+                          onClick={() => {
+                            setSelectedLabor(labor);
+                            setEjecutarOpen(true);
+                          }}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
+
+      {/* ==================== CHARTS (below tabs, collapsible section) ==================== */}
+      <details className="group">
+        <summary className="cursor-pointer text-sm font-semibold text-garces-cherry flex items-center gap-2 select-none">
+          <TrendingUp className="h-4 w-4" />
+          Graficos de cumplimiento
+          <span className="text-xs text-muted-foreground font-normal">(click para expandir)</span>
+        </summary>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+          {/* Bar chart: por mes */}
+          <div className="bg-white rounded-lg border p-4 shadow-sm">
+            <h3 className="text-sm font-semibold text-garces-cherry mb-3">Labores por Mes</h3>
+            {chartPorMes.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={chartPorMes}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <RechartsTooltip />
+                  <Legend />
+                  <Bar dataKey="planificadas" name="Planificadas" fill={CHART_COLORS.planificadas} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="ejecutadas" name="Ejecutadas" fill={CHART_COLORS.ejecutadas} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-10">Sin datos</p>
+            )}
+          </div>
+
+          {/* Horizontal bar: por tipo */}
+          <div className="bg-white rounded-lg border p-4 shadow-sm">
+            <h3 className="text-sm font-semibold text-garces-cherry mb-3">Labores por Tipo</h3>
+            {chartPorTipo.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={chartPorTipo} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis dataKey="nombre" type="category" width={120} tick={{ fontSize: 10 }} />
+                  <RechartsTooltip />
+                  <Legend />
+                  <Bar dataKey="ejecutadas" name="Ejecutadas" stackId="a" fill={CHART_COLORS.ejecutadas} />
+                  <Bar dataKey="atrasadas" name="Atrasadas" stackId="a" fill={CHART_COLORS.atrasadas} />
+                  <Bar
+                    dataKey="planificadas"
+                    name="Planificadas"
+                    stackId="a"
+                    fill={CHART_COLORS.planificadas}
+                    radius={[0, 4, 4, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-10">Sin datos</p>
+            )}
+          </div>
+
+          {/* Por tipo cards */}
+          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {chartPorTipo.map((t) => {
+              const total = t.planificadas + t.ejecutadas;
+              return (
+                <div key={t.nombre} className="bg-white rounded-lg border p-4 shadow-sm">
+                  <h4 className="font-medium text-sm text-garces-cherry">{t.nombre}</h4>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Cumplimiento</span>
+                      <span className="font-semibold text-foreground">{t.pct}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2.5">
+                      <div
+                        className={`h-2.5 rounded-full transition-all ${
+                          t.pct >= 80
+                            ? "bg-green-500"
+                            : t.pct >= 50
+                              ? "bg-amber-500"
+                              : "bg-red-500"
+                        }`}
+                        style={{ width: `${t.pct}%` }}
+                      />
+                    </div>
+                    <div className="flex gap-3 text-xs mt-2">
+                      <span className="text-blue-600">Plan: {t.planificadas}</span>
+                      <span className="text-green-600">Ejec: {t.ejecutadas}</span>
+                      {t.atrasadas > 0 && (
+                        <span className="text-red-600 font-semibold">Atras: {t.atrasadas}</span>
+                      )}
+                      <span className="text-muted-foreground">Total: {total}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {chartPorTipo.length === 0 && (
+              <p className="col-span-full text-center text-muted-foreground py-10">
+                Sin datos de labores por tipo.
+              </p>
+            )}
+          </div>
+        </div>
+      </details>
 
       {/* ==================== MODALS ==================== */}
 
@@ -683,7 +1141,7 @@ export function LaboresPage() {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Evidencia — {evidenciaLabor ? resolvLabor(evidenciaLabor.id_labor) : ""}
+              Evidencia -- {evidenciaLabor ? resolvLabor(evidenciaLabor.id_labor) : ""}
               <span className="text-xs text-muted-foreground ml-2">
                 (ID: {evidenciaLabor?.id_ejecucion})
               </span>
@@ -759,7 +1217,7 @@ export function LaboresPage() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              Codigo QR — {qrLabor ? resolvLabor(qrLabor.id_labor) : ""}
+              Codigo QR -- {qrLabor ? resolvLabor(qrLabor.id_labor) : ""}
             </DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4">
