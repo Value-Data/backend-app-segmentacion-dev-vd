@@ -110,6 +110,74 @@ def stock_por_bodega(
     return result
 
 
+@router.post("/qr-batch", response_class=StreamingResponse)
+def generate_qr_batch(
+    ids: list[int],
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Generate a PDF with QR labels for multiple lotes."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas as pdf_canvas
+
+    buf = io.BytesIO()
+    c = pdf_canvas.Canvas(buf, pagesize=A4)
+    page_w, page_h = A4
+
+    # Label layout: 3 columns x 8 rows, 60x30mm each
+    label_w = 60 * mm
+    label_h = 30 * mm
+    margin_x = 15 * mm
+    margin_y = 15 * mm
+    cols = 3
+    rows = 8
+    qr_size = 22 * mm
+
+    base_url = "https://appsegmentacion-ftawhyhcgthygwhu.brazilsouth-01.azurewebsites.net"
+    idx = 0
+
+    for inv_id in ids:
+        row_obj = db.get(InventarioVivero, inv_id)
+        if not row_obj:
+            continue
+
+        col = idx % cols
+        row = (idx // cols) % rows
+        if idx > 0 and idx % (cols * rows) == 0:
+            c.showPage()
+
+        x = margin_x + col * label_w
+        y = page_h - margin_y - (row + 1) * label_h
+
+        # Generate QR
+        url = f"{base_url}/inventario/{inv_id}"
+        qr_img = qrcode.make(url)
+        qr_buf = io.BytesIO()
+        qr_img.save(qr_buf, format="PNG")
+        qr_buf.seek(0)
+
+        from reportlab.lib.utils import ImageReader
+        c.drawImage(ImageReader(qr_buf), x + 2 * mm, y + 3 * mm, qr_size, qr_size)
+
+        # Text next to QR
+        text_x = x + qr_size + 4 * mm
+        c.setFont("Helvetica-Bold", 7)
+        c.drawString(text_x, y + 22 * mm, row_obj.codigo_lote or f"#{inv_id}")
+        c.setFont("Helvetica", 6)
+        c.drawString(text_x, y + 17 * mm, f"ID: {inv_id}")
+        if row_obj.tipo_planta:
+            c.drawString(text_x, y + 12 * mm, row_obj.tipo_planta[:20])
+
+        idx += 1
+
+    c.save()
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="application/pdf", headers={
+        "Content-Disposition": "attachment; filename=qr-labels.pdf"
+    })
+
+
 @router.get("/{id}/qr")
 def generate_qr(
     id: int,
