@@ -26,6 +26,12 @@ const STATUS_STYLES: Record<string, string> = {
   plantacion: "bg-emerald-100 text-emerald-800",
   devolucion: "bg-green-100 text-green-800",
   ajuste: "bg-yellow-100 text-yellow-800",
+  inactivo: "bg-gray-200 text-gray-600",
+  cancelada: "bg-gray-200 text-gray-600",
+  en_progreso: "bg-blue-100 text-blue-800",
+  demo_archived: "bg-gray-200 text-gray-500",
+  formacion: "bg-amber-100 text-amber-800",
+  produccion: "bg-green-100 text-green-800",
 };
 
 interface StatusBadgeProps {

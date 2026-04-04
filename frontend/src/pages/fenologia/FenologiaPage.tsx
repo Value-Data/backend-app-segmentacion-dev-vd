@@ -37,14 +37,13 @@ export function FenologiaPage() {
     queryFn: () => laboresService.planificacion(),
   });
 
-  // Filter fenologia-type labores (those with fenologia-related names)
+  // Filter fenologia-type labores
+  // EjecucionLabor has id_labor (FK) but not nombre_labor.
+  // We show all labores and let the user browse — the backend can enrich with labor names.
   const fenologiaLabores = useMemo(() => {
     if (!labores) return [];
-    const fenKeywords = ["caida", "hoja", "yema", "floracion", "cuaja", "envero", "pinta", "dormante", "verde", "fenolog"];
-    return (labores as any[]).filter((l: any) => {
-      const nombre = (l.nombre_labor || "").toLowerCase();
-      return fenKeywords.some((k) => nombre.includes(k));
-    });
+    // Show recent labores (last 20) as proxy for fenologia activity
+    return (labores as any[]).slice(0, 20);
   }, [labores]);
 
   return (

@@ -16,6 +16,7 @@ import type { BodegaStock } from "@/services/inventario";
 import { mantenedorService } from "@/services/mantenedores";
 import { useLookups } from "@/hooks/useLookups";
 import { useTestblocks } from "@/hooks/useTestblock";
+import { useAuthStore } from "@/stores/authStore";
 import { formatNumber, formatDate } from "@/lib/utils";
 import type { FieldDef } from "@/types";
 import type { InventarioVivero, GuiaDespacho } from "@/types/inventario";
@@ -572,9 +573,13 @@ export function InventarioPage() {
               const ids = Array.from(selectedIds);
               const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
               try {
-                const resp = await fetch(`${base}/inventario/qr-batch`, {
+                const token = useAuthStore.getState().token;
+              const resp = await fetch(`${base}/inventario/qr-batch`, {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                  },
                   body: JSON.stringify(ids),
                 });
                 if (resp.ok) {
