@@ -1,4 +1,4 @@
-"""Labores routes: planificacion, ejecucion, ordenes de trabajo, dashboard, evidencias, QR."""
+"""Labores routes: planificacion, ejecucion, ordenes de trabajo, dashboard, evidencias, QR, fenologia."""
 
 import json
 from datetime import date, timedelta
@@ -12,14 +12,66 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.models.sistema import Usuario
-from app.models.laboratorio import EjecucionLabor
-from app.models.maestras import TipoLabor
+from app.models.laboratorio import EjecucionLabor, RegistroFenologico
+from app.models.maestras import TipoLabor, EstadoFenologico
 from app.models.testblock import PosicionTestBlock
 from app.models.evidencia import EvidenciaLabor
 from app.schemas.laboratorio import LaborPlanificacion, LaborPlanificacionTestblock, LaborEjecucion
 from app.services import crud
 
 router = APIRouter(prefix="/labores", tags=["Labores"])
+
+
+# ---------------------------------------------------------------------------
+# Tipos de labor
+# ---------------------------------------------------------------------------
+
+@router.get("/tipos-labor")
+def list_tipos_labor(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """List all active labor types."""
+    return db.query(TipoLabor).filter(TipoLabor.activo == True).all()
+
+
+@router.post("/seed-tipos-labor", status_code=201)
+def seed_tipos_labor(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Seed basic tipos_labor if the table is empty. Admin only."""
+    existing = db.query(TipoLabor).count()
+    if existing > 0:
+        return {"message": f"Ya existen {existing} tipos de labor. No se inserto nada.", "created": 0}
+
+    seed_data = [
+        {"codigo": "PODA_FORM", "nombre": "Poda de formacion", "categoria": "poda",
+         "descripcion": "Poda estructural para guiar el crecimiento del arbol", "aplica_a": "planta"},
+        {"codigo": "FERT_BASE", "nombre": "Fertilizacion base", "categoria": "fertilizacion",
+         "descripcion": "Aplicacion de fertilizante basal de temporada", "aplica_a": "testblock"},
+        {"codigo": "DORMEX", "nombre": "Aplicacion Dormex", "categoria": "fitosanidad",
+         "descripcion": "Aplicacion de cianamida hidrogenada para romper dormancia", "aplica_a": "testblock"},
+        {"codigo": "GA3", "nombre": "Aplicacion GA3", "categoria": "fitosanidad",
+         "descripcion": "Aplicacion de acido giberelico para aumento de calibre", "aplica_a": "testblock"},
+        {"codigo": "RALEO", "nombre": "Raleo", "categoria": "manejo",
+         "descripcion": "Eliminacion de frutos excedentes para mejorar calibre", "aplica_a": "planta"},
+        {"codigo": "RIEGO", "nombre": "Riego", "categoria": "riego",
+         "descripcion": "Aplicacion de riego programado", "aplica_a": "testblock"},
+        {"codigo": "COSECHA", "nombre": "Cosecha", "categoria": "cosecha",
+         "descripcion": "Cosecha de frutos para evaluacion o comercializacion", "aplica_a": "planta"},
+        {"codigo": "REG_FENOL", "nombre": "Registro fenologico", "categoria": "fenologia",
+         "descripcion": "Registro del estado fenologico actual de la planta", "aplica_a": "planta"},
+    ]
+
+    created = 0
+    for item in seed_data:
+        tl = TipoLabor(**item)
+        db.add(tl)
+        created += 1
+
+    db.commit()
+    return {"message": f"Se crearon {created} tipos de labor.", "created": created}
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +400,114 @@ def add_evidencia(
     db.commit()
     db.refresh(ev)
     return ev
+
+
+# ---------------------------------------------------------------------------
+# Registro fenologico
+# ---------------------------------------------------------------------------
+
+@router.post("/registro-fenologico", status_code=201)
+def registrar_fenologico(
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Register fenological observation for one or more positions."""
+    from datetime import date as date_type
+
+    testblock_id = data.get("testblock_id")
+    posiciones_ids = data.get("posiciones_ids", [])
+    estado_fenologico = data.get("estado_fenologico")
+    porcentaje = data.get("porcentaje")
+    fecha = data.get("fecha", date_type.today().isoformat())
+    observaciones = data.get("observaciones", "")
+    temporada = data.get("temporada", "2025-2026")
+
+    if not posiciones_ids:
+        raise HTTPException(status_code=400, detail="Debe seleccionar al menos una posicion")
+    if not estado_fenologico:
+        raise HTTPException(status_code=400, detail="Debe indicar el estado fenologico")
+
+    # Find or create the tipo_labor for fenologia
+    tipo_labor = db.query(TipoLabor).filter(
+        TipoLabor.nombre == estado_fenologico,
+        TipoLabor.categoria == "fenologia",
+    ).first()
+
+    if not tipo_labor:
+        # Generate a safe codigo from the estado name
+        codigo = "FEN_" + estado_fenologico[:12].upper().replace(" ", "_")
+        tipo_labor = TipoLabor(
+            codigo=codigo,
+            nombre=estado_fenologico,
+            categoria="fenologia",
+            activo=True,
+        )
+        db.add(tipo_labor)
+        db.flush()
+
+    created = 0
+    for pos_id in posiciones_ids:
+        # Create EjecucionLabor entry (for labor tracking)
+        ej = EjecucionLabor(
+            id_labor=tipo_labor.id_labor,
+            id_posicion=pos_id,
+            temporada=temporada,
+            fecha_programada=fecha,
+            fecha_ejecucion=fecha,
+            estado="ejecutada",
+            ejecutor=user.username,
+            observaciones=f"{observaciones} | Porcentaje: {porcentaje}%" if porcentaje else observaciones,
+            usuario_registro=user.username,
+        )
+        db.add(ej)
+
+        # Also create RegistroFenologico entry (specific fenologia table)
+        reg = RegistroFenologico(
+            id_posicion=pos_id,
+            temporada=temporada,
+            fecha_registro=fecha,
+            porcentaje=porcentaje,
+            observaciones=observaciones,
+            usuario_registro=user.username,
+        )
+        db.add(reg)
+        created += 1
+
+    db.commit()
+    return {"created": created, "tipo_labor_id": tipo_labor.id_labor}
+
+
+@router.get("/historial-fenologico/{testblock_id}")
+def historial_fenologico(
+    testblock_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Get fenologia history for a testblock."""
+    # Get positions for this TB
+    posiciones = db.query(PosicionTestBlock.id_posicion).filter(
+        PosicionTestBlock.id_testblock == testblock_id
+    ).all()
+    pos_ids = [p.id_posicion for p in posiciones]
+
+    if not pos_ids:
+        return []
+
+    # Get labores that are fenologia type
+    results = (
+        db.query(EjecucionLabor)
+        .join(TipoLabor, EjecucionLabor.id_labor == TipoLabor.id_labor)
+        .filter(
+            EjecucionLabor.id_posicion.in_(pos_ids),
+            TipoLabor.categoria == "fenologia",
+        )
+        .order_by(EjecucionLabor.fecha_ejecucion.desc())
+        .limit(100)
+        .all()
+    )
+
+    return results
 
 
 # ---------------------------------------------------------------------------
