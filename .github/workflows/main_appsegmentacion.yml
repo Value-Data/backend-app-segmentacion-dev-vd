@@ -34,6 +34,14 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_398BFC2B72DF4973AF85ACEF075E7BF4 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_7C4704BC01D34B0BB7B4AF4F90393FE2 }}
 
+      - name: Configure App Service for static SPA
+        run: |
+          RESOURCE_GROUP=$(az webapp list --query "[?name=='appsegmentacion'].resourceGroup" -o tsv)
+          az webapp config appsettings set -n appsegmentacion -g "$RESOURCE_GROUP" \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
+          az webapp config set -n appsegmentacion -g "$RESOURCE_GROUP" \
+            --startup-file "pm2 serve /home/site/wwwroot --no-daemon --spa"
+
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
