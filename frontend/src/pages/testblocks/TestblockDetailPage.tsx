@@ -343,11 +343,28 @@ export function TestblockDetailPage() {
   /*  Selection mode handlers                                          */
   /* ---------------------------------------------------------------- */
 
-  const enterSelectionMode = useCallback((mode: SelectionMode) => {
+  const enterSelectionMode = useCallback(async (mode: SelectionMode) => {
+    // For alta mode: auto-generate positions first if grid has gaps
+    if (mode === "alta" && tb) {
+      const expectedTotal = (hileras || 0) * (maxPos || 0);
+      const actualTotal = grilla?.posiciones?.length || 0;
+      if (expectedTotal > 0 && actualTotal < expectedTotal) {
+        try {
+          await testblockService.generarPosiciones(tbId, {
+            num_hileras: hileras,
+            posiciones_por_hilera: maxPos,
+          });
+          queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+          toast("Posiciones generadas. Seleccione las vacias para plantar.", { icon: "+" });
+        } catch {
+          // Positions already exist — ignore
+        }
+      }
+    }
     setSelectionMode(mode);
     setSelectedPositions(new Set());
     setSelectedPos(null);
-  }, []);
+  }, [tb, hileras, maxPos, grilla, tbId, queryClient]);
 
   const exitSelectionMode = useCallback(() => {
     setSelectionMode("none");
@@ -739,6 +756,7 @@ export function TestblockDetailPage() {
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-500" /> Alta</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400" /> Baja</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-300" /> Vacia</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm border border-dashed border-gray-400 bg-gray-100" /> Sin crear</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-500" /> Polinizante</span>
               </div>
             </div>
@@ -836,9 +854,11 @@ export function TestblockDetailPage() {
                           const isSelected = pos ? selectedPositions.has(pos.id_posicion) : false;
                           const isDetailSelected = selectionMode === "none" && selectedPos?.id_posicion === pos?.id_posicion;
 
-                          // Determine cell color
-                          const bgColor = estado === "vacia"
-                            ? "bg-gray-200/40"
+                          // Determine cell color — distinguish "no record" from "vacia"
+                          const bgColor = !pos
+                            ? "bg-gray-100 border border-dashed border-gray-300"
+                            : estado === "vacia"
+                            ? "bg-gray-200/60"
                             : estado === "baja"
                               ? "bg-red-500"
                               : estado === "replante"
