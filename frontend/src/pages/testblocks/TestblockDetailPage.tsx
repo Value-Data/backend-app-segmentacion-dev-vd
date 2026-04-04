@@ -828,7 +828,11 @@ export function TestblockDetailPage() {
                             : `H${hi + 1}P${pi + 1} - vacia`;
 
                           const isInSelectionMode = selectionMode !== "none";
-                          const selectable = isInSelectionMode && pos && isCellSelectable(estado);
+                          // For alta mode: cells without pos record (truly empty grid slots) are also selectable
+                          const selectable = isInSelectionMode && (
+                            (pos && isCellSelectable(estado)) ||
+                            (selectionMode === "alta" && !pos)
+                          );
                           const isSelected = pos ? selectedPositions.has(pos.id_posicion) : false;
                           const isDetailSelected = selectionMode === "none" && selectedPos?.id_posicion === pos?.id_posicion;
 
