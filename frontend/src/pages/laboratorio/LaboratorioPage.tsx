@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FlaskConical,
   Upload,
+  Download,
   Plus,
   Beaker,
   Zap,
@@ -43,6 +44,7 @@ import {
 import { CrudTable } from "@/components/shared/CrudTable";
 import { KpiCard } from "@/components/shared/KpiCard";
 import { BulkImport } from "@/components/shared/BulkImport";
+import { useAuthStore } from "@/stores/authStore";
 import { laboratorioService } from "@/services/laboratorio";
 import { useLookups } from "@/hooks/useLookups";
 import { formatNumber, formatDate } from "@/lib/utils";
@@ -540,6 +542,28 @@ export function LaboratorioPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+              const token = useAuthStore.getState().token;
+              const resp = await fetch(`${base}/bulk/template/mediciones`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              });
+              const blob = await resp.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "template_mediciones.xlsx";
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="text-xs"
+          >
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            Template Excel
+          </Button>
           <Button
             size="sm"
             variant="outline"
