@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -119,7 +119,7 @@ export function TestblockDetailPage() {
   // Sync detailObs when selectedPos changes
   const currentPosId = selectedPos?.id_posicion;
   const currentPosObs = selectedPos?.observaciones;
-  useMemo(() => {
+  useEffect(() => {
     setDetailObs(currentPosObs || "");
     setDetailObsDirty(false);
   }, [currentPosId, currentPosObs]);

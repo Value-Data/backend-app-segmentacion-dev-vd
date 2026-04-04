@@ -351,7 +351,7 @@ export function VariedadesPage() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Leaf className="h-10 w-10 mx-auto mb-2 opacity-30" />
-          <p>Sin variedades{activeEspecie !== "todas" ? ` para ${activeEspecie}` : ""}{search ? ` con "${search}"` : ""}</p>
+          <p>Sin variedades{activeEspecie !== "todas" ? ` para ${activeEspecie}` : ""}{activePmg !== "todos" ? ` en ${activePmg}` : ""}{search ? ` con "${search}"` : ""}</p>
         </div>
       ) : (
         <div>
