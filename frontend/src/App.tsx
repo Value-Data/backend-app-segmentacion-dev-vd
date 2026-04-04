@@ -41,6 +41,9 @@ const AnalisisLabPage = lazy(() => import("@/pages/laboratorio/AnalisisLabPage")
 // Labores
 const LaboresPage = lazy(() => import("@/pages/labores/LaboresPage").then(m => ({ default: m.LaboresPage })));
 
+// Fenologia
+const FenologiaPage = lazy(() => import("@/pages/fenologia/FenologiaPage").then(m => ({ default: m.FenologiaPage })));
+
 // Analisis
 const AnalisisPage = lazy(() => import("@/pages/analisis/AnalisisPage").then(m => ({ default: m.AnalisisPage })));
 
@@ -100,6 +103,9 @@ export function App() {
 
         {/* Labores */}
         <Route path="labores" element={<LaboresPage />} />
+
+        {/* Fenologia */}
+        <Route path="fenologia" element={<FenologiaPage />} />
 
         {/* Analisis */}
         <Route path="analisis" element={<AnalisisPage />} />
