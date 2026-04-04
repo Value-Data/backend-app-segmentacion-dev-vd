@@ -1,6 +1,11 @@
-"""Inventario routes: CRUD, movimientos, despacho, stats, kardex, por-bodega."""
+"""Inventario routes: CRUD, movimientos, despacho, stats, kardex, por-bodega, QR."""
 
-from fastapi import APIRouter, Depends, Query
+import io
+from typing import Optional
+
+import qrcode
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -19,10 +24,20 @@ router = APIRouter(prefix="/inventario", tags=["Inventario"])
 def list_inventario(
     skip: int = 0,
     limit: int = 1000,
+    tipo_planta: Optional[str] = Query(None, description="Filtrar por tipo de planta"),
+    tipo_injertacion: Optional[str] = Query(None, description="Filtrar por tipo de injertacion"),
+    estado: Optional[str] = Query(None, description="Filtrar por estado (disponible, agotado, etc.)"),
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
-    return crud.list_all(db, InventarioVivero, only_active=False, skip=skip, limit=limit)
+    filters = {
+        "tipo_planta": tipo_planta,
+        "tipo_injertacion": tipo_injertacion,
+        "estado": estado,
+    }
+    return crud.list_all(
+        db, InventarioVivero, only_active=False, skip=skip, limit=limit, filters=filters
+    )
 
 
 @router.get("/disponible")
@@ -93,6 +108,31 @@ def stock_por_bodega(
         })
 
     return result
+
+
+@router.get("/{id}/qr")
+def generate_qr(
+    id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Genera codigo QR como imagen PNG para un lote de inventario."""
+    row = db.get(InventarioVivero, id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Lote no encontrado")
+
+    base_url = "https://appsegmentacion-ftawhyhcgthygwhu.brazilsouth-01.azurewebsites.net"
+    url = f"{base_url}/inventario/{id}"
+
+    img = qrcode.make(url)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="image/png",
+        headers={"Content-Disposition": f"inline; filename=qr-{row.codigo_lote}.png"},
+    )
 
 
 @router.get("/{id}/destinos")
