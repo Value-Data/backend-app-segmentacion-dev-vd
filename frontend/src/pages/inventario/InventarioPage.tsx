@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle } from "lucide-react";
+import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle, Eye, QrCode, MoreHorizontal } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -135,6 +135,34 @@ export function InventarioPage() {
       cell: ({ getValue }: any) => <StatusBadge status={getValue() as string} />,
     },
     { accessorKey: "fecha_ingreso", header: "Ingreso", cell: ({ getValue }: any) => formatDate(getValue() as string) },
+    {
+      id: "actions",
+      header: "",
+      size: 60,
+      cell: ({ row }: any) => {
+        const lote = row.original as InventarioVivero;
+        return (
+          <div className="flex gap-1 justify-end">
+            <button
+              onClick={() => navigate(`/inventario/${lote.id_inventario}`)}
+              className="p-1 rounded hover:bg-muted transition-colors"
+              title="Ver detalle"
+            >
+              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+            <a
+              href={inventarioService.qrUrl(lote.id_inventario)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1 rounded hover:bg-muted transition-colors"
+              title="Ver QR"
+            >
+              <QrCode className="h-3.5 w-3.5 text-muted-foreground" />
+            </a>
+          </div>
+        );
+      },
+    },
   ];
 
   const { data: inventario, isLoading } = useQuery({

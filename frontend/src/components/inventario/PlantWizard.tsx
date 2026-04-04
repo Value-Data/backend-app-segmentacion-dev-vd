@@ -176,14 +176,17 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
     [especies]
   );
 
-  // Variedades filtered by selected especie
+  // Variedades filtered by selected especie AND optionally by PMG
   const varOpts = useMemo(() => {
-    const all = (variedades || []) as any[];
-    if (!data.id_especie) return all.map((v) => ({ value: v.id_variedad, label: v.nombre, id_pmg: v.id_pmg }));
-    return all
-      .filter((v) => String(v.id_especie) === String(data.id_especie))
-      .map((v) => ({ value: v.id_variedad, label: v.nombre, id_pmg: v.id_pmg }));
-  }, [variedades, data.id_especie]);
+    let all = (variedades || []) as any[];
+    if (data.id_especie) {
+      all = all.filter((v) => String(v.id_especie) === String(data.id_especie));
+    }
+    if (data.id_pmg) {
+      all = all.filter((v) => String(v.id_pmg) === String(data.id_pmg));
+    }
+    return all.map((v) => ({ value: v.id_variedad, label: v.nombre, id_pmg: v.id_pmg }));
+  }, [variedades, data.id_especie, data.id_pmg]);
 
   const piOpts = useMemo(
     () => ((portainjertos || []) as any[]).map((p) => ({ value: p.id_portainjerto, label: p.nombre })),
@@ -252,8 +255,21 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
     set("id_variedad", value);
     // Try to auto-fill PMG from the selected variedad
     const selected = varOpts.find((v) => String(v.value) === value);
-    if (selected?.id_pmg) {
+    if (selected?.id_pmg && !data.id_pmg) {
       set("id_pmg", String(selected.id_pmg));
+    }
+  };
+
+  // ---- When PMG changes, clear variedad if it doesn't match ----
+  const handlePmgChange = (value: string) => {
+    set("id_pmg", value);
+    // Check if current variedad belongs to this PMG
+    if (data.id_variedad) {
+      const allVars = (variedades || []) as any[];
+      const currentVar = allVars.find((v) => String(v.id_variedad) === data.id_variedad);
+      if (currentVar && String(currentVar.id_pmg) !== value) {
+        set("id_variedad", "");
+      }
     }
   };
 
@@ -406,9 +422,9 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
               {/* PMG (optional) */}
               <div>
                 <Label htmlFor="wiz-pmg">PMG (opcional)</Label>
-                <Select value={data.id_pmg} onValueChange={(v) => set("id_pmg", v)}>
+                <Select value={data.id_pmg} onValueChange={handlePmgChange}>
                   <SelectTrigger className="mt-1" id="wiz-pmg">
-                    <SelectValue placeholder="Auto o seleccionar" />
+                    <SelectValue placeholder="Filtrar variedades por PMG" />
                   </SelectTrigger>
                   <SelectContent>
                     {pmgOpts.map((o) => (
