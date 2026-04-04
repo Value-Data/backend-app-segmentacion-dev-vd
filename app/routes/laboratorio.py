@@ -231,6 +231,9 @@ def list_mediciones(
     temporada: str | None = Query(None),
     especie: int | None = Query(None),
     campo: int | None = Query(None),
+    tipo_evaluacion: str | None = Query(None, description="'laboratorio' o 'poscosecha'"),
+    periodo_almacenaje_min: int | None = Query(None, description="Periodo almacenaje minimo (dias)"),
+    periodo_almacenaje_max: int | None = Query(None, description="Periodo almacenaje maximo (dias)"),
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
@@ -246,6 +249,17 @@ def list_mediciones(
         q = q.filter(MedicionLaboratorio.id_especie == especie)
     if campo:
         q = q.filter(MedicionLaboratorio.id_campo == campo)
+    if tipo_evaluacion:
+        if tipo_evaluacion == "poscosecha":
+            q = q.filter(MedicionLaboratorio.periodo_almacenaje != None)
+        else:
+            q = q.filter(
+                (MedicionLaboratorio.periodo_almacenaje == None) | (MedicionLaboratorio.periodo_almacenaje == 0)
+            )
+    if periodo_almacenaje_min is not None:
+        q = q.filter(MedicionLaboratorio.periodo_almacenaje >= periodo_almacenaje_min)
+    if periodo_almacenaje_max is not None:
+        q = q.filter(MedicionLaboratorio.periodo_almacenaje <= periodo_almacenaje_max)
     return q.order_by(MedicionLaboratorio.fecha_medicion.desc()).all()
 
 
