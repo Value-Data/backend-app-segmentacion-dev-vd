@@ -185,6 +185,81 @@ def create_planificacion_testblock(
 
 
 # ---------------------------------------------------------------------------
+# Labores de hoy / atrasadas
+# ---------------------------------------------------------------------------
+
+@router.get("/hoy")
+def labores_hoy(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Return labores due today or overdue (fecha_programada <= today, estado planificada), grouped by testblock."""
+    today = date.today()
+    rows = (
+        db.query(EjecucionLabor)
+        .filter(
+            EjecucionLabor.fecha_programada <= today,
+            EjecucionLabor.estado.in_(["planificada"]),
+        )
+        .order_by(EjecucionLabor.fecha_programada)
+        .all()
+    )
+
+    # Build a position → testblock lookup for all positions referenced
+    pos_ids = list({r.id_posicion for r in rows if r.id_posicion is not None})
+    pos_tb_map: dict[int, int | None] = {}
+    if pos_ids:
+        for p in (
+            db.query(PosicionTestBlock.id_posicion, PosicionTestBlock.id_testblock)
+            .filter(PosicionTestBlock.id_posicion.in_(pos_ids))
+            .all()
+        ):
+            pos_tb_map[p.id_posicion] = p.id_testblock
+
+    # Group labores by testblock id
+    grouped: dict[int | None, list] = {}
+    for r in rows:
+        tb_id = pos_tb_map.get(r.id_posicion)
+        grouped.setdefault(tb_id, []).append(r)
+
+    return {
+        "total": len(rows),
+        "por_testblock": {
+            str(tb_id): items for tb_id, items in grouped.items()
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Ejecucion masiva
+# ---------------------------------------------------------------------------
+
+@router.post("/ejecutar-masivo")
+def ejecutar_masivo(
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo", "operador")),
+):
+    """Mark multiple labores as executed in one call."""
+    from datetime import datetime
+
+    ids = data.get("ids", [])
+    fecha = data.get("fecha_ejecucion", datetime.utcnow().date().isoformat())
+    ejecutor = data.get("ejecutor", user.username)
+    updated = 0
+    for lid in ids:
+        labor = db.get(EjecucionLabor, lid)
+        if labor and labor.estado in ("planificada",):
+            labor.estado = "ejecutada"
+            labor.fecha_ejecucion = fecha
+            labor.ejecutor = ejecutor
+            db.add(labor)
+            updated += 1
+    db.commit()
+    return {"updated": updated}
+
+
+# ---------------------------------------------------------------------------
 # Ejecucion
 # ---------------------------------------------------------------------------
 
