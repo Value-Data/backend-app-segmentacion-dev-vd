@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 20% 99%;
+    --foreground: 0 15% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 15% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 15% 10%;
+    --primary: 0 67% 32%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 15% 94%;
+    --secondary-foreground: 0 30% 20%;
+    --muted: 0 8% 95%;
+    --muted-foreground: 0 8% 45%;
+    --accent: 0 15% 92%;
+    --accent-foreground: 0 30% 20%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 8% 88%;
+    --input: 0 8% 88%;
+    --ring: 0 67% 32%;
+    --radius: 0.5rem;
+
+    /* Estados */
+    --color-success: #22C55E;
+    --color-warning: #F59E0B;
+    --color-danger: #EF4444;
+    --color-info: #3B82F6;
+    --color-neutral: #9CA3AF;
+
+    /* Especies */
+    --color-cerezo: #DC2626;
+    --color-carozo: #F97316;
+    --color-nectarin: #FBBF24;
+    --color-ciruela: #8B5CF6;
+
+    /* Tipos de labor */
+    --color-poda: #22C55E;
+    --color-fertilizacion: #3B82F6;
+    --color-fitosanidad: #F97316;
+    --color-riego: #06B6D4;
+    --color-manejo: #8B5CF6;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

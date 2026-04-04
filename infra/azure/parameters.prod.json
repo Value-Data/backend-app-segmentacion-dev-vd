@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": {
+      "value": "prod"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "appNamePrefix": {
+      "value": "garces"
+    },
+    "appServicePlanSku": {
+      "value": "B2"
+    },
+    "acrSku": {
+      "value": "Basic"
+    }
+  }
+}

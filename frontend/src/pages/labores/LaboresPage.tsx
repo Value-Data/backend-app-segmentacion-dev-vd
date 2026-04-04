@@ -1,0 +1,811 @@
+import { useState, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Hammer, CheckCircle2, Clock, AlertTriangle, Plus, CalendarDays,
+  TrendingUp, QrCode, Camera, FileText, Download, X, Image as ImageIcon,
+  Calendar,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
+  ResponsiveContainer, CartesianGrid, Legend,
+} from "recharts";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { CrudTable } from "@/components/shared/CrudTable";
+import { CrudForm } from "@/components/shared/CrudForm";
+import { KpiCard } from "@/components/shared/KpiCard";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { laboresService } from "@/services/labores";
+import type { LaborDashboard } from "@/services/labores";
+import { useTestblocks } from "@/hooks/useTestblock";
+import { useAuthStore } from "@/stores/authStore";
+import { mantenedorService } from "@/services/mantenedores";
+import { formatDate } from "@/lib/utils";
+import type { FieldDef } from "@/types";
+import type { EjecucionLabor } from "@/types/laboratorio";
+import { LaborCalendar } from "@/components/labores/LaborCalendar";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Determine display status — atrasada if planificada + past date */
+function displayStatus(labor: EjecucionLabor): string {
+  if (labor.estado === "planificada" && labor.fecha_programada) {
+    const programmed = new Date(labor.fecha_programada);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (programmed < today) return "atrasada";
+  }
+  return labor.estado;
+}
+
+const CHART_COLORS = {
+  planificadas: "#3B82F6",
+  ejecutadas: "#22C55E",
+  atrasadas: "#EF4444",
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export function LaboresPage() {
+  const queryClient = useQueryClient();
+  const token = useAuthStore((s) => s.token);
+  const { data: testblocks } = useTestblocks();
+  const { data: tiposLabor } = useQuery({
+    queryKey: ["tipos-labor"],
+    queryFn: () => mantenedorService("tipos-labor").list(),
+  });
+
+  // --- state ---
+  const [tbFilter, setTbFilter] = useState<string>("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [planTbOpen, setPlanTbOpen] = useState(false);
+  const [ejecutarOpen, setEjecutarOpen] = useState(false);
+  const [selectedLabor, setSelectedLabor] = useState<EjecucionLabor | null>(null);
+  const [evidenciaOpen, setEvidenciaOpen] = useState(false);
+  const [evidenciaLabor, setEvidenciaLabor] = useState<EjecucionLabor | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrLabor, setQrLabor] = useState<EjecucionLabor | null>(null);
+  const [addEvidOpen, setAddEvidOpen] = useState(false);
+  const [qrBlobUrl, setQrBlobUrl] = useState<string | null>(null);
+
+  const tbFilterNum = tbFilter && tbFilter !== "all" ? Number(tbFilter) : undefined;
+
+  // --- queries ---
+  const { data: planificacion, isLoading: loadingPlan } = useQuery({
+    queryKey: ["labores", "planificacion", tbFilterNum],
+    queryFn: () => laboresService.planificacion(tbFilterNum ? { testblock: tbFilterNum } : undefined),
+  });
+
+  const { data: dashboard } = useQuery<LaborDashboard>({
+    queryKey: ["labores", "dashboard", tbFilterNum],
+    queryFn: () => laboresService.dashboard(tbFilterNum ? { testblock: tbFilterNum } : undefined),
+  });
+
+  const { data: evidencias, refetch: refetchEvidencias } = useQuery({
+    queryKey: ["labores", "evidencias", evidenciaLabor?.id_ejecucion],
+    queryFn: () => laboresService.evidencias(evidenciaLabor!.id_ejecucion),
+    enabled: !!evidenciaLabor,
+  });
+
+  // --- lookup maps ---
+  const laborMap = new Map<number, string>();
+  ((tiposLabor || []) as any[]).forEach((t: any) => {
+    laborMap.set(t.id_labor, `${t.nombre} (${t.categoria || ""})`);
+  });
+  const resolvLabor = (id: unknown) => {
+    if (id == null) return "-";
+    return laborMap.get(id as number) || `#${id}`;
+  };
+
+  const tbOpts = (testblocks || []).map((tb) => ({
+    value: String(tb.id_testblock),
+    label: `${tb.nombre} (${tb.codigo})`,
+  }));
+  const laborOpts = ((tiposLabor || []) as any[]).map((t: any) => ({
+    value: t.id_labor,
+    label: `${t.nombre} (${t.categoria || ""})`,
+  }));
+
+  // --- mutations ---
+  const createMut = useMutation({
+    mutationFn: (data: Record<string, unknown>) => laboresService.crearPlanificacion(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labores"] });
+      toast.success("Labor planificada");
+    },
+  });
+
+  const planTbMut = useMutation({
+    mutationFn: (data: Record<string, unknown>) => laboresService.crearPlanificacionTestblock(data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["labores"] });
+      toast.success(`${res.created} labores planificadas para el testblock`);
+    },
+  });
+
+  const ejecutarMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      laboresService.ejecutar(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labores"] });
+      toast.success("Labor ejecutada");
+    },
+  });
+
+  const addEvidMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      laboresService.addEvidencia(id, data),
+    onSuccess: () => {
+      refetchEvidencias();
+      toast.success("Evidencia agregada");
+    },
+  });
+
+  // --- derived data ---
+  const allLabores = planificacion || [];
+
+  const atrasadas = useMemo(
+    () => allLabores.filter((l) => displayStatus(l) === "atrasada"),
+    [allLabores],
+  );
+
+  // Chart data: por mes
+  const chartPorMes = useMemo(() => {
+    if (!dashboard?.por_mes) return [];
+    return Object.entries(dashboard.por_mes).map(([mes, vals]) => ({
+      mes,
+      planificadas: vals.planificadas,
+      ejecutadas: vals.ejecutadas,
+    }));
+  }, [dashboard?.por_mes]);
+
+  // Chart data: por tipo
+  const chartPorTipo = useMemo(() => {
+    if (!dashboard?.por_tipo) return [];
+    return Object.entries(dashboard.por_tipo).map(([nombre, vals]) => {
+      const total = vals.planificadas + vals.ejecutadas;
+      return {
+        nombre,
+        planificadas: vals.planificadas,
+        ejecutadas: vals.ejecutadas,
+        atrasadas: vals.atrasadas,
+        pct: total > 0 ? Math.round((vals.ejecutadas / total) * 100) : 0,
+      };
+    });
+  }, [dashboard?.por_tipo]);
+
+  // --- form fields ---
+  const createFields: FieldDef[] = [
+    { key: "id_posicion", label: "ID Posicion", type: "number" },
+    { key: "id_labor", label: "Tipo de Labor", type: "select", required: true, options: laborOpts },
+    { key: "temporada", label: "Temporada", type: "text", placeholder: "2024-2025" },
+    { key: "fecha_programada", label: "Fecha Programada", type: "date", required: true },
+    { key: "observaciones", label: "Observaciones", type: "textarea" },
+  ];
+
+  const planTbFields: FieldDef[] = [
+    { key: "id_testblock", label: "TestBlock", type: "select", required: true, options: tbOpts },
+    { key: "id_labor", label: "Tipo de Labor", type: "select", required: true, options: laborOpts },
+    { key: "temporada", label: "Temporada", type: "text", placeholder: "2025-2026" },
+    { key: "fecha_programada", label: "Fecha Programada", type: "date", required: true },
+    { key: "observaciones", label: "Observaciones", type: "textarea" },
+  ];
+
+  const ejecutarFields: FieldDef[] = [
+    { key: "fecha_ejecucion", label: "Fecha Ejecucion", type: "date", required: true },
+    { key: "ejecutor", label: "Ejecutor", type: "text", required: true },
+    { key: "duracion_min", label: "Duracion (min)", type: "number" },
+    { key: "observaciones", label: "Observaciones", type: "textarea" },
+  ];
+
+  // --- table columns ---
+  const planColumns = [
+    { accessorKey: "id_ejecucion", header: "ID", size: 60 },
+    {
+      accessorKey: "id_labor",
+      header: "Labor",
+      cell: ({ getValue }: any) => resolvLabor(getValue()),
+    },
+    { accessorKey: "temporada", header: "Temporada", size: 100 },
+    { accessorKey: "id_posicion", header: "Posicion", size: 80 },
+    {
+      accessorKey: "fecha_programada",
+      header: "Programada",
+      cell: ({ getValue }: any) => formatDate(getValue() as string),
+    },
+    {
+      id: "estado_display",
+      header: "Estado",
+      cell: ({ row }: any) => {
+        const labor = row.original as EjecucionLabor;
+        const st = displayStatus(labor);
+        return <StatusBadge status={st} />;
+      },
+    },
+    { accessorKey: "ejecutor", header: "Ejecutor" },
+    {
+      accessorKey: "duracion_min",
+      header: "Min.",
+      size: 60,
+      cell: ({ getValue }: any) => getValue() ?? "-",
+    },
+    {
+      id: "acciones",
+      header: "Acciones",
+      size: 160,
+      cell: ({ row }: any) => {
+        const labor = row.original as EjecucionLabor;
+        const st = displayStatus(labor);
+        return (
+          <div className="flex gap-1">
+            {(st === "planificada" || st === "atrasada") && (
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Ejecutar"
+                onClick={() => {
+                  setSelectedLabor(labor);
+                  setEjecutarOpen(true);
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Evidencia"
+              onClick={() => {
+                setEvidenciaLabor(labor);
+                setEvidenciaOpen(true);
+              }}
+            >
+              <Camera className="h-4 w-4 text-blue-600" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="QR"
+              onClick={() => handleOpenQr(labor)}
+            >
+              <QrCode className="h-4 w-4 text-garces-cherry" />
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
+
+  // --- Fetch QR image as blob for display + download ---
+  const fetchQrBlob = async (id: number): Promise<string | null> => {
+    try {
+      const url = laboresService.qrUrl(id);
+      const resp = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!resp.ok) return null;
+      const blob = await resp.blob();
+      return URL.createObjectURL(blob);
+    } catch {
+      return null;
+    }
+  };
+
+  const handleOpenQr = async (labor: EjecucionLabor) => {
+    setQrLabor(labor);
+    setQrOpen(true);
+    const blobUrl = await fetchQrBlob(labor.id_ejecucion);
+    setQrBlobUrl(blobUrl);
+  };
+
+  const handleDownloadQr = () => {
+    if (!qrBlobUrl || !qrLabor) return;
+    const link = document.createElement("a");
+    link.href = qrBlobUrl;
+    link.download = `qr_labor_${qrLabor.id_ejecucion}.png`;
+    link.click();
+  };
+
+  const handleCloseQr = () => {
+    setQrOpen(false);
+    setQrLabor(null);
+    if (qrBlobUrl) {
+      URL.revokeObjectURL(qrBlobUrl);
+      setQrBlobUrl(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* --- Header --- */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-garces-cherry">Gestion de Labores</h2>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Planificar Posicion
+          </Button>
+          <Button size="sm" onClick={() => setPlanTbOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Planificar TestBlock
+          </Button>
+        </div>
+      </div>
+
+      {/* --- KPI Cards --- */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <KpiCard title="Total Labores" value={dashboard?.total ?? 0} icon={Hammer} />
+        <KpiCard title="Planificadas" value={dashboard?.planificadas ?? 0} icon={Clock} />
+        <KpiCard title="Ejecutadas" value={dashboard?.ejecutadas ?? 0} icon={CheckCircle2} />
+        <KpiCard
+          title="Atrasadas"
+          value={dashboard?.atrasadas ?? 0}
+          icon={AlertTriangle}
+          className={dashboard?.atrasadas ? "border-red-300 bg-red-50" : ""}
+        />
+        <KpiCard title="Esta Semana" value={dashboard?.esta_semana ?? 0} icon={CalendarDays} />
+        <KpiCard
+          title="% Cumplimiento"
+          value={`${dashboard?.pct_cumplimiento ?? 0}%`}
+          icon={TrendingUp}
+          className="border-green-300 bg-green-50"
+        />
+      </div>
+
+      {/* --- Charts --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Bar chart: por mes */}
+        <div className="bg-white rounded-lg border p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-garces-cherry mb-3">Labores por Mes</h3>
+          {chartPorMes.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={chartPorMes}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <RechartsTooltip />
+                <Legend />
+                <Bar dataKey="planificadas" name="Planificadas" fill={CHART_COLORS.planificadas} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="ejecutadas" name="Ejecutadas" fill={CHART_COLORS.ejecutadas} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-10">Sin datos</p>
+          )}
+        </div>
+
+        {/* Horizontal bar: por tipo */}
+        <div className="bg-white rounded-lg border p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-garces-cherry mb-3">Labores por Tipo</h3>
+          {chartPorTipo.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={chartPorTipo} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis dataKey="nombre" type="category" width={120} tick={{ fontSize: 10 }} />
+                <RechartsTooltip />
+                <Legend />
+                <Bar dataKey="ejecutadas" name="Ejecutadas" stackId="a" fill={CHART_COLORS.ejecutadas} />
+                <Bar dataKey="atrasadas" name="Atrasadas" stackId="a" fill={CHART_COLORS.atrasadas} />
+                <Bar
+                  dataKey="planificadas"
+                  name="Planificadas"
+                  stackId="a"
+                  fill={CHART_COLORS.planificadas}
+                  radius={[0, 4, 4, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-10">Sin datos</p>
+          )}
+        </div>
+      </div>
+
+      {/* --- TestBlock filter --- */}
+      <div className="flex items-center gap-3">
+        <label className="text-sm text-muted-foreground">Filtrar por TestBlock:</label>
+        <Select value={tbFilter} onValueChange={setTbFilter}>
+          <SelectTrigger className="w-64">
+            <SelectValue placeholder="Todos los testblocks" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos</SelectItem>
+            {tbOpts.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {tbFilter && tbFilter !== "all" && (
+          <Button variant="ghost" size="sm" onClick={() => setTbFilter("")}>Limpiar</Button>
+        )}
+      </div>
+
+      {/* --- Tabs --- */}
+      <Tabs defaultValue="plan">
+        <TabsList>
+          <TabsTrigger value="plan">Plan ({allLabores.length})</TabsTrigger>
+          <TabsTrigger value="atrasadas" className={atrasadas.length > 0 ? "text-red-600" : ""}>
+            Atrasadas ({atrasadas.length})
+          </TabsTrigger>
+          <TabsTrigger value="por-tipo">Por Tipo</TabsTrigger>
+          <TabsTrigger value="calendario">
+            <Calendar className="h-3.5 w-3.5 mr-1" /> Calendario
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Tab: Plan */}
+        <TabsContent value="plan">
+          <CrudTable
+            data={allLabores}
+            columns={planColumns as any}
+            isLoading={loadingPlan}
+            searchPlaceholder="Buscar labor..."
+          />
+        </TabsContent>
+
+        {/* Tab: Atrasadas */}
+        <TabsContent value="atrasadas">
+          {atrasadas.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-green-500" />
+              <p className="font-medium">Sin labores atrasadas</p>
+              <p className="text-sm">Todas las labores estan al dia.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+                <AlertTriangle className="inline h-4 w-4 mr-1" />
+                {atrasadas.length} labor(es) con fecha programada vencida. Requieren atencion inmediata.
+              </div>
+              <CrudTable
+                data={atrasadas}
+                columns={planColumns as any}
+                isLoading={loadingPlan}
+                searchPlaceholder="Buscar atrasada..."
+              />
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Tab: Por Tipo */}
+        <TabsContent value="por-tipo">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {chartPorTipo.map((t) => {
+              const total = t.planificadas + t.ejecutadas;
+              return (
+                <div key={t.nombre} className="bg-white rounded-lg border p-4 shadow-sm">
+                  <h4 className="font-medium text-sm text-garces-cherry">{t.nombre}</h4>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Cumplimiento</span>
+                      <span className="font-semibold text-foreground">{t.pct}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2.5">
+                      <div
+                        className="h-2.5 rounded-full transition-all"
+                        style={{
+                          width: `${t.pct}%`,
+                          backgroundColor: t.pct >= 80 ? "#22C55E" : t.pct >= 50 ? "#F59E0B" : "#EF4444",
+                        }}
+                      />
+                    </div>
+                    <div className="flex gap-3 text-xs mt-2">
+                      <span className="text-blue-600">Plan: {t.planificadas}</span>
+                      <span className="text-green-600">Ejec: {t.ejecutadas}</span>
+                      {t.atrasadas > 0 && (
+                        <span className="text-red-600 font-semibold">Atras: {t.atrasadas}</span>
+                      )}
+                      <span className="text-muted-foreground">Total: {total}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {chartPorTipo.length === 0 && (
+              <p className="col-span-full text-center text-muted-foreground py-10">Sin datos de labores por tipo.</p>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Tab: Calendario */}
+        <TabsContent value="calendario">
+          <LaborCalendar
+            labores={allLabores}
+            laborNames={laborMap}
+            onSelectLabor={(labor) => {
+              const st = displayStatus(labor);
+              if (st === "planificada" || st === "atrasada") {
+                setSelectedLabor(labor);
+                setEjecutarOpen(true);
+              } else {
+                setEvidenciaLabor(labor);
+                setEvidenciaOpen(true);
+              }
+            }}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {/* ==================== MODALS ==================== */}
+
+      {/* Create single position labor */}
+      <CrudForm
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSubmit={async (data) => { await createMut.mutateAsync(data); }}
+        fields={createFields}
+        title="Planificar Labor (Posicion)"
+        isLoading={createMut.isPending}
+      />
+
+      {/* Plan testblock-level labor */}
+      <CrudForm
+        open={planTbOpen}
+        onClose={() => setPlanTbOpen(false)}
+        onSubmit={async (data) => { await planTbMut.mutateAsync(data); }}
+        fields={planTbFields}
+        title="Planificar Labor para TestBlock Completo"
+        isLoading={planTbMut.isPending}
+      />
+
+      {/* Execute labor */}
+      <CrudForm
+        open={ejecutarOpen}
+        onClose={() => { setEjecutarOpen(false); setSelectedLabor(null); }}
+        onSubmit={async (data) => {
+          if (!selectedLabor) return;
+          await ejecutarMut.mutateAsync({ id: selectedLabor.id_ejecucion, data });
+        }}
+        fields={ejecutarFields}
+        title={`Ejecutar: ${selectedLabor ? resolvLabor(selectedLabor.id_labor) : ""}`}
+        isLoading={ejecutarMut.isPending}
+      />
+
+      {/* --- Evidence Modal --- */}
+      <Dialog open={evidenciaOpen} onOpenChange={(v) => { if (!v) { setEvidenciaOpen(false); setEvidenciaLabor(null); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Evidencia — {evidenciaLabor ? resolvLabor(evidenciaLabor.id_labor) : ""}
+              <span className="text-xs text-muted-foreground ml-2">
+                (ID: {evidenciaLabor?.id_ejecucion})
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Evidence gallery */}
+            {(evidencias && evidencias.length > 0) ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {evidencias.map((ev) => (
+                  <div key={ev.id_evidencia} className="border rounded-lg p-2 bg-gray-50">
+                    {ev.tipo === "foto" && ev.imagen_base64 ? (
+                      <img
+                        src={`data:image/jpeg;base64,${ev.imagen_base64}`}
+                        alt={ev.descripcion || "Evidencia"}
+                        className="w-full h-32 object-cover rounded"
+                      />
+                    ) : ev.tipo === "foto" && ev.url ? (
+                      <img
+                        src={ev.url}
+                        alt={ev.descripcion || "Evidencia"}
+                        className="w-full h-32 object-cover rounded"
+                      />
+                    ) : (
+                      <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center">
+                        <FileText className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                    )}
+                    <p className="text-xs mt-1 text-muted-foreground truncate">
+                      {ev.descripcion || ev.tipo}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {ev.usuario} - {formatDate(ev.fecha_creacion)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <ImageIcon className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">Sin evidencia registrada</p>
+              </div>
+            )}
+
+            {/* Add evidence button */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => setAddEvidOpen(true)}
+            >
+              <Camera className="h-4 w-4 mr-1" /> Agregar Evidencia
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- Add Evidence Dialog --- */}
+      <AddEvidenciaDialog
+        open={addEvidOpen}
+        onClose={() => setAddEvidOpen(false)}
+        laborId={evidenciaLabor?.id_ejecucion ?? null}
+        isPending={addEvidMut.isPending}
+        onSubmit={async (data) => {
+          if (!evidenciaLabor) return;
+          await addEvidMut.mutateAsync({ id: evidenciaLabor.id_ejecucion, data });
+        }}
+      />
+
+      {/* --- QR Modal --- */}
+      <Dialog open={qrOpen} onOpenChange={(v) => { if (!v) handleCloseQr(); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              Codigo QR — {qrLabor ? resolvLabor(qrLabor.id_labor) : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4">
+            {qrBlobUrl ? (
+              <img
+                src={qrBlobUrl}
+                alt="QR Code"
+                className="w-64 h-64 border rounded"
+              />
+            ) : (
+              <div className="w-64 h-64 border rounded flex items-center justify-center bg-gray-50">
+                <span className="text-sm text-muted-foreground">Generando QR...</span>
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground text-center space-y-1">
+              <p>ID: {qrLabor?.id_ejecucion} | Posicion: {qrLabor?.id_posicion}</p>
+              <p>Programada: {formatDate(qrLabor?.fecha_programada)}</p>
+              <p>Estado: {qrLabor ? displayStatus(qrLabor) : "-"}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseQr}>
+              Cerrar
+            </Button>
+            <Button onClick={handleDownloadQr} disabled={!qrBlobUrl}>
+              <Download className="h-4 w-4 mr-1" /> Descargar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: Add Evidencia Dialog
+// ---------------------------------------------------------------------------
+
+function AddEvidenciaDialog({
+  open,
+  onClose,
+  laborId,
+  isPending,
+  onSubmit,
+}: {
+  open: boolean;
+  onClose: () => void;
+  laborId: number | null;
+  isPending: boolean;
+  onSubmit: (data: Record<string, unknown>) => Promise<void>;
+}) {
+  const [tipo, setTipo] = useState<string>("foto");
+  const [descripcion, setDescripcion] = useState("");
+  const [imagenBase64, setImagenBase64] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("La imagen no puede superar 5 MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Remove the data:image/...;base64, prefix
+      const base64 = result.split(",")[1];
+      setImagenBase64(base64);
+      setPreviewUrl(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
+    if (!laborId) return;
+    const data: Record<string, unknown> = {
+      tipo,
+      descripcion: descripcion || null,
+    };
+    if (tipo === "foto" && imagenBase64) {
+      data.imagen_base64 = imagenBase64;
+    }
+    await onSubmit(data);
+    // Reset
+    setTipo("foto");
+    setDescripcion("");
+    setImagenBase64(null);
+    setPreviewUrl(null);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Agregar Evidencia</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>Tipo</Label>
+            <Select value={tipo} onValueChange={setTipo}>
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="foto">Foto</SelectItem>
+                <SelectItem value="nota">Nota</SelectItem>
+                <SelectItem value="qr_scan">Escaneo QR</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Descripcion</Label>
+            <textarea
+              className="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[60px]"
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Descripcion de la evidencia..."
+            />
+          </div>
+          {tipo === "foto" && (
+            <div>
+              <Label>Imagen</Label>
+              <Input
+                type="file"
+                accept="image/*"
+                className="mt-1"
+                onChange={handleFileChange}
+              />
+              {previewUrl && (
+                <div className="relative mt-2">
+                  <img src={previewUrl} alt="Preview" className="w-full h-40 object-cover rounded border" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-1 right-1 bg-white/80 h-6 w-6"
+                    onClick={() => { setImagenBase64(null); setPreviewUrl(null); }}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSubmit} disabled={isPending}>
+            {isPending ? "Guardando..." : "Guardar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
