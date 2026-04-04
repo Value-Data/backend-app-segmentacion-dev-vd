@@ -250,17 +250,35 @@ export function LaboresPage() {
         return (
           <div className="flex gap-1">
             {(st === "planificada" || st === "atrasada") && (
-              <Button
-                variant="ghost"
-                size="icon"
-                title="Ejecutar"
-                onClick={() => {
-                  setSelectedLabor(labor);
-                  setEjecutarOpen(true);
-                }}
-              >
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Ejecutar rapido (1 click)"
+                  onClick={() => {
+                    ejecutarMut.mutate({
+                      id: labor.id_ejecucion,
+                      data: {
+                        fecha_ejecucion: new Date().toISOString().slice(0, 10),
+                        ejecutor: useAuthStore.getState().user?.username || "sistema",
+                      },
+                    });
+                  }}
+                >
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Ejecutar con detalle"
+                  onClick={() => {
+                    setSelectedLabor(labor);
+                    setEjecutarOpen(true);
+                  }}
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </>
             )}
             <Button
               variant="ghost"
@@ -431,8 +449,11 @@ export function LaboresPage() {
       </div>
 
       {/* --- Tabs --- */}
-      <Tabs defaultValue="plan">
+      <Tabs defaultValue="hoy">
         <TabsList>
+          <TabsTrigger value="hoy" className="gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Hoy
+          </TabsTrigger>
           <TabsTrigger value="plan">Plan ({allLabores.length})</TabsTrigger>
           <TabsTrigger value="atrasadas" className={atrasadas.length > 0 ? "text-red-600" : ""}>
             Atrasadas ({atrasadas.length})
@@ -442,6 +463,92 @@ export function LaboresPage() {
             <Calendar className="h-3.5 w-3.5 mr-1" /> Calendario
           </TabsTrigger>
         </TabsList>
+
+        {/* Tab: Hoy — vista operativa con ejecucion rapida */}
+        <TabsContent value="hoy">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Labores programadas para hoy o vencidas. Marca como ejecutada con un click.
+              </p>
+              {atrasadas.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const ids = atrasadas.slice(0, 50).map((l) => l.id_ejecucion);
+                    ejecutarMut.mutate({ id: 0, data: {} }, {
+                      onSuccess: () => {},
+                    });
+                    laboresService.ejecutarMasivo(ids).then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["labores"] });
+                      toast.success(`${ids.length} labores marcadas como ejecutadas`);
+                    }).catch(() => toast.error("Error al ejecutar masivo"));
+                  }}
+                >
+                  Ejecutar todas ({Math.min(atrasadas.length, 50)})
+                </Button>
+              )}
+            </div>
+            {atrasadas.length === 0 ? (
+              <div className="bg-white rounded-lg border p-8 text-center">
+                <CheckCircle2 className="h-12 w-12 text-estado-success mx-auto mb-3" />
+                <h4 className="font-semibold">Todo al dia</h4>
+                <p className="text-sm text-muted-foreground mt-1">No hay labores pendientes para hoy.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {atrasadas.map((labor) => (
+                  <div
+                    key={labor.id_ejecucion}
+                    className="bg-white rounded-lg border p-3 flex items-center justify-between hover:shadow-sm transition-shadow"
+                  >
+                    <div className="flex items-center gap-3">
+                      <StatusBadge status={displayStatus(labor)} />
+                      <div>
+                        <p className="text-sm font-medium">{resolvLabor(labor.id_labor)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {labor.temporada} — Pos. {labor.id_posicion} — {formatDate(labor.fecha_programada)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-green-600 hover:bg-green-50 hover:text-green-700"
+                        onClick={() => {
+                          ejecutarMut.mutate({
+                            id: labor.id_ejecucion,
+                            data: {
+                              fecha_ejecucion: new Date().toISOString().slice(0, 10),
+                              ejecutor: useAuthStore.getState().user?.username || "sistema",
+                            },
+                          });
+                        }}
+                        disabled={ejecutarMut.isPending}
+                        title="Marcar como ejecutada"
+                      >
+                        <CheckCircle2 className="h-5 w-5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setSelectedLabor(labor);
+                          setEjecutarOpen(true);
+                        }}
+                        title="Ejecutar con detalle"
+                      >
+                        <FileText className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
 
         {/* Tab: Plan */}
         <TabsContent value="plan">
