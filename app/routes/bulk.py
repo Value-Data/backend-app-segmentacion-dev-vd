@@ -104,6 +104,32 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             ["PL-002", 2, 2, 2, 2, "EN_EVALUACION", 2025],
         ],
     },
+    "mediciones": {
+        "columns": [
+            "especie", "temporada", "campo", "variedad", "portainjerto", "pmg",
+            "fecha_cosecha", "fecha_evaluacion", "n_fruto", "repeticion",
+            "peso_g", "perimetro_mm", "rendimiento_g",
+            "firmeza_punta", "firmeza_quilla", "firmeza_hombro", "firmeza_mejilla_1", "firmeza_mejilla_2",
+            "brix", "acidez",
+            "color_0_30", "color_30_50", "color_50_75", "color_75_100",
+            "color_pulpa",
+            "periodo_almacenaje", "pardeamiento", "traslucidez", "gelificacion", "harinosidad",
+            "observaciones",
+        ],
+        "examples": [
+            [
+                "Cerezo", "2024-2025", "Santa Margarita", "PRIM 2.5", "Colt", "Peter Stoppel",
+                "2024-11-28", "2024-11-28", 1, 1,
+                12.4, 28.5, 85.0,
+                7.3, 7.0, 7.6, 9.1, 8.8,
+                18.6, 0.86,
+                10, 30, 40, 20,
+                "Roja",
+                None, None, None, None, None,
+                "Fruto sano",
+            ],
+        ],
+    },
 }
 
 # Map entity names to SQLModel classes
