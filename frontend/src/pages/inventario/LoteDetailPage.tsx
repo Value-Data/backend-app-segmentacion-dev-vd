@@ -409,40 +409,60 @@ export function LoteDetailPage() {
           </div>
         </TabsContent>
 
-        {/* Movimientos tab (original, desc order) */}
+        {/* Movimientos tab — timeline view */}
         <TabsContent value="movimientos">
           <div className="bg-white rounded-lg border p-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Movimientos</h3>
+              <h3 className="font-semibold">Timeline de Movimientos</h3>
               <Button size="sm" onClick={() => setMovOpen(true)}>
                 <Plus className="h-4 w-4" /> Registrar Movimiento
               </Button>
             </div>
-            <div className="divide-y">
-              {(movimientos || []).map((m: MovimientoInventario) => {
-                const isEntrada = TIPO_ENTRADA.has(m.tipo?.toUpperCase());
-                return (
-                  <div key={m.id_movimiento} className="py-3 flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-3">
-                      <TipoBadge tipo={m.tipo} />
-                      <span className="text-muted-foreground">{m.motivo || "-"}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className={`font-medium tabular-nums ${isEntrada ? "text-green-700" : "text-red-700"}`}>
-                        {isEntrada ? "+" : "-"}{formatNumber(m.cantidad)}
-                      </span>
-                      <span className="text-muted-foreground ml-2 tabular-nums">
-                        ({m.saldo_anterior} → {m.saldo_nuevo})
-                      </span>
-                      <p className="text-xs text-muted-foreground">{formatDate(m.fecha_movimiento)} {m.usuario ? `- ${m.usuario}` : ""}</p>
-                    </div>
-                  </div>
-                );
-              })}
-              {(!movimientos || movimientos.length === 0) && (
-                <p className="py-4 text-center text-muted-foreground text-sm">Sin movimientos</p>
-              )}
-            </div>
+            {(!movimientos || movimientos.length === 0) ? (
+              <p className="py-8 text-center text-muted-foreground text-sm">Sin movimientos registrados</p>
+            ) : (
+              <div className="relative pl-6">
+                {/* Timeline line */}
+                <div className="absolute left-2.5 top-0 bottom-0 w-px bg-border" />
+                <div className="space-y-4">
+                  {(movimientos || []).map((m: MovimientoInventario) => {
+                    const isEntrada = TIPO_ENTRADA.has(m.tipo?.toUpperCase());
+                    return (
+                      <div key={m.id_movimiento} className="relative flex gap-3">
+                        {/* Timeline dot */}
+                        <div className={`absolute -left-3.5 top-1 w-3 h-3 rounded-full border-2 border-white ${
+                          isEntrada ? "bg-estado-success" : "bg-estado-danger"
+                        }`} />
+                        {/* Content */}
+                        <div className="flex-1 bg-muted/30 rounded-lg p-3 hover:bg-muted/50 transition-colors">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <TipoBadge tipo={m.tipo} />
+                              {m.motivo && <span className="text-sm text-muted-foreground">{m.motivo}</span>}
+                            </div>
+                            <span className={`font-bold tabular-nums ${isEntrada ? "text-green-700" : "text-red-700"}`}>
+                              {isEntrada ? "+" : "-"}{formatNumber(m.cantidad)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between mt-1.5 text-xs text-muted-foreground">
+                            <span>
+                              {formatDate(m.fecha_movimiento)}
+                              {m.usuario && <span className="ml-2">por {m.usuario}</span>}
+                            </span>
+                            <span className="tabular-nums">
+                              Saldo: {m.saldo_anterior != null ? formatNumber(m.saldo_anterior) : "?"} → {m.saldo_nuevo != null ? formatNumber(m.saldo_nuevo) : "?"}
+                            </span>
+                          </div>
+                          {m.referencia_destino && (
+                            <p className="text-xs text-muted-foreground mt-1">Destino: {m.referencia_destino}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>

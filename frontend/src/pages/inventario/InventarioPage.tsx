@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle, Eye, QrCode, MoreHorizontal } from "lucide-react";
+import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle, Eye, QrCode, Filter, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -57,6 +57,12 @@ export function InventarioPage() {
   const [despachoOpen, setDespachoOpen] = useState(false);
   const [selectedBodega, setSelectedBodega] = useState<number | "todas">("todas");
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>("todos");
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<{
+    especie: string;
+    tipo_planta: string;
+    tipo_injertacion: string;
+  }>({ especie: "", tipo_planta: "", tipo_injertacion: "" });
   const lk = useLookups();
 
   // Lookup data for despacho form selects
@@ -207,17 +213,31 @@ export function InventarioPage() {
     // KPI filter
     switch (kpiFilter) {
       case "activos":
-        return all.filter((l) => l.estado === "disponible");
+        all = all.filter((l) => l.estado === "disponible");
+        break;
       case "stock_bajo":
-        return all.filter(
+        all = all.filter(
           (l) => l.cantidad_actual > 0 && l.cantidad_inicial > 0 && l.cantidad_actual / l.cantidad_inicial < 0.2
         );
+        break;
       case "agotados":
-        return all.filter((l) => l.estado === "agotado" || l.cantidad_actual <= 0);
-      default:
-        return all;
+        all = all.filter((l) => l.estado === "agotado" || l.cantidad_actual <= 0);
+        break;
     }
-  }, [inventario, selectedBodega, kpiFilter]);
+
+    // Advanced filters
+    if (filters.especie) {
+      all = all.filter((l) => String(l.id_especie) === filters.especie);
+    }
+    if (filters.tipo_planta) {
+      all = all.filter((l) => l.tipo_planta === filters.tipo_planta);
+    }
+    if (filters.tipo_injertacion) {
+      all = all.filter((l) => l.tipo_injertacion === filters.tipo_injertacion);
+    }
+
+    return all;
+  }, [inventario, selectedBodega, kpiFilter, filters]);
 
   const despachoMut = useMutation({
     mutationFn: (data: Record<string, unknown>) => {
@@ -270,6 +290,13 @@ export function InventarioPage() {
               queryClient.invalidateQueries({ queryKey: ["inventario", "por-bodega"] });
             }}
           />
+          <Button
+            size="sm"
+            variant={showFilters ? "default" : "outline"}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="h-4 w-4 mr-1" /> Filtros
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setDespachoOpen(true)}>
             <Truck className="h-4 w-4 mr-1" /> Despacho
           </Button>
@@ -334,6 +361,88 @@ export function InventarioPage() {
         </div>
       )}
 
+      {/* Advanced filters panel */}
+      {showFilters && (
+        <div className="bg-white rounded-lg border p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold">Filtros Avanzados</h4>
+            <button onClick={() => setShowFilters(false)} className="text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Especie</label>
+              <select
+                value={filters.especie}
+                onChange={(e) => setFilters((p) => ({ ...p, especie: e.target.value }))}
+                className="w-full rounded-md border px-2 py-1.5 text-sm"
+              >
+                <option value="">Todas</option>
+                {lk.options.especies.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Tipo Planta</label>
+              <select
+                value={filters.tipo_planta}
+                onChange={(e) => setFilters((p) => ({ ...p, tipo_planta: e.target.value }))}
+                className="w-full rounded-md border px-2 py-1.5 text-sm"
+              >
+                <option value="">Todos</option>
+                {[...new Set((inventario as InventarioVivero[] || []).map((l) => l.tipo_planta).filter(Boolean))].map((v) => (
+                  <option key={v} value={v!}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Injertacion</label>
+              <select
+                value={filters.tipo_injertacion}
+                onChange={(e) => setFilters((p) => ({ ...p, tipo_injertacion: e.target.value }))}
+                className="w-full rounded-md border px-2 py-1.5 text-sm"
+              >
+                <option value="">Todos</option>
+                {[...new Set((inventario as InventarioVivero[] || []).map((l) => l.tipo_injertacion).filter(Boolean))].map((v) => (
+                  <option key={v} value={v!}>{v}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {(filters.especie || filters.tipo_planta || filters.tipo_injertacion) && (
+            <div className="flex items-center gap-2 pt-1">
+              <span className="text-xs text-muted-foreground">Filtros activos:</span>
+              {filters.especie && (
+                <span className="inline-flex items-center gap-1 bg-garces-cherry-pale text-garces-cherry rounded-full px-2 py-0.5 text-xs">
+                  {lk.especie(Number(filters.especie))}
+                  <button onClick={() => setFilters((p) => ({ ...p, especie: "" }))}><X className="h-3 w-3" /></button>
+                </span>
+              )}
+              {filters.tipo_planta && (
+                <span className="inline-flex items-center gap-1 bg-garces-green-pale text-garces-green rounded-full px-2 py-0.5 text-xs">
+                  {filters.tipo_planta}
+                  <button onClick={() => setFilters((p) => ({ ...p, tipo_planta: "" }))}><X className="h-3 w-3" /></button>
+                </span>
+              )}
+              {filters.tipo_injertacion && (
+                <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 rounded-full px-2 py-0.5 text-xs">
+                  {filters.tipo_injertacion}
+                  <button onClick={() => setFilters((p) => ({ ...p, tipo_injertacion: "" }))}><X className="h-3 w-3" /></button>
+                </span>
+              )}
+              <button
+                onClick={() => setFilters({ especie: "", tipo_planta: "", tipo_injertacion: "" })}
+                className="text-xs text-muted-foreground hover:text-garces-cherry ml-1"
+              >
+                Limpiar todos
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Bodega selector pills */}
       <div className="flex flex-wrap gap-1.5">
         <button
@@ -394,10 +503,17 @@ export function InventarioPage() {
         </TabsContent>
 
         <TabsContent value="movimientos">
-          <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-muted-foreground text-center py-6">
-              Seleccione un lote para ver su Kardex de movimientos detallado.
-            </p>
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex flex-col items-center justify-center text-center py-8">
+              <Package className="h-12 w-12 text-muted-foreground/30 mb-3" />
+              <h4 className="font-semibold text-sm">Movimientos por Lote</h4>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                Seleccione un lote en la tabla de arriba para ver su Kardex completo con todos los movimientos (ingresos, despachos, ajustes).
+              </p>
+              <p className="text-xs text-muted-foreground mt-3">
+                Cada lote tiene su propia linea de tiempo de movimientos en la vista de detalle.
+              </p>
+            </div>
           </div>
         </TabsContent>
       </Tabs>
