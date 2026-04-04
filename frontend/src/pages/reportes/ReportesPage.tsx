@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   FileText, Sparkles, Package, TreePine, Grid3X3,
   FlaskConical, ClipboardList, Loader2, Sprout, BookOpen,
-  Hammer, TrendingUp, ArrowRight, Download,
+  Hammer, TrendingUp, ArrowRight, Download, Filter, X,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/components/shared/KpiCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -17,6 +18,203 @@ import { testblockService } from "@/services/testblock";
 import { reportesService } from "@/services/reportes";
 import type { VariedadReport, LoteReport, TestBlockReport } from "@/services/reportes";
 import { formatDate, formatNumber } from "@/lib/utils";
+
+/* ─── Shared filter types ─────────────────────────────────────────────── */
+
+interface ReportFilters {
+  temporada: string;
+  especie: string;
+  campo: string;
+  pmg: string;
+  variedad: string;
+  testblock: string;
+}
+
+const EMPTY_FILTERS: ReportFilters = {
+  temporada: "",
+  especie: "",
+  campo: "",
+  pmg: "",
+  variedad: "",
+  testblock: "",
+};
+
+/* ─── Inline filter select (same style as LaboratorioPage) ────────────── */
+
+function InlineFilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = "Todos",
+  className = "",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: number | string; label: string }[];
+  placeholder?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-1 ${className}`}>
+      <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">
+        {label}
+      </span>
+      <Select value={value} onValueChange={(v) => onChange(v === "__all__" ? "" : v)}>
+        <SelectTrigger className="h-8 min-w-[120px] text-xs">
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">{placeholder}</SelectItem>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={String(o.value)}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/* ─── FilterBar component ─────────────────────────────────────────────── */
+
+function FilterBar({
+  filters,
+  onChange,
+}: {
+  filters: ReportFilters;
+  onChange: (f: ReportFilters) => void;
+}) {
+  const lk = useLookups();
+
+  // Cascading: variedades filtered by especie & pmg
+  const filteredVariedadOptions = useMemo(() => {
+    if (!lk.rawData.variedades) return lk.options.variedades;
+    let list = lk.rawData.variedades as any[];
+    if (filters.especie) {
+      const espId = Number(filters.especie);
+      list = list.filter((v: any) => v.id_especie === espId);
+    }
+    if (filters.pmg) {
+      const pmgId = Number(filters.pmg);
+      list = list.filter((v: any) => v.id_pmg === pmgId);
+    }
+    return list.map((v: any) => ({
+      value: v.id_variedad as number,
+      label: v.nombre as string,
+    }));
+  }, [filters.especie, filters.pmg, lk.rawData.variedades, lk.options.variedades]);
+
+  // Cascading: testblocks filtered by campo
+  const { data: allTestblocks } = useQuery({
+    queryKey: ["testblocks", "list"],
+    queryFn: () => testblockService.list(),
+    staleTime: 5 * 60_000,
+  });
+
+  const filteredTestblockOptions = useMemo(() => {
+    const tbList = (allTestblocks as any[] | undefined) || [];
+    let list = tbList;
+    if (filters.campo) {
+      const campoId = Number(filters.campo);
+      list = list.filter((tb: any) => tb.id_campo === campoId);
+    }
+    return list.map((tb: any) => ({
+      value: tb.id_testblock as number,
+      label: `${tb.nombre} (${tb.codigo})`,
+    }));
+  }, [filters.campo, allTestblocks]);
+
+  const update = useCallback(
+    (key: keyof ReportFilters, value: string) => {
+      const next = { ...filters, [key]: value };
+      // Cascade resets
+      if (key === "especie") {
+        next.variedad = "";
+      }
+      if (key === "campo") {
+        next.testblock = "";
+      }
+      if (key === "pmg") {
+        next.variedad = "";
+      }
+      onChange(next);
+    },
+    [filters, onChange],
+  );
+
+  const hasAnyFilter = Object.values(filters).some((v) => v !== "");
+
+  return (
+    <div className="rounded-lg border bg-white p-3 shadow-sm">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex items-center gap-2 mr-1 self-end pb-1">
+          <Filter className="h-3.5 w-3.5 text-garces-cherry" />
+          <span className="text-[9px] font-semibold text-garces-cherry uppercase tracking-wider">
+            Filtros
+          </span>
+        </div>
+
+        <InlineFilterSelect
+          label="Temporada"
+          value={filters.temporada}
+          onChange={(v) => update("temporada", v)}
+          options={lk.options.temporadas.map((o) => ({ value: o.label, label: o.label }))}
+          placeholder="Todas"
+        />
+        <InlineFilterSelect
+          label="Especie"
+          value={filters.especie}
+          onChange={(v) => update("especie", v)}
+          options={lk.options.especies}
+          placeholder="Todas"
+        />
+        <InlineFilterSelect
+          label="Campo"
+          value={filters.campo}
+          onChange={(v) => update("campo", v)}
+          options={lk.options.campos}
+          placeholder="Todos"
+        />
+        <InlineFilterSelect
+          label="PMG"
+          value={filters.pmg}
+          onChange={(v) => update("pmg", v)}
+          options={lk.options.pmgs}
+          placeholder="Todos"
+        />
+        <InlineFilterSelect
+          label="Variedad"
+          value={filters.variedad}
+          onChange={(v) => update("variedad", v)}
+          options={filteredVariedadOptions}
+          placeholder="Todas"
+        />
+        <InlineFilterSelect
+          label="TestBlock"
+          value={filters.testblock}
+          onChange={(v) => update("testblock", v)}
+          options={filteredTestblockOptions}
+          placeholder="Todos"
+        />
+
+        {hasAnyFilter && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange({ ...EMPTY_FILTERS })}
+            className="h-8 px-2 text-xs text-muted-foreground hover:text-garces-cherry gap-1 self-end"
+          >
+            <X className="h-3 w-3" />
+            Limpiar
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* ─── AI Analysis Card ─────────────────────────────────────────────────── */
 
@@ -103,9 +301,14 @@ function AIAnalysisCard({
 
 /* ─── Tab: Variedad ────────────────────────────────────────────────────── */
 
-function TabVariedad() {
+function TabVariedad({ filters }: { filters: ReportFilters }) {
   const lk = useLookups();
   const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  // Derive selected variedad from filters or local selection
+  const activeVariedadId = filters.variedad
+    ? Number(filters.variedad)
+    : selectedId;
 
   const { data: variedades } = useQuery({
     queryKey: ["lookup", "variedades"],
@@ -114,10 +317,58 @@ function TabVariedad() {
   });
 
   const { data: report, isLoading, isFetching } = useQuery({
-    queryKey: ["reporte", "variedad", selectedId],
-    queryFn: () => reportesService.variedad(selectedId!),
-    enabled: selectedId !== null,
+    queryKey: ["reporte", "variedad", activeVariedadId],
+    queryFn: () => reportesService.variedad(activeVariedadId!),
+    enabled: activeVariedadId !== null,
   });
+
+  // Filtered list of variedades matching the global filters (especie, pmg)
+  const filteredVarList = useMemo(() => {
+    const list = (variedades as any[] | undefined) || [];
+    return list.filter((v: any) => {
+      if (filters.especie && String(v.id_especie) !== filters.especie) return false;
+      if (filters.pmg && String(v.id_pmg) !== filters.pmg) return false;
+      return true;
+    });
+  }, [variedades, filters.especie, filters.pmg]);
+
+  // Columns for the summary list table
+  const variedadListColumns = [
+    { accessorKey: "codigo", header: "Codigo" },
+    { accessorKey: "nombre", header: "Nombre" },
+    {
+      accessorKey: "id_especie",
+      header: "Especie",
+      cell: ({ getValue }: any) => lk.especie(getValue()),
+    },
+    {
+      accessorKey: "id_pmg",
+      header: "PMG",
+      cell: ({ getValue }: any) => lk.pmg(getValue()),
+    },
+    {
+      accessorKey: "estado",
+      header: "Estado",
+      cell: ({ getValue }: any) => (
+        <StatusBadge status={(getValue() as string) || "prospecto"} />
+      ),
+    },
+    {
+      id: "acciones",
+      header: "",
+      cell: ({ row }: any) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs text-garces-cherry hover:bg-garces-cherry-pale gap-1"
+          onClick={() => setSelectedId(row.original.id_variedad)}
+        >
+          <ArrowRight className="h-3 w-3" />
+          Ver Reporte
+        </Button>
+      ),
+    },
+  ];
 
   const inventarioColumns = [
     { accessorKey: "codigo_lote", header: "Codigo Lote" },
@@ -199,35 +450,53 @@ function TabVariedad() {
     },
   ];
 
-  const varList = (variedades as any[] | undefined) || [];
+  // If no variedad is selected, show the filtered list
+  if (!activeVariedadId) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Sprout className="h-4 w-4 text-garces-cherry" />
+            <h4 className="font-semibold text-sm text-garces-cherry">
+              Variedades
+              {(filters.especie || filters.pmg) && (
+                <span className="font-normal text-muted-foreground ml-2">
+                  ({filteredVarList.length} resultados con filtros aplicados)
+                </span>
+              )}
+            </h4>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Seleccione una variedad de los filtros superiores o haga clic en "Ver Reporte" para generar el informe completo.
+          </p>
+          <CrudTable
+            data={filteredVarList}
+            columns={variedadListColumns as any}
+            pageSize={15}
+            searchPlaceholder="Buscar variedad..."
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      {/* Selector */}
-      <div className="flex items-end gap-3">
-        <div className="flex-1 max-w-md">
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">
-            Seleccionar Variedad
-          </label>
-          <select
-            className="w-full h-9 rounded-md border border-input bg-white px-3 text-sm shadow-sm focus:ring-1 focus:ring-garces-cherry outline-none"
-            value={selectedId ?? ""}
-            onChange={(e) =>
-              setSelectedId(e.target.value ? Number(e.target.value) : null)
-            }
-          >
-            <option value="">-- Seleccione --</option>
-            {varList.map((v: any) => (
-              <option key={v.id_variedad} value={v.id_variedad}>
-                {v.nombre} ({v.codigo})
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      {/* Back to list button when viewing detail via local selection */}
+      {!filters.variedad && selectedId && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setSelectedId(null)}
+          className="text-xs text-muted-foreground hover:text-garces-cherry gap-1"
+        >
+          <ArrowRight className="h-3 w-3 rotate-180" />
+          Volver al listado
+        </Button>
+      )}
 
       {/* Loading */}
-      {(isLoading || isFetching) && selectedId && (
+      {(isLoading || isFetching) && activeVariedadId && (
         <div className="flex items-center gap-2 text-garces-cherry py-8 justify-center">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="text-sm">Generando reporte...</span>
@@ -378,7 +647,7 @@ function TabVariedad() {
           </div>
 
           {/* AI Analysis */}
-          <AIAnalysisCard tipo="variedad" idEntidad={selectedId} enabled={!!report} />
+          <AIAnalysisCard tipo="variedad" idEntidad={activeVariedadId} enabled={!!report} />
         </>
       )}
     </div>
@@ -387,7 +656,7 @@ function TabVariedad() {
 
 /* ─── Tab: Lote ────────────────────────────────────────────────────────── */
 
-function TabLote() {
+function TabLote({ filters }: { filters: ReportFilters }) {
   const lk = useLookups();
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -402,6 +671,62 @@ function TabLote() {
     queryFn: () => reportesService.lote(selectedId!),
     enabled: selectedId !== null,
   });
+
+  // Filtered list of lotes matching the global filters
+  const filteredLoteList = useMemo(() => {
+    const list = (lotes as any[] | undefined) || [];
+    return list.filter((l: any) => {
+      if (filters.especie && String(l.id_especie) !== filters.especie) return false;
+      if (filters.pmg && String(l.id_pmg) !== filters.pmg) return false;
+      if (filters.variedad && String(l.id_variedad) !== filters.variedad) return false;
+      return true;
+    });
+  }, [lotes, filters.especie, filters.pmg, filters.variedad]);
+
+  // Columns for the summary list table
+  const loteListColumns = [
+    { accessorKey: "codigo_lote", header: "Codigo Lote" },
+    {
+      accessorKey: "id_variedad",
+      header: "Variedad",
+      cell: ({ getValue }: any) => lk.variedad(getValue()),
+    },
+    {
+      accessorKey: "id_especie",
+      header: "Especie",
+      cell: ({ getValue }: any) => lk.especie(getValue()),
+    },
+    {
+      accessorKey: "cantidad_actual",
+      header: "Stock Actual",
+      cell: ({ getValue }: any) => formatNumber(getValue() as number),
+    },
+    {
+      accessorKey: "estado",
+      header: "Estado",
+      cell: ({ getValue }: any) => <StatusBadge status={getValue() as string} />,
+    },
+    {
+      accessorKey: "fecha_ingreso",
+      header: "Fecha Ingreso",
+      cell: ({ getValue }: any) => formatDate(getValue() as string),
+    },
+    {
+      id: "acciones",
+      header: "",
+      cell: ({ row }: any) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs text-garces-cherry hover:bg-garces-cherry-pale gap-1"
+          onClick={() => setSelectedId(row.original.id_inventario)}
+        >
+          <ArrowRight className="h-3 w-3" />
+          Ver Reporte
+        </Button>
+      ),
+    },
+  ];
 
   const movimientosColumns = [
     {
@@ -461,32 +786,48 @@ function TabLote() {
     { accessorKey: "ano_plantacion", header: "Anio Plant." },
   ];
 
-  const loteList = (lotes as any[] | undefined) || [];
+  // If no lote is selected, show the filtered list
+  if (!selectedId) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Package className="h-4 w-4 text-garces-cherry" />
+            <h4 className="font-semibold text-sm text-garces-cherry">
+              Lotes de Inventario
+              {(filters.especie || filters.variedad || filters.pmg) && (
+                <span className="font-normal text-muted-foreground ml-2">
+                  ({filteredLoteList.length} resultados con filtros aplicados)
+                </span>
+              )}
+            </h4>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Use los filtros superiores para acotar los lotes, luego haga clic en "Ver Reporte" para el detalle completo.
+          </p>
+          <CrudTable
+            data={filteredLoteList}
+            columns={loteListColumns as any}
+            pageSize={15}
+            searchPlaceholder="Buscar lote..."
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      {/* Selector */}
-      <div className="flex items-end gap-3">
-        <div className="flex-1 max-w-md">
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">
-            Seleccionar Lote
-          </label>
-          <select
-            className="w-full h-9 rounded-md border border-input bg-white px-3 text-sm shadow-sm focus:ring-1 focus:ring-garces-cherry outline-none"
-            value={selectedId ?? ""}
-            onChange={(e) =>
-              setSelectedId(e.target.value ? Number(e.target.value) : null)
-            }
-          >
-            <option value="">-- Seleccione --</option>
-            {loteList.map((l: any) => (
-              <option key={l.id_inventario} value={l.id_inventario}>
-                {l.codigo_lote} - {lk.variedad(l.id_variedad)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      {/* Back to list */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setSelectedId(null)}
+        className="text-xs text-muted-foreground hover:text-garces-cherry gap-1"
+      >
+        <ArrowRight className="h-3 w-3 rotate-180" />
+        Volver al listado
+      </Button>
 
       {/* Loading */}
       {(isLoading || isFetching) && selectedId && (
@@ -635,9 +976,14 @@ function TabLote() {
 
 /* ─── Tab: TestBlock ───────────────────────────────────────────────────── */
 
-function TabTestBlock() {
+function TabTestBlock({ filters }: { filters: ReportFilters }) {
   const lk = useLookups();
   const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  // Derive selected testblock from filters or local selection
+  const activeTestblockId = filters.testblock
+    ? Number(filters.testblock)
+    : selectedId;
 
   const { data: testblocks } = useQuery({
     queryKey: ["testblocks", "list"],
@@ -646,10 +992,58 @@ function TabTestBlock() {
   });
 
   const { data: report, isLoading, isFetching } = useQuery({
-    queryKey: ["reporte", "testblock", selectedId],
-    queryFn: () => reportesService.testblock(selectedId!),
-    enabled: selectedId !== null,
+    queryKey: ["reporte", "testblock", activeTestblockId],
+    queryFn: () => reportesService.testblock(activeTestblockId!),
+    enabled: activeTestblockId !== null,
   });
+
+  // Filtered testblock list matching global filters
+  const filteredTbList = useMemo(() => {
+    const list = (testblocks as any[] | undefined) || [];
+    return list.filter((tb: any) => {
+      if (filters.campo && String(tb.id_campo) !== filters.campo) return false;
+      return true;
+    });
+  }, [testblocks, filters.campo]);
+
+  // Columns for the summary list table
+  const tbListColumns = [
+    { accessorKey: "codigo", header: "Codigo" },
+    { accessorKey: "nombre", header: "Nombre" },
+    {
+      accessorKey: "id_campo",
+      header: "Campo",
+      cell: ({ getValue }: any) => lk.campo(getValue()),
+    },
+    {
+      accessorKey: "total_posiciones",
+      header: "Posiciones",
+      cell: ({ getValue }: any) =>
+        getValue() != null ? formatNumber(getValue() as number) : "-",
+    },
+    {
+      accessorKey: "estado",
+      header: "Estado",
+      cell: ({ getValue }: any) => (
+        <StatusBadge status={(getValue() as string) || "activo"} />
+      ),
+    },
+    {
+      id: "acciones",
+      header: "",
+      cell: ({ row }: any) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs text-garces-cherry hover:bg-garces-cherry-pale gap-1"
+          onClick={() => setSelectedId(row.original.id_testblock)}
+        >
+          <ArrowRight className="h-3 w-3" />
+          Ver Reporte
+        </Button>
+      ),
+    },
+  ];
 
   const variedadesColumns = [
     { accessorKey: "nombre", header: "Variedad" },
@@ -709,39 +1103,57 @@ function TabTestBlock() {
     { accessorKey: "observaciones", header: "Observaciones" },
   ];
 
-  const tbList = (testblocks as any[] | undefined) || [];
-
   const totalPosiciones = report
     ? Object.values(report.posiciones_resumen).reduce((a, b) => a + b, 0)
     : 0;
 
-  return (
-    <div className="space-y-4">
-      {/* Selector */}
-      <div className="flex items-end gap-3">
-        <div className="flex-1 max-w-md">
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">
-            Seleccionar TestBlock
-          </label>
-          <select
-            className="w-full h-9 rounded-md border border-input bg-white px-3 text-sm shadow-sm focus:ring-1 focus:ring-garces-cherry outline-none"
-            value={selectedId ?? ""}
-            onChange={(e) =>
-              setSelectedId(e.target.value ? Number(e.target.value) : null)
-            }
-          >
-            <option value="">-- Seleccione --</option>
-            {tbList.map((tb: any) => (
-              <option key={tb.id_testblock} value={tb.id_testblock}>
-                {tb.nombre} ({tb.codigo})
-              </option>
-            ))}
-          </select>
+  // If no testblock is selected, show filtered list
+  if (!activeTestblockId) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Grid3X3 className="h-4 w-4 text-garces-cherry" />
+            <h4 className="font-semibold text-sm text-garces-cherry">
+              TestBlocks
+              {filters.campo && (
+                <span className="font-normal text-muted-foreground ml-2">
+                  ({filteredTbList.length} resultados con filtros aplicados)
+                </span>
+              )}
+            </h4>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Use los filtros superiores (Campo, TestBlock) para acotar, luego haga clic en "Ver Reporte" para el detalle completo.
+          </p>
+          <CrudTable
+            data={filteredTbList}
+            columns={tbListColumns as any}
+            pageSize={15}
+            searchPlaceholder="Buscar testblock..."
+          />
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Back to list when viewing detail via local selection */}
+      {!filters.testblock && selectedId && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setSelectedId(null)}
+          className="text-xs text-muted-foreground hover:text-garces-cherry gap-1"
+        >
+          <ArrowRight className="h-3 w-3 rotate-180" />
+          Volver al listado
+        </Button>
+      )}
 
       {/* Loading */}
-      {(isLoading || isFetching) && selectedId && (
+      {(isLoading || isFetching) && activeTestblockId && (
         <div className="flex items-center gap-2 text-garces-cherry py-8 justify-center">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="text-sm">Generando reporte...</span>
@@ -885,7 +1297,7 @@ function TabTestBlock() {
           </section>
 
           {/* AI Analysis */}
-          <AIAnalysisCard tipo="testblock" idEntidad={selectedId} enabled={!!report} />
+          <AIAnalysisCard tipo="testblock" idEntidad={activeTestblockId} enabled={!!report} />
         </>
       )}
     </div>
@@ -895,6 +1307,8 @@ function TabTestBlock() {
 /* ─── Main Page ────────────────────────────────────────────────────────── */
 
 export function ReportesPage() {
+  const [filters, setFilters] = useState<ReportFilters>({ ...EMPTY_FILTERS });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -904,10 +1318,13 @@ export function ReportesPage() {
         <div>
           <h2 className="text-xl font-bold text-garces-cherry">Reportes y Gestion</h2>
           <p className="text-sm text-muted-foreground">
-            Reportes cruzados con analisis AI integrado
+            Reportes cruzados con analisis AI integrado — combine filtros para acotar resultados
           </p>
         </div>
       </div>
+
+      {/* Universal filter bar */}
+      <FilterBar filters={filters} onChange={setFilters} />
 
       <Tabs defaultValue="variedad">
         <TabsList className="w-full sm:w-auto">
@@ -926,13 +1343,13 @@ export function ReportesPage() {
         </TabsList>
 
         <TabsContent value="variedad">
-          <TabVariedad />
+          <TabVariedad filters={filters} />
         </TabsContent>
         <TabsContent value="lote">
-          <TabLote />
+          <TabLote filters={filters} />
         </TabsContent>
         <TabsContent value="testblock">
-          <TabTestBlock />
+          <TabTestBlock filters={filters} />
         </TabsContent>
       </Tabs>
     </div>
