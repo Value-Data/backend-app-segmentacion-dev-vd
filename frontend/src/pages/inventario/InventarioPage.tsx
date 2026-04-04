@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle, Eye, QrCode, Filter, X } from "lucide-react";
+import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle, Eye, QrCode, Filter, X, CheckSquare, FileDown } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -57,6 +57,7 @@ export function InventarioPage() {
   const [despachoOpen, setDespachoOpen] = useState(false);
   const [selectedBodega, setSelectedBodega] = useState<number | "todas">("todas");
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>("todos");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<{
     especie: string;
@@ -96,7 +97,42 @@ export function InventarioPage() {
     { key: "motivo", label: "Motivo", type: "text" },
   ];
 
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredInventario.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredInventario.map((l) => l.id_inventario)));
+    }
+  };
+
   const columns = [
+    {
+      id: "select",
+      header: () => (
+        <input
+          type="checkbox"
+          checked={filteredInventario.length > 0 && selectedIds.size === filteredInventario.length}
+          onChange={toggleSelectAll}
+          className="rounded border-gray-300"
+        />
+      ),
+      size: 40,
+      cell: ({ row }: any) => (
+        <input
+          type="checkbox"
+          checked={selectedIds.has(row.original.id_inventario)}
+          onChange={() => toggleSelect(row.original.id_inventario)}
+          className="rounded border-gray-300"
+        />
+      ),
+    },
     { accessorKey: "codigo_lote", header: "Lote" },
     { accessorKey: "id_variedad", header: "Variedad", cell: ({ getValue }: any) => lk.variedad(getValue()) || "-" },
     {
@@ -265,9 +301,14 @@ export function InventarioPage() {
   });
 
   const guiaColumns = [
-    { accessorKey: "numero_guia", header: "N. Guia" },
+    { accessorKey: "numero_guia", header: "N. Guia", cell: ({ getValue }: any) => (
+      <span className="font-mono font-medium text-garces-cherry">{getValue()}</span>
+    )},
+    { accessorKey: "id_bodega_origen", header: "Bodega Origen", cell: ({ getValue }: any) => lk.bodega(getValue()) },
     { accessorKey: "id_testblock_destino", header: "TB Destino" },
-    { accessorKey: "total_plantas", header: "Total" },
+    { accessorKey: "total_plantas", header: "Total Plantas", cell: ({ getValue }: any) => (
+      <span className="font-medium tabular-nums">{formatNumber(getValue() as number)}</span>
+    )},
     { accessorKey: "estado", header: "Estado", cell: ({ getValue }: any) => <StatusBadge status={getValue() as string} /> },
     { accessorKey: "responsable", header: "Responsable" },
     { accessorKey: "fecha_creacion", header: "Fecha", cell: ({ getValue }: any) => formatDate(getValue() as string) },
@@ -517,6 +558,82 @@ export function InventarioPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Bulk actions floating bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-garces-cherry text-white rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4 animate-in slide-in-from-bottom-4">
+          <span className="text-sm font-medium">
+            <CheckSquare className="h-4 w-4 inline mr-1" />
+            {selectedIds.size} seleccionado{selectedIds.size > 1 ? "s" : ""}
+          </span>
+          <div className="h-5 w-px bg-white/30" />
+          <button
+            onClick={async () => {
+              const ids = Array.from(selectedIds);
+              const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+              try {
+                const resp = await fetch(`${base}/inventario/qr-batch`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(ids),
+                });
+                if (resp.ok) {
+                  const blob = await resp.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "qr-labels.pdf";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast.success(`PDF con ${ids.length} etiquetas QR generado`);
+                } else {
+                  toast.error("Error al generar PDF de QR");
+                }
+              } catch {
+                toast.error("Error de conexion al generar QR");
+              }
+            }}
+            className="flex items-center gap-1.5 text-sm hover:bg-white/20 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <QrCode className="h-4 w-4" />
+            Generar QR ({selectedIds.size})
+          </button>
+          <button
+            onClick={() => {
+              // Export selected as CSV
+              const selected = filteredInventario.filter((l) => selectedIds.has(l.id_inventario));
+              const headers = ["codigo_lote", "variedad", "portainjerto", "especie", "stock", "estado"];
+              const rows = selected.map((l) => [
+                l.codigo_lote,
+                lk.variedad(l.id_variedad),
+                lk.portainjerto(l.id_portainjerto),
+                lk.especie(l.id_especie),
+                l.cantidad_actual,
+                l.estado,
+              ].join(","));
+              const csv = [headers.join(","), ...rows].join("\n");
+              const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "inventario-seleccion.csv";
+              a.click();
+              URL.revokeObjectURL(url);
+              toast.success(`${selected.length} lotes exportados`);
+            }}
+            className="flex items-center gap-1.5 text-sm hover:bg-white/20 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <FileDown className="h-4 w-4" />
+            Exportar
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-sm hover:bg-white/20 rounded-lg px-2 py-1.5 transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <PlantWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
 
