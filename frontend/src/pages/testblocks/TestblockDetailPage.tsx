@@ -228,20 +228,24 @@ export function TestblockDetailPage() {
       }
     }
 
-    // All globally available lotes
+    // All globally available lotes (with resolved names)
     if (inventarioGlobal) {
       for (const lote of inventarioGlobal as any[]) {
         if (!seen.has(lote.id_inventario) && lote.cantidad_actual > 0) {
+          const varName = lote.id_variedad ? lk.variedad(lote.id_variedad) : "?";
+          const piName = lote.id_portainjerto ? lk.portainjerto(lote.id_portainjerto) : "?";
+          const espName = lote.id_especie ? lk.especie(lote.id_especie) : null;
+          const speciesTag = espName && espName !== "-" ? `[${espName}] ` : "";
           opts.push({
             value: lote.id_inventario,
-            label: `${lote.codigo_lote} — Stock: ${lote.cantidad_actual} (vivero)`,
+            label: `${speciesTag}${lote.codigo_lote} — ${varName} / ${piName} — Stock: ${lote.cantidad_actual} (vivero)`,
           });
         }
       }
     }
 
     return opts;
-  }, [inventarioTb, inventarioGlobal]);
+  }, [inventarioTb, inventarioGlobal, lk]);
 
   // Confirmation field definitions
   const altaConfirmFields: FieldDef[] = useMemo(() => [
@@ -388,10 +392,12 @@ export function TestblockDetailPage() {
     }
 
     setIsProcessing(false);
+    setAltaConfirmOpen(false);
 
     if (success > 0) {
       toast.success(`Alta completada: ${success} plantas dadas de alta${failed > 0 ? `, ${failed} con error` : ""}`);
       queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+      queryClient.invalidateQueries({ queryKey: ["inventario"] });
     }
 
     exitSelectionMode();
@@ -414,6 +420,7 @@ export function TestblockDetailPage() {
     }
 
     setIsProcessing(false);
+    setBajaConfirmOpen(false);
     exitSelectionMode();
   }, [selectedPositions, tbId, queryClient, exitSelectionMode, batchObservaciones]);
 
@@ -440,10 +447,12 @@ export function TestblockDetailPage() {
     }
 
     setIsProcessing(false);
+    setReplanteConfirmOpen(false);
 
     if (success > 0) {
       toast.success(`Replante completado: ${success} plantas replantadas${failed > 0 ? `, ${failed} con error` : ""}`);
       queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+      queryClient.invalidateQueries({ queryKey: ["inventario"] });
     }
 
     exitSelectionMode();
@@ -961,6 +970,61 @@ export function TestblockDetailPage() {
                   </table>
                 )}
               </div>
+
+              {/* --- Inventario Disponible en Vivero --- */}
+              <div className="bg-white rounded-xl border overflow-auto mt-4">
+                <div className="px-3 py-2 border-b bg-muted/30 flex items-center gap-2">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-semibold text-sm">Inventario Disponible en Vivero</span>
+                  <span className="text-[10px] text-muted-foreground ml-1">
+                    (lotes con stock que se pueden plantar directamente)
+                  </span>
+                </div>
+                {(!inventarioGlobal || (inventarioGlobal as any[]).filter((l: any) => l.cantidad_actual > 0).length === 0) ? (
+                  <div className="text-center py-6 text-muted-foreground text-sm">
+                    No hay lotes con stock disponible en vivero.
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="px-3 py-2 text-left">Lote</th>
+                        <th className="px-3 py-2 text-left">Especie</th>
+                        <th className="px-3 py-2 text-left">Variedad</th>
+                        <th className="px-3 py-2 text-left">Portainjerto</th>
+                        <th className="px-3 py-2 text-left">Tipo Planta</th>
+                        <th className="px-3 py-2 text-right">Stock</th>
+                        <th className="px-3 py-2 text-center">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(inventarioGlobal as any[])
+                        .filter((l: any) => l.cantidad_actual > 0)
+                        .map((lote: any) => (
+                        <tr key={lote.id_inventario} className="border-b hover:bg-muted/30">
+                          <td className="px-3 py-2 font-medium">
+                            <button
+                              onClick={() => navigate(`/inventario/${lote.id_inventario}`)}
+                              className="text-garces-cherry hover:underline inline-flex items-center gap-1"
+                            >
+                              {lote.codigo_lote}
+                              <ExternalLink className="h-3 w-3" />
+                            </button>
+                          </td>
+                          <td className="px-3 py-2">{lote.id_especie ? lk.especie(lote.id_especie) : "-"}</td>
+                          <td className="px-3 py-2">{lote.id_variedad ? lk.variedad(lote.id_variedad) : "-"}</td>
+                          <td className="px-3 py-2">{lote.id_portainjerto ? lk.portainjerto(lote.id_portainjerto) : "-"}</td>
+                          <td className="px-3 py-2">{lote.tipo_planta || "-"}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-green-600">{formatNumber(lote.cantidad_actual)}</td>
+                          <td className="px-3 py-2 text-center">
+                            <StatusBadge status={lote.estado || "disponible"} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </TabsContent>
 
             {/* --- HISTORIAL TAB (testblock-level) --- */}
@@ -1275,7 +1339,7 @@ export function TestblockDetailPage() {
       {/* Alta confirmation dialog */}
       <CrudForm
         open={altaConfirmOpen}
-        onClose={() => setAltaConfirmOpen(false)}
+        onClose={() => { setAltaConfirmOpen(false); exitSelectionMode(); }}
         onSubmit={handleAltaSubmit}
         fields={altaConfirmFields}
         title={`Alta de Plantas (${selectedPositions.size} posiciones)`}
@@ -1285,7 +1349,7 @@ export function TestblockDetailPage() {
       {/* Baja confirmation dialog */}
       <CrudForm
         open={bajaConfirmOpen}
-        onClose={() => setBajaConfirmOpen(false)}
+        onClose={() => { setBajaConfirmOpen(false); exitSelectionMode(); }}
         onSubmit={handleBajaSubmit}
         fields={bajaConfirmFields}
         title={`Baja de Plantas (${selectedPositions.size} posiciones)`}
@@ -1295,7 +1359,7 @@ export function TestblockDetailPage() {
       {/* Replante confirmation dialog */}
       <CrudForm
         open={replanteConfirmOpen}
-        onClose={() => setReplanteConfirmOpen(false)}
+        onClose={() => { setReplanteConfirmOpen(false); exitSelectionMode(); }}
         onSubmit={handleReplanteSubmit}
         fields={replanteConfirmFields}
         title={`Replante de Plantas (${selectedPositions.size} posiciones)`}
