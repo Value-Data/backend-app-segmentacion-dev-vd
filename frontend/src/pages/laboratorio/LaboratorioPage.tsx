@@ -402,7 +402,11 @@ export function LaboratorioPage() {
 
       <Tabs defaultValue="mediciones">
         <TabsList>
-          <TabsTrigger value="mediciones">Mediciones</TabsTrigger>
+          <TabsTrigger value="mediciones">Laboratorio</TabsTrigger>
+          <TabsTrigger value="poscosecha" className="gap-1">
+            <Snowflake className="h-3.5 w-3.5" />
+            Poscosecha
+          </TabsTrigger>
           <TabsTrigger value="ingreso-rapido" className="gap-1">
             <Zap className="h-3.5 w-3.5" />
             Ingreso Rapido
@@ -500,6 +504,62 @@ export function LaboratorioPage() {
             searchPlaceholder="Buscar medicion..."
             exportFilename="mediciones_laboratorio"
           />
+        </TabsContent>
+
+        {/* Poscosecha tab */}
+        <TabsContent value="poscosecha">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Evaluaciones despues de almacenamiento en frio. Filtre por periodo de almacenaje.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+              <div className="w-44">
+                <Label className="text-xs">Especie</Label>
+                <Select
+                  value={filterEspecie}
+                  onValueChange={(v) => {
+                    setFilterEspecie(v === "__all__" ? "" : v);
+                    setFilterCampo("");
+                  }}
+                >
+                  <SelectTrigger className="mt-1 h-9">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todas</SelectItem>
+                    {lk.options.especies.map((o) => (
+                      <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-36">
+                <Label className="text-xs">Periodo Almacenaje</Label>
+                <Select value="" onValueChange={() => {}}>
+                  <SelectTrigger className="mt-1 h-9">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todos</SelectItem>
+                    <SelectItem value="30-40">30-40 dias</SelectItem>
+                    <SelectItem value="40-50">40-50 dias</SelectItem>
+                    <SelectItem value="50-60">50-60 dias</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <CrudTable
+              data={(mediciones || []).filter((m: any) =>
+                m.periodo_almacenaje != null && m.periodo_almacenaje > 0
+              )}
+              columns={medicionColumns as any}
+              isLoading={isLoading}
+              searchPlaceholder="Buscar variedad, campo..."
+              exportFilename="mediciones_poscosecha"
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="ingreso-rapido">
