@@ -343,28 +343,30 @@ export function TestblockDetailPage() {
   /*  Selection mode handlers                                          */
   /* ---------------------------------------------------------------- */
 
+  // Check if there are vacant positions available
+  const vacantCount = useMemo(() => {
+    if (!grilla?.posiciones) return 0;
+    return grilla.posiciones.filter((p) => p.estado === "vacia").length;
+  }, [grilla]);
+
   const enterSelectionMode = useCallback(async (mode: SelectionMode) => {
-    // For alta mode: auto-generate positions first if grid has gaps
-    if (mode === "alta" && tb) {
-      const expectedTotal = (hileras || 0) * (maxPos || 0);
-      const actualTotal = grilla?.posiciones?.length || 0;
-      if (expectedTotal > 0 && actualTotal < expectedTotal) {
-        try {
-          await testblockService.generarPosiciones(tbId, {
-            num_hileras: hileras,
-            posiciones_por_hilera: maxPos,
-          });
-          queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
-          toast("Posiciones generadas. Seleccione las vacias para plantar.", { icon: "+" });
-        } catch {
-          // Positions already exist — ignore
-        }
+    // For alta mode: check if there are vacant positions
+    if (mode === "alta" && vacantCount === 0) {
+      // No vacant positions — offer to add a new hilera
+      const addHilera = confirm(
+        `No hay posiciones vacias disponibles (todas estan plantadas).\n\n` +
+        `¿Desea agregar una hilera nueva con posiciones vacias para plantar?`
+      );
+      if (addHilera) {
+        setAddHileraOpen(true);
+        return;
       }
+      return;
     }
     setSelectionMode(mode);
     setSelectedPositions(new Set());
     setSelectedPos(null);
-  }, [tb, hileras, maxPos, grilla, tbId, queryClient]);
+  }, [vacantCount]);
 
   const exitSelectionMode = useCallback(() => {
     setSelectionMode("none");
