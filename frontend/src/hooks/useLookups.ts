@@ -80,6 +80,11 @@ export function useLookups() {
     queryFn: () => mantenedorService("comunas").list(),
     staleTime: 5 * 60_000,
   });
+  const { data: bodegas } = useQuery({
+    queryKey: ["lookup", "bodegas"],
+    queryFn: () => mantenedorService("bodegas").list(),
+    staleTime: 5 * 60_000,
+  });
 
   // Memoize all ID->name maps — only recomputed when underlying data changes
   const maps = useMemo(() => ({
@@ -92,7 +97,8 @@ export function useLookups() {
     tempMap: buildMap(temporadas as LookupItem[], "id_temporada", "nombre"),
     regionMap: buildMap(regiones as LookupItem[], "id_region", "nombre"),
     comunaMap: buildMap(comunas as LookupItem[], "id_comuna", "nombre"),
-  }), [variedades, especies, portainjertos, campos, pmgs, viveros, temporadas, regiones, comunas]);
+    bodegaMap: buildMap(bodegas as LookupItem[], "id_bodega", "nombre"),
+  }), [variedades, especies, portainjertos, campos, pmgs, viveros, temporadas, regiones, comunas, bodegas]);
 
   const resolve = useCallback(
     (map: Map<number, string>, id: unknown): string => {
@@ -150,6 +156,7 @@ export function useLookups() {
     temporada: (id: unknown) => resolve(maps.tempMap, id),
     region: (id: unknown) => resolve(maps.regionMap, id),
     comuna: (id: unknown) => resolve(maps.comunaMap, id),
+    bodega: (id: unknown) => resolve(maps.bodegaMap, id),
 
     // Datos raw para dropdowns en formularios
     rawData: {

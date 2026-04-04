@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, ArrowDownRight, ArrowUpRight, ExternalLink, FileDown } from "lucide-react";
+import { ArrowLeft, Plus, ArrowDownRight, ArrowUpRight, ExternalLink, FileDown, QrCode } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -193,15 +193,26 @@ export function LoteDetailPage() {
             <StatusBadge status={lote.estado} />
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => window.open(laboratorioService.reporteLotePdfUrl(loteId), "_blank")}
-          className="gap-1.5"
-        >
-          <FileDown className="h-4 w-4" />
-          Descargar PDF
-        </Button>
+        <div className="flex gap-2">
+          <a
+            href={inventarioService.qrUrl(loteId)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
+          >
+            <QrCode className="h-4 w-4" />
+            QR
+          </a>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(laboratorioService.reporteLotePdfUrl(loteId), "_blank")}
+            className="gap-1.5"
+          >
+            <FileDown className="h-4 w-4" />
+            PDF
+          </Button>
+        </div>
       </div>
 
       {/* Lote info */}
@@ -235,8 +246,20 @@ export function LoteDetailPage() {
           <p className="font-medium">{lk.vivero(lote.id_vivero)}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">Ubicacion</span>
-          <p className="font-medium">{lote.ubicacion || "-"}</p>
+          <span className="text-muted-foreground">PMG</span>
+          <p className="font-medium">{lk.pmg ? lk.pmg(lote.id_pmg) : "-"}</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Bodega</span>
+          <p className="font-medium">{lk.bodega ? lk.bodega(lote.id_bodega) : "-"}</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Tipo Planta</span>
+          <p className="font-medium">{lote.tipo_planta || "-"}</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Injertacion</span>
+          <p className="font-medium">{lote.tipo_injertacion || "-"}</p>
         </div>
       </div>
 
