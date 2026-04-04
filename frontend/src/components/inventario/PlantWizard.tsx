@@ -274,7 +274,7 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
   };
 
   // ---- Validation ----
-  const step1Valid = !!data.id_especie && !!data.id_variedad && !!data.id_portainjerto;
+  const step1Valid = !!data.id_especie && (!!data.id_variedad || !!data.id_portainjerto);
   const step2Valid = !!data.codigo_lote && !!data.cantidad_inicial && Number(data.cantidad_inicial) > 0;
 
   // ---- Navigation ----
@@ -331,7 +331,7 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
           <div className="space-y-5">
             <div className="bg-garces-cherry-pale/50 rounded-lg p-3 border border-garces-cherry-pale">
               <p className="text-sm text-garces-cherry-dark font-medium">
-                Paso 1: Define la combinacion de variedad y portainjerto que compone la planta.
+                Paso 1: Define la planta. Al menos Variedad o Portainjerto es requerido.
               </p>
             </div>
 
@@ -358,7 +358,7 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
               {/* Variedad — filtered by especie */}
               <div>
                 <Label htmlFor="wiz-variedad">
-                  Variedad <span className="text-destructive">*</span>
+                  Variedad
                 </Label>
                 <Select
                   value={data.id_variedad}
@@ -387,7 +387,7 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
               {/* Portainjerto */}
               <div>
                 <Label htmlFor="wiz-pi">
-                  Portainjerto <span className="text-destructive">*</span>
+                  Portainjerto
                 </Label>
                 <Select value={data.id_portainjerto} onValueChange={(v) => set("id_portainjerto", v)}>
                   <SelectTrigger className="mt-1" id="wiz-pi">
@@ -422,13 +422,16 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
             </div>
 
             {/* Preview card */}
-            {data.id_variedad && data.id_portainjerto && (
+            {(data.id_variedad || data.id_portainjerto) && (
               <div className="bg-white border-2 border-garces-cherry/20 rounded-lg p-4 mt-2">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
                   Planta definida
                 </p>
                 <p className="text-base font-semibold text-garces-cherry">
-                  {variedadName} <span className="text-gray-400 font-normal mx-1">&times;</span> {portainjertoName}
+                  {variedadName !== "-" ? variedadName : "Sin variedad"}
+                  {portainjertoName !== "-" && (
+                    <><span className="text-gray-400 font-normal mx-1">&times;</span>{portainjertoName}</>
+                  )}
                 </p>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   {especieName}
@@ -461,7 +464,11 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
             <div className="bg-garces-cherry-pale/50 rounded-lg p-3 border border-garces-cherry-pale">
               <p className="text-sm text-garces-cherry-dark font-medium">
                 Paso 2: Configura el lote. Cada unidad en el lote es una planta de tipo{" "}
-                <span className="font-bold">{variedadName} &times; {portainjertoName}</span>.
+                <span className="font-bold">
+                  {variedadName !== "-" ? variedadName : ""}
+                  {variedadName !== "-" && portainjertoName !== "-" ? " × " : ""}
+                  {portainjertoName !== "-" ? portainjertoName : ""}
+                </span>.
               </p>
             </div>
 
@@ -509,13 +516,15 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
               {/* Tipo planta */}
               <div>
                 <Label htmlFor="wiz-tipo">Tipo Planta</Label>
-                <Input
-                  id="wiz-tipo"
-                  className="mt-1"
-                  value={data.tipo_planta}
-                  onChange={(e) => set("tipo_planta", e.target.value)}
-                  placeholder="Ej: Autoraizada, Injertada..."
-                />
+                <Select value={data.tipo_planta} onValueChange={(v) => set("tipo_planta", v)}>
+                  <SelectTrigger className="mt-1" id="wiz-tipo">
+                    <SelectValue placeholder="Seleccionar tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Raíz desnuda">Raiz desnuda</SelectItem>
+                    <SelectItem value="Bolsa primavera">Bolsa primavera</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Vivero origen */}

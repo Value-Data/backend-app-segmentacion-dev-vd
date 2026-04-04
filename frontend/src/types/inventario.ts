@@ -1,7 +1,7 @@
 export interface InventarioVivero {
   id_inventario: number;
   codigo_lote: string;
-  id_variedad: number;
+  id_variedad?: number | null;
   id_portainjerto?: number | null;
   id_vivero?: number | null;
   id_especie?: number | null;

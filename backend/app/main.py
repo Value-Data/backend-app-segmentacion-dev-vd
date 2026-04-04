@@ -166,5 +166,6 @@ def root():
 
 
 @app.get("/health")
+@app.get("/api/v1/health")
 def health():
     return {"status": "ok"}

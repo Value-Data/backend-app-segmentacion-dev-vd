@@ -10,7 +10,7 @@ class InventarioVivero(SQLModel, table=True):
     __tablename__ = "inventario_vivero"
     id_inventario: Optional[int] = Field(default=None, primary_key=True)
     codigo_lote: str = Field(sa_column=Column(sa.String(50), unique=True, nullable=False))
-    id_variedad: int = Field(foreign_key="variedades.id_variedad")
+    id_variedad: Optional[int] = Field(default=None, foreign_key="variedades.id_variedad")
     id_portainjerto: Optional[int] = Field(default=None, foreign_key="portainjertos.id_portainjerto")
     id_vivero: Optional[int] = Field(default=None, foreign_key="viveros.id_vivero")
     id_especie: Optional[int] = Field(default=None, foreign_key="especies.id_especie")

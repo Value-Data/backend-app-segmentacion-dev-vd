@@ -6,6 +6,7 @@ A single set of endpoints handles 15+ entity types with minimal code.
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlmodel import select
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
@@ -77,6 +78,19 @@ def _resolve(entidad: str):
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Entidad '{entidad}' no existe")
     return entry
+
+
+# ── VARIEDADES BY PMG ──────────────────────────────────────────────────────
+@router.get("/variedades/by-pmg/{pmg_id}")
+def variedades_by_pmg(
+    pmg_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    rows = db.exec(
+        select(Variedad).where(Variedad.id_pmg == pmg_id, Variedad.activo == True)
+    ).all()
+    return rows
 
 
 # ── LIST ────────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Package, TrendingUp, Truck, Warehouse, AlertTriangle, Sprout } from "lucide-react";
+import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -20,23 +20,32 @@ import { formatNumber, formatDate } from "@/lib/utils";
 import type { FieldDef } from "@/types";
 import type { InventarioVivero, GuiaDespacho } from "@/types/inventario";
 
-/** Mini progress bar for stock level */
+const TIPO_PLANTA_LABELS: Record<string, string> = {
+  "Raíz desnuda": "Raiz desnuda",
+  "Bolsa primavera": "Bolsa primavera",
+  planta_terminada_raiz_desnuda: "Raiz desnuda",
+  planta_en_bolsa: "Bolsa",
+  planta_en_maceta: "Maceta",
+};
+
+type KpiFilter = "todos" | "activos" | "stock_bajo" | "agotados";
+
+/** Improved progress bar for stock level */
 function StockBar({ actual, inicial }: { actual: number; inicial: number }) {
   const pct = inicial > 0 ? Math.round((actual / inicial) * 100) : 0;
   const color =
-    pct > 50 ? "bg-green-500" : pct > 20 ? "bg-yellow-500" : "bg-red-500";
+    pct > 50 ? "bg-estado-success" : pct > 20 ? "bg-estado-warning" : "bg-estado-danger";
   return (
     <div className="flex items-center gap-2">
-      <span className="font-medium tabular-nums w-12 text-right">
-        {formatNumber(actual)}
-      </span>
-      <div className="flex-1 h-2 bg-gray-100 rounded-full min-w-[60px] max-w-[80px]">
+      <div className="flex-1 relative h-4 bg-gray-100 rounded-full min-w-[80px] max-w-[100px]">
         <div
-          className={`h-2 rounded-full transition-all ${color}`}
+          className={`h-4 rounded-full transition-all ${color}`}
           style={{ width: `${Math.min(pct, 100)}%` }}
         />
+        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-gray-700">
+          {formatNumber(actual)}/{formatNumber(inicial)}
+        </span>
       </div>
-      <span className="text-xs text-muted-foreground w-8">{pct}%</span>
     </div>
   );
 }
@@ -47,6 +56,7 @@ export function InventarioPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [despachoOpen, setDespachoOpen] = useState(false);
   const [selectedBodega, setSelectedBodega] = useState<number | "todas">("todas");
+  const [kpiFilter, setKpiFilter] = useState<KpiFilter>("todos");
   const lk = useLookups();
 
   // Lookup data for despacho form selects
@@ -82,13 +92,33 @@ export function InventarioPage() {
 
   const columns = [
     { accessorKey: "codigo_lote", header: "Lote" },
-    { accessorKey: "id_variedad", header: "Variedad", cell: ({ getValue }: any) => lk.variedad(getValue()) },
+    { accessorKey: "id_variedad", header: "Variedad", cell: ({ getValue }: any) => lk.variedad(getValue()) || "-" },
     {
       accessorKey: "id_portainjerto",
       header: "Portainjerto",
-      cell: ({ getValue }: any) => lk.portainjerto(getValue()),
+      cell: ({ getValue }: any) => lk.portainjerto(getValue()) || "-",
     },
     { accessorKey: "id_especie", header: "Especie", cell: ({ getValue }: any) => lk.especie(getValue()) },
+    {
+      accessorKey: "tipo_planta",
+      header: "Tipo Planta",
+      cell: ({ getValue }: any) => {
+        const v = getValue() as string | null;
+        return v ? (
+          <span className="text-xs bg-garces-green-pale text-garces-green px-1.5 py-0.5 rounded">
+            {TIPO_PLANTA_LABELS[v] || v}
+          </span>
+        ) : "-";
+      },
+    },
+    {
+      accessorKey: "tipo_injertacion",
+      header: "Injertacion",
+      cell: ({ getValue }: any) => {
+        const v = getValue() as string | null;
+        return v ? <span className="text-xs">{v}</span> : "-";
+      },
+    },
     {
       accessorKey: "cantidad_actual",
       header: "Stock",
@@ -124,21 +154,42 @@ export function InventarioPage() {
     queryFn: inventarioService.guias,
   });
 
-  // Filter lotes by selected bodega
+  // Compute stock bajo count (stock < 20% of initial)
+  const stockBajoCount = useMemo(() => {
+    if (!inventario) return 0;
+    return (inventario as InventarioVivero[]).filter(
+      (l) => l.cantidad_actual > 0 && l.cantidad_inicial > 0 && l.cantidad_actual / l.cantidad_inicial < 0.2
+    ).length;
+  }, [inventario]);
+
+  // Filter lotes by selected bodega + KPI filter
   const filteredInventario = useMemo(() => {
     if (!inventario) return [];
-    const all = inventario as InventarioVivero[];
-    if (selectedBodega === "todas") return all;
-    if (selectedBodega === 0) {
-      return all.filter((l) => !l.id_bodega || l.id_bodega === 0);
-    }
-    return all.filter((l) => l.id_bodega === selectedBodega);
-  }, [inventario, selectedBodega]);
+    let all = inventario as InventarioVivero[];
 
-  // Count bodegas with stock
-  const bodegasConStock = useMemo(() => {
-    return (bodegaStock || []).filter((b: BodegaStock) => b.total_stock > 0).length;
-  }, [bodegaStock]);
+    // Bodega filter
+    if (selectedBodega !== "todas") {
+      if (selectedBodega === 0) {
+        all = all.filter((l) => !l.id_bodega || l.id_bodega === 0);
+      } else {
+        all = all.filter((l) => l.id_bodega === selectedBodega);
+      }
+    }
+
+    // KPI filter
+    switch (kpiFilter) {
+      case "activos":
+        return all.filter((l) => l.estado === "disponible");
+      case "stock_bajo":
+        return all.filter(
+          (l) => l.cantidad_actual > 0 && l.cantidad_inicial > 0 && l.cantidad_actual / l.cantidad_inicial < 0.2
+        );
+      case "agotados":
+        return all.filter((l) => l.estado === "agotado" || l.cantidad_actual <= 0);
+      default:
+        return all;
+    }
+  }, [inventario, selectedBodega, kpiFilter]);
 
   const despachoMut = useMutation({
     mutationFn: (data: Record<string, unknown>) => {
@@ -174,6 +225,10 @@ export function InventarioPage() {
     { accessorKey: "fecha_creacion", header: "Fecha", cell: ({ getValue }: any) => formatDate(getValue() as string) },
   ];
 
+  function handleKpiClick(filter: KpiFilter) {
+    setKpiFilter((prev) => (prev === filter ? "todos" : filter));
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -196,13 +251,58 @@ export function InventarioPage() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs — clickeable para filtrar */}
       {stats && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard title="Stock Total" value={formatNumber(stats.total_stock)} icon={TrendingUp} />
-          <KpiCard title="Total Lotes" value={stats.total_lotes} icon={Package} />
-          <KpiCard title="Bodegas con Stock" value={bodegasConStock} icon={Warehouse} />
-          <KpiCard title="Agotados" value={stats.lotes_agotados} icon={AlertTriangle} />
+          <KpiCard
+            title="Stock Total"
+            value={formatNumber(stats.total_stock)}
+            icon={TrendingUp}
+            className="cursor-default"
+          />
+          <div onClick={() => handleKpiClick("activos")} className="cursor-pointer">
+            <KpiCard
+              title="Lotes Activos"
+              value={stats.lotes_disponibles}
+              icon={Package}
+              iconBg="bg-green-100"
+              iconColor="text-estado-success"
+              className={kpiFilter === "activos" ? "ring-2 ring-estado-success" : ""}
+            />
+          </div>
+          <div onClick={() => handleKpiClick("stock_bajo")} className="cursor-pointer">
+            <KpiCard
+              title="Stock Bajo"
+              value={stockBajoCount}
+              icon={AlertCircle}
+              iconBg="bg-yellow-100"
+              iconColor="text-estado-warning"
+              className={kpiFilter === "stock_bajo" ? "ring-2 ring-estado-warning" : ""}
+            />
+          </div>
+          <div onClick={() => handleKpiClick("agotados")} className="cursor-pointer">
+            <KpiCard
+              title="Agotados"
+              value={stats.lotes_agotados}
+              icon={AlertTriangle}
+              iconBg="bg-red-100"
+              iconColor="text-estado-danger"
+              className={kpiFilter === "agotados" ? "ring-2 ring-estado-danger" : ""}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Active filter indicator */}
+      {kpiFilter !== "todos" && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Filtro activo:</span>
+          <span className="bg-garces-cherry-pale text-garces-cherry px-2 py-0.5 rounded-full text-xs font-medium">
+            {kpiFilter === "activos" ? "Lotes activos" : kpiFilter === "stock_bajo" ? "Stock bajo (<20%)" : "Agotados"}
+          </span>
+          <button onClick={() => setKpiFilter("todos")} className="text-xs text-muted-foreground hover:text-garces-cherry">
+            Limpiar
+          </button>
         </div>
       )}
 
@@ -216,7 +316,7 @@ export function InventarioPage() {
               : "bg-white border text-muted-foreground hover:bg-garces-cherry-pale hover:text-garces-cherry"
           }`}
         >
-          Todas ({(inventario as InventarioVivero[])?.length || 0})
+          Todas ({filteredInventario.length})
         </button>
         {(bodegaStock || []).map((bod: BodegaStock) => (
           <button
@@ -228,7 +328,7 @@ export function InventarioPage() {
                 : "bg-white border text-muted-foreground hover:bg-garces-cherry-pale hover:text-garces-cherry"
             }`}
           >
-            {bod.nombre} ({bod.total_stock})
+            {bod.nombre} ({bod.total_lotes})
           </button>
         ))}
       </div>
@@ -247,7 +347,7 @@ export function InventarioPage() {
             columns={columns as any}
             isLoading={isLoading}
             onEdit={(row) => navigate(`/inventario/${(row as any).id_inventario}`)}
-            searchPlaceholder="Buscar lote, variedad..."
+            searchPlaceholder="Buscar lote, variedad, especie..."
           />
         </TabsContent>
 
