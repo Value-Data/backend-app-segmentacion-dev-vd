@@ -68,6 +68,11 @@ class ReplantePlantaRequest(BaseModel):
     id_posicion: int
     id_lote: int
     motivo: Optional[str] = None
+    observaciones: Optional[str] = None
+
+
+class UpdatePosicionObservaciones(BaseModel):
+    observaciones: Optional[str] = None
 
 
 class AgregarHileraRequest(BaseModel):

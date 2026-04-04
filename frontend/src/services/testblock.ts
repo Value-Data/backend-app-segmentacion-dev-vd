@@ -1,4 +1,4 @@
-import { get, post, put, del } from "./api";
+import { get, post, put, del, patch } from "./api";
 import type {
   TestBlock,
   PosicionTestBlock,
@@ -57,4 +57,7 @@ export const testblockService = {
 
   historial: (posicionId: number) =>
     get<HistorialPosicion[]>(`/posiciones/${posicionId}/historial`),
+
+  updateObservaciones: (posicionId: number, observaciones: string | null) =>
+    patch<{ ok: boolean; observaciones: string | null }>(`/posiciones/${posicionId}/observaciones`, { observaciones }),
 };

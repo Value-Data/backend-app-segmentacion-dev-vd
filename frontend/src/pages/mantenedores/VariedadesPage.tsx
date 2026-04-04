@@ -105,6 +105,7 @@ export function VariedadesPage() {
 
   const [search, setSearch] = useState("");
   const [activeEspecie, setActiveEspecie] = useState<string>("todas");
+  const [activePmg, setActivePmg] = useState<string>("todos");
 
   // Build especie list for tabs
   const especieList = useMemo(() => {
@@ -117,12 +118,31 @@ export function VariedadesPage() {
     return Object.entries(counts).sort(([a], [b]) => a.localeCompare(b));
   }, [data, lk]);
 
+  // Build PMG list for filter dropdown
+  const pmgList = useMemo(() => {
+    if (!data) return [];
+    const counts: Record<string, number> = {};
+    const idMap: Record<string, number> = {};
+    (data as any[]).forEach((v: any) => {
+      const name = lk.pmg(v.id_pmg);
+      counts[name] = (counts[name] || 0) + 1;
+      if (!idMap[name]) idMap[name] = v.id_pmg;
+    });
+    return Object.entries(counts)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, count]) => ({ name, count, id: idMap[name] }));
+  }, [data, lk]);
+
   const filtered = useMemo(() => {
     if (!data) return [];
     let all = data as any[];
     // Filter by especie tab
     if (activeEspecie !== "todas") {
       all = all.filter((v) => lk.especie(v.id_especie) === activeEspecie);
+    }
+    // Filter by PMG
+    if (activePmg !== "todos") {
+      all = all.filter((v) => lk.pmg(v.id_pmg) === activePmg);
     }
     // Filter by search
     if (search) {
@@ -135,7 +155,7 @@ export function VariedadesPage() {
       });
     }
     return all;
-  }, [data, search, lk, activeEspecie]);
+  }, [data, search, lk, activeEspecie, activePmg]);
 
   const handleSubmit = async (formData: Record<string, unknown>) => {
     if (editRow) {
@@ -280,15 +300,49 @@ export function VariedadesPage() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          className="w-full rounded-md border border-input bg-white pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          placeholder="Buscar variedad..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      {/* Filters row: Search + Especie dropdown + PMG dropdown */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-sm flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            className="w-full rounded-md border border-input bg-white pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder="Buscar variedad..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <select
+          className="rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          value={activeEspecie}
+          onChange={(e) => setActiveEspecie(e.target.value)}
+        >
+          <option value="todas">Todas las especies</option>
+          {especieList.map(([esp, count]) => (
+            <option key={esp} value={esp}>
+              {esp} ({count})
+            </option>
+          ))}
+        </select>
+        <select
+          className="rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          value={activePmg}
+          onChange={(e) => setActivePmg(e.target.value)}
+        >
+          <option value="todos">Todos los PMG</option>
+          {pmgList.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name} ({p.count})
+            </option>
+          ))}
+        </select>
+        {(activeEspecie !== "todas" || activePmg !== "todos" || search) && (
+          <button
+            onClick={() => { setActiveEspecie("todas"); setActivePmg("todos"); setSearch(""); }}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors underline"
+          >
+            Limpiar filtros
+          </button>
+        )}
       </div>
 
       {/* Card Grid */}

@@ -17,6 +17,7 @@ from app.schemas.testblock import (
     ReplantePlantaRequest,
     AgregarHileraRequest, AgregarPosicionesRequest,
     GenerarPosicionesRequest,
+    UpdatePosicionObservaciones,
 )
 from app.services import crud
 from app.services.testblock_service import (
@@ -339,6 +340,20 @@ def api_historial(
         .order_by(HistorialPosicion.fecha.desc())
         .all()
     )
+
+
+@posiciones_router.patch("/{id}/observaciones")
+def api_update_observaciones(
+    id: int,
+    data: UpdatePosicionObservaciones,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo", "laboratorio")),
+):
+    pos = crud.get_by_id(db, PosicionTestBlock, id)
+    pos.observaciones = data.observaciones
+    db.commit()
+    db.refresh(pos)
+    return {"ok": True, "observaciones": pos.observaciones}
 
 
 # ── QR ─────────────────────────────────────────────────────────────────────

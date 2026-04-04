@@ -9,6 +9,7 @@ import { CrudForm } from "@/components/shared/CrudForm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { inventarioService } from "@/services/inventario";
 import { laboratorioService } from "@/services/laboratorio";
+import { useAuthStore } from "@/stores/authStore";
 import { useLookups } from "@/hooks/useLookups";
 import { formatNumber, formatDate } from "@/lib/utils";
 import type { FieldDef } from "@/types";
@@ -206,7 +207,21 @@ export function LoteDetailPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => window.open(laboratorioService.reporteLotePdfUrl(loteId), "_blank")}
+            onClick={() => {
+              const url = laboratorioService.reporteLotePdfUrl(loteId);
+              const token = useAuthStore.getState().token;
+              fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+                .then((r) => { if (!r.ok) throw new Error(`Error ${r.status}`); return r.blob(); })
+                .then((blob) => {
+                  const blobUrl = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = blobUrl;
+                  a.download = `reporte-lote-${lote.codigo_lote}.pdf`;
+                  a.click();
+                  URL.revokeObjectURL(blobUrl);
+                })
+                .catch(() => toast.error("Error al generar PDF"));
+            }}
             className="gap-1.5"
           >
             <FileDown className="h-4 w-4" />

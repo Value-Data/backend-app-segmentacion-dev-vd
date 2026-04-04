@@ -21,3 +21,4 @@ backend/.venv/
 backend/venv/
 .venv/
 venv/
+data/

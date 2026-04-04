@@ -18,6 +18,7 @@ import { useTestblock, useGrilla, useResumenHileras, useResumenVariedades, useTe
 import { useLookups } from "@/hooks/useLookups";
 import { testblockService } from "@/services/testblock";
 import { laboratorioService } from "@/services/laboratorio";
+import { inventarioService } from "@/services/inventario";
 import { formatNumber } from "@/lib/utils";
 import type { PosicionTestBlock, ColorMode, HistorialPosicion } from "@/types/testblock";
 import { parseQr } from "@/types/testblock";
@@ -87,6 +88,9 @@ export function TestblockDetailPage() {
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("none");
   const [selectedPositions, setSelectedPositions] = useState<Set<number>>(new Set());
 
+  /* --- Observaciones for batch operations --- */
+  const [batchObservaciones, setBatchObservaciones] = useState("");
+
   /* --- Plant mediciones dialog state --- */
   const [medDialogOpen, setMedDialogOpen] = useState(false);
   const [medPlanta, setMedPlanta] = useState<PosicionTestBlock | null>(null);
@@ -106,6 +110,27 @@ export function TestblockDetailPage() {
     queryKey: ["posiciones", selectedPos?.id_posicion, "historial"],
     queryFn: () => testblockService.historial(selectedPos!.id_posicion),
     enabled: !!selectedPos?.id_posicion && selectionMode === "none",
+  });
+
+  /* --- Detail panel observaciones editing --- */
+  const [detailObs, setDetailObs] = useState("");
+  const [detailObsDirty, setDetailObsDirty] = useState(false);
+
+  // Sync detailObs when selectedPos changes
+  const currentPosId = selectedPos?.id_posicion;
+  const currentPosObs = selectedPos?.observaciones;
+  useMemo(() => {
+    setDetailObs(currentPosObs || "");
+    setDetailObsDirty(false);
+  }, [currentPosId, currentPosObs]);
+
+  const updateObsMut = useMutation({
+    mutationFn: (obs: string) => testblockService.updateObservaciones(currentPosId!, obs || null),
+    onSuccess: () => {
+      toast.success("Observaciones guardadas");
+      setDetailObsDirty(false);
+      queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+    },
   });
 
   /* ---------------------------------------------------------------- */
@@ -178,16 +203,45 @@ export function TestblockDetailPage() {
   /*  Derived / memoised data                                          */
   /* ---------------------------------------------------------------- */
 
-  // Build lote options from inventarioTb (only lotes with disponible > 0)
+  // Fetch ALL available inventory for alta/replante
+  const { data: inventarioGlobal } = useQuery({
+    queryKey: ["inventario", "disponible"],
+    queryFn: () => inventarioService.disponible(),
+    staleTime: 30_000,
+  });
+
+  // Build lote options: TB-dispatched lotes + all available global inventory
   const loteOptions = useMemo(() => {
-    if (!inventarioTb) return [];
-    return inventarioTb
-      .filter((item) => item.disponible > 0)
-      .map((item) => ({
-        value: item.id_inventario,
-        label: `${item.codigo_lote || "Lote " + item.id_inventario} — ${item.variedad || "Sin variedad"} / ${item.portainjerto || "Sin PI"} (${item.disponible} disp.)`,
-      }));
-  }, [inventarioTb]);
+    const opts: { value: number; label: string }[] = [];
+    const seen = new Set<number>();
+
+    // Lotes already dispatched to this TB
+    if (inventarioTb) {
+      for (const item of inventarioTb) {
+        if (item.disponible > 0) {
+          opts.push({
+            value: item.id_inventario,
+            label: `${item.codigo_lote || "Lote " + item.id_inventario} — ${item.variedad || "?"} / ${item.portainjerto || "?"} (${item.disponible} en TB)`,
+          });
+          seen.add(item.id_inventario);
+        }
+      }
+    }
+
+    // All globally available lotes
+    if (inventarioGlobal) {
+      for (const lote of inventarioGlobal as any[]) {
+        if (!seen.has(lote.id_inventario) && lote.cantidad_actual > 0) {
+          opts.push({
+            value: lote.id_inventario,
+            label: `${lote.codigo_lote} — Stock: ${lote.cantidad_actual} (vivero)`,
+          });
+        }
+      }
+    }
+
+    return opts;
+  }, [inventarioTb, inventarioGlobal]);
 
   // Confirmation field definitions
   const altaConfirmFields: FieldDef[] = useMemo(() => [
@@ -265,6 +319,7 @@ export function TestblockDetailPage() {
   const exitSelectionMode = useCallback(() => {
     setSelectionMode("none");
     setSelectedPositions(new Set());
+    setBatchObservaciones("");
   }, []);
 
   const togglePosition = useCallback((posId: number) => {
@@ -314,6 +369,7 @@ export function TestblockDetailPage() {
   // --- Alta submission: loop individual alta calls ---
   const handleAltaSubmit = useCallback(async (data: Record<string, unknown>) => {
     const idLote = Number(data.id_lote);
+    const obs = batchObservaciones.trim() || undefined;
     const ids = Array.from(selectedPositions);
     setIsProcessing(true);
 
@@ -322,7 +378,7 @@ export function TestblockDetailPage() {
 
     for (const idPosicion of ids) {
       try {
-        await testblockService.alta(tbId, { id_posicion: idPosicion, id_lote: idLote });
+        await testblockService.alta(tbId, { id_posicion: idPosicion, id_lote: idLote, observaciones: obs });
         success++;
       } catch (err: unknown) {
         failed++;
@@ -339,16 +395,17 @@ export function TestblockDetailPage() {
     }
 
     exitSelectionMode();
-  }, [selectedPositions, tbId, queryClient, exitSelectionMode]);
+  }, [selectedPositions, tbId, queryClient, exitSelectionMode, batchObservaciones]);
 
   // --- Baja submission: single baja-masiva call ---
   const handleBajaSubmit = useCallback(async (data: Record<string, unknown>) => {
     const motivo = String(data.motivo);
+    const obs = batchObservaciones.trim() || undefined;
     const ids = Array.from(selectedPositions);
     setIsProcessing(true);
 
     try {
-      await testblockService.bajaMasiva(tbId, { ids_posiciones: ids, motivo });
+      await testblockService.bajaMasiva(tbId, { ids_posiciones: ids, motivo, observaciones: obs });
       toast.success(`Baja masiva completada: ${ids.length} plantas dadas de baja`);
       queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
     } catch (err: unknown) {
@@ -358,12 +415,13 @@ export function TestblockDetailPage() {
 
     setIsProcessing(false);
     exitSelectionMode();
-  }, [selectedPositions, tbId, queryClient, exitSelectionMode]);
+  }, [selectedPositions, tbId, queryClient, exitSelectionMode, batchObservaciones]);
 
   // --- Replante submission: loop individual replante calls ---
   const handleReplanteSubmit = useCallback(async (data: Record<string, unknown>) => {
     const idLote = Number(data.id_lote);
     const motivo = data.motivo ? String(data.motivo) : "Replante";
+    const obs = batchObservaciones.trim() || undefined;
     const ids = Array.from(selectedPositions);
     setIsProcessing(true);
 
@@ -372,7 +430,7 @@ export function TestblockDetailPage() {
 
     for (const idPosicion of ids) {
       try {
-        await testblockService.replante(tbId, { id_posicion: idPosicion, id_lote: idLote, motivo });
+        await testblockService.replante(tbId, { id_posicion: idPosicion, id_lote: idLote, motivo, observaciones: obs });
         success++;
       } catch (err: unknown) {
         failed++;
@@ -389,7 +447,7 @@ export function TestblockDetailPage() {
     }
 
     exitSelectionMode();
-  }, [selectedPositions, tbId, queryClient, exitSelectionMode]);
+  }, [selectedPositions, tbId, queryClient, exitSelectionMode, batchObservaciones]);
 
   const mapPins: MapPinType[] = useMemo(() => {
     if (!tb?.latitud || !tb?.longitud) return [];
@@ -542,6 +600,9 @@ export function TestblockDetailPage() {
                 <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => enterSelectionMode("replante")}>
                   <Repeat2 className="h-4 w-4" /> Replante
                 </Button>
+                <span className="hidden lg:block text-[10px] text-muted-foreground max-w-[160px] leading-tight">
+                  Click un boton para seleccionar multiples posiciones
+                </span>
               </>
             ) : (
               <Button size="sm" variant="outline" onClick={exitSelectionMode}>
@@ -1003,11 +1064,29 @@ export function TestblockDetailPage() {
                   <span className="font-semibold">{selectedPos.motivo_baja}</span>
                 </div>
               )}
-              {selectedPos.observaciones && (
-                <div>
-                  <span className="text-muted-foreground">Obs:</span>{" "}
-                  <span className="font-semibold">{selectedPos.observaciones}</span>
-                </div>
+            </div>
+
+            {/* Observaciones editable */}
+            <div className="mt-3 pt-3 border-t space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                Observaciones
+              </label>
+              <textarea
+                className="w-full border rounded-md px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring min-h-[48px]"
+                placeholder="Agregar observaciones..."
+                value={detailObs}
+                onChange={(e) => { setDetailObs(e.target.value); setDetailObsDirty(true); }}
+                rows={2}
+              />
+              {detailObsDirty && (
+                <Button
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                  disabled={updateObsMut.isPending}
+                  onClick={() => updateObsMut.mutate(detailObs)}
+                >
+                  {updateObsMut.isPending ? "Guardando..." : "Guardar"}
+                </Button>
               )}
             </div>
 
@@ -1103,46 +1182,57 @@ export function TestblockDetailPage() {
       {/*  Floating action bar for selection mode                      */}
       {/* ============================================================ */}
       {selectionMode !== "none" && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 flex items-center justify-between z-50 ml-0 md:ml-60">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium">
-              {selectedPositions.size} posicion{selectedPositions.size !== 1 ? "es" : ""} seleccionada{selectedPositions.size !== 1 ? "s" : ""}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Modo: {selectionMode === "alta" ? "Alta (click en vacias)" : selectionMode === "replante" ? "Replante (click en bajas)" : selectionMode === "eliminar" ? "Eliminar (click en vacias/bajas)" : "Baja (click en activas)"}
-            </span>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSelectedPositions(new Set())}
-              disabled={selectedPositions.size === 0}
-            >
-              Limpiar
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exitSelectionMode}
-            >
-              Cancelar
-            </Button>
-            <Button
-              size="sm"
-              disabled={selectedPositions.size === 0}
-              onClick={handleConfirmSelection}
-              className={
-                selectionMode === "alta"
-                  ? "bg-green-600 hover:bg-green-700"
-                  : selectionMode === "replante"
-                    ? "bg-blue-600 hover:bg-blue-700"
-                    : "bg-red-600 hover:bg-red-700"
-              }
-            >
-              {selectionMode === "eliminar" ? <Trash2 className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-              Confirmar {selectionMode === "alta" ? "Alta" : selectionMode === "replante" ? "Replante" : selectionMode === "eliminar" ? "Eliminar" : "Baja"} ({selectedPositions.size})
-            </Button>
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 z-50 ml-0 md:ml-60">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium">
+                {selectedPositions.size} posicion{selectedPositions.size !== 1 ? "es" : ""} seleccionada{selectedPositions.size !== 1 ? "s" : ""}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Modo: {selectionMode === "alta" ? "Alta (click en vacias)" : selectionMode === "replante" ? "Replante (click en bajas)" : selectionMode === "eliminar" ? "Eliminar (click en vacias/bajas)" : "Baja (click en activas)"}
+              </span>
+            </div>
+            <div className="flex gap-2 items-center">
+              {selectionMode !== "eliminar" && (
+                <input
+                  type="text"
+                  className="border rounded-md px-2 py-1 text-xs w-48 focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder="Observaciones (opcional)"
+                  value={batchObservaciones}
+                  onChange={(e) => setBatchObservaciones(e.target.value)}
+                />
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedPositions(new Set())}
+                disabled={selectedPositions.size === 0}
+              >
+                Limpiar
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exitSelectionMode}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                disabled={selectedPositions.size === 0}
+                onClick={handleConfirmSelection}
+                className={
+                  selectionMode === "alta"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : selectionMode === "replante"
+                      ? "bg-blue-600 hover:bg-blue-700"
+                      : "bg-red-600 hover:bg-red-700"
+                }
+              >
+                {selectionMode === "eliminar" ? <Trash2 className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                Confirmar {selectionMode === "alta" ? "Alta" : selectionMode === "replante" ? "Replante" : selectionMode === "eliminar" ? "Eliminar" : "Baja"} ({selectedPositions.size})
+              </Button>
+            </div>
           </div>
         </div>
       )}
