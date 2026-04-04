@@ -5,7 +5,7 @@ import {
   ArrowLeft, Grid3X3, Plus, MinusCircle, RefreshCw,
   Package, CheckCircle2, XCircle, ExternalLink, FlaskConical,
   AlertTriangle, Repeat2, MapPin, Settings2, PlusCircle, Rows3,
-  Calendar, FileText, Pencil, Trash2, QrCode, X, Clock,
+  Calendar, FileText, Pencil, Trash2, QrCode, X, Clock, Leaf,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { useTestblock, useGrilla, useResumenHileras, useResumenVariedades, useTe
 import { useLookups } from "@/hooks/useLookups";
 import { testblockService } from "@/services/testblock";
 import { laboratorioService } from "@/services/laboratorio";
+import { laboresService } from "@/services/labores";
 import { inventarioService } from "@/services/inventario";
 import { formatNumber } from "@/lib/utils";
 import type { PosicionTestBlock, ColorMode, HistorialPosicion } from "@/types/testblock";
@@ -57,7 +58,20 @@ function ClusterDot({ cluster }: { cluster?: number | null }) {
   );
 }
 
-type SelectionMode = "none" | "alta" | "baja" | "replante" | "eliminar";
+type SelectionMode = "none" | "alta" | "baja" | "replante" | "eliminar" | "fenologia";
+
+const ESTADOS_FENOLOGICOS = [
+  "Inicio caida hoja",
+  "50% caida",
+  "100% caida",
+  "Yema dormante",
+  "Yema hinchada",
+  "Punta verde",
+  "Inicio floracion",
+  "Plena floracion",
+  "Cuaja",
+  "Pinta/Envero",
+];
 
 /* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
@@ -102,6 +116,7 @@ export function TestblockDetailPage() {
   const [addHileraOpen, setAddHileraOpen] = useState(false);
   const [addPosOpen, setAddPosOpen] = useState(false);
   const [delHileraOpen, setDelHileraOpen] = useState(false);
+  const [fenologiaConfirmOpen, setFenologiaConfirmOpen] = useState(false);
   const [editTbOpen, setEditTbOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -300,6 +315,20 @@ export function TestblockDetailPage() {
     ];
   }, [grilla?.hileras]);
 
+  const fenologiaConfirmFields: FieldDef[] = useMemo(() => [
+    {
+      key: "estado_fenologico",
+      label: "Estado Fenologico",
+      type: "select",
+      required: true,
+      options: ESTADOS_FENOLOGICOS.map((e) => ({ value: e, label: e })),
+      placeholder: "Seleccionar estado",
+    },
+    { key: "porcentaje", label: "Porcentaje (%)", type: "number", required: false, placeholder: "0 - 100" },
+    { key: "fecha", label: "Fecha", type: "date", required: false, placeholder: new Date().toISOString().slice(0, 10) },
+    { key: "observaciones", label: "Observaciones", type: "textarea", required: false, placeholder: "Observaciones (opcional)" },
+  ], []);
+
   const editTbFields: FieldDef[] = useMemo(() => [
     { key: "nombre", label: "Nombre", type: "text", required: true },
     { key: "codigo", label: "Codigo", type: "text", required: true },
@@ -350,6 +379,7 @@ export function TestblockDetailPage() {
     if (selectionMode === "baja" && pos.estado !== "alta") return;
     if (selectionMode === "replante" && pos.estado !== "baja" && pos.estado !== "replante") return;
     if (selectionMode === "eliminar" && pos.estado !== "vacia" && pos.estado !== "baja") return;
+    if (selectionMode === "fenologia" && pos.estado !== "alta") return;
 
     togglePosition(pos.id_posicion);
   }, [selectionMode, togglePosition]);
@@ -363,6 +393,8 @@ export function TestblockDetailPage() {
       setBajaConfirmOpen(true);
     } else if (selectionMode === "replante") {
       setReplanteConfirmOpen(true);
+    } else if (selectionMode === "fenologia") {
+      setFenologiaConfirmOpen(true);
     } else if (selectionMode === "eliminar") {
       if (confirm(`Eliminar ${selectedPositions.size} posicion(es)? Esta accion no se puede deshacer.`)) {
         delPosMut.mutate(Array.from(selectedPositions));
@@ -458,6 +490,34 @@ export function TestblockDetailPage() {
     exitSelectionMode();
   }, [selectedPositions, tbId, queryClient, exitSelectionMode, batchObservaciones]);
 
+  // --- Fenologia submission ---
+  const handleFenologiaSubmit = useCallback(async (data: Record<string, unknown>) => {
+    const ids = Array.from(selectedPositions);
+    setIsProcessing(true);
+
+    try {
+      const payload = {
+        testblock_id: tbId,
+        posiciones_ids: ids,
+        estado_fenologico: data.estado_fenologico,
+        porcentaje: data.porcentaje ? Number(data.porcentaje) : null,
+        fecha: data.fecha || new Date().toISOString().slice(0, 10),
+        observaciones: data.observaciones || "",
+        temporada: tb?.temporada_inicio || "2025-2026",
+      };
+      const res = await laboresService.registroFenologico(payload);
+      toast.success(`Fenologia registrada: ${res.created} posicion${res.created !== 1 ? "es" : ""}`);
+      queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Error al registrar fenologia: ${msg}`);
+    }
+
+    setIsProcessing(false);
+    setFenologiaConfirmOpen(false);
+    exitSelectionMode();
+  }, [selectedPositions, tbId, tb?.temporada_inicio, queryClient, exitSelectionMode]);
+
   const mapPins: MapPinType[] = useMemo(() => {
     if (!tb?.latitud || !tb?.longitud) return [];
     return [{ id: tbId, lat: Number(tb.latitud), lng: Number(tb.longitud), label: tb.nombre || "", detail: tb.codigo || "" }];
@@ -496,6 +556,7 @@ export function TestblockDetailPage() {
     if (selectionMode === "baja") return estado === "alta";
     if (selectionMode === "replante") return estado === "baja" || estado === "replante";
     if (selectionMode === "eliminar") return estado === "vacia" || estado === "baja";
+    if (selectionMode === "fenologia") return estado === "alta";
     return false;
   };
 
@@ -609,6 +670,9 @@ export function TestblockDetailPage() {
                 <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => enterSelectionMode("replante")}>
                   <Repeat2 className="h-4 w-4" /> Replante
                 </Button>
+                <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white" onClick={() => enterSelectionMode("fenologia")}>
+                  <Leaf className="h-4 w-4" /> Fenologia
+                </Button>
                 <span className="hidden lg:block text-[10px] text-muted-foreground max-w-[160px] leading-tight">
                   Click un boton para seleccionar multiples posiciones
                 </span>
@@ -690,7 +754,9 @@ export function TestblockDetailPage() {
                         ? "bg-green-50 text-green-800 border border-green-200"
                         : selectionMode === "replante"
                           ? "bg-blue-50 text-blue-800 border border-blue-200"
-                          : "bg-red-50 text-red-800 border border-red-200"
+                          : selectionMode === "fenologia"
+                            ? "bg-purple-50 text-purple-800 border border-purple-200"
+                            : "bg-red-50 text-red-800 border border-red-200"
                     }`}
                   >
                     <span>
@@ -698,9 +764,11 @@ export function TestblockDetailPage() {
                         ? "Seleccione posiciones vacias para plantar"
                         : selectionMode === "replante"
                           ? "Seleccione posiciones con baja para replantar"
-                          : selectionMode === "eliminar"
-                            ? "Seleccione posiciones vacias/baja para eliminar"
-                            : "Seleccione posiciones activas para dar de baja"}
+                          : selectionMode === "fenologia"
+                            ? "Seleccione posiciones activas para registrar fenologia"
+                            : selectionMode === "eliminar"
+                              ? "Seleccione posiciones vacias/baja para eliminar"
+                              : "Seleccione posiciones activas para dar de baja"}
                     </span>
                     {selectedPositions.size > 0 && (
                       <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded-full text-xs font-semibold border">
@@ -1281,7 +1349,7 @@ export function TestblockDetailPage() {
                 {selectedPositions.size} posicion{selectedPositions.size !== 1 ? "es" : ""} seleccionada{selectedPositions.size !== 1 ? "s" : ""}
               </span>
               <span className="text-xs text-muted-foreground">
-                Modo: {selectionMode === "alta" ? "Alta (click en vacias)" : selectionMode === "replante" ? "Replante (click en bajas)" : selectionMode === "eliminar" ? "Eliminar (click en vacias/bajas)" : "Baja (click en activas)"}
+                Modo: {selectionMode === "alta" ? "Alta (click en vacias)" : selectionMode === "replante" ? "Replante (click en bajas)" : selectionMode === "fenologia" ? "Fenologia (click en activas)" : selectionMode === "eliminar" ? "Eliminar (click en vacias/bajas)" : "Baja (click en activas)"}
               </span>
             </div>
             <div className="flex gap-2 items-center">
@@ -1318,11 +1386,13 @@ export function TestblockDetailPage() {
                     ? "bg-green-600 hover:bg-green-700"
                     : selectionMode === "replante"
                       ? "bg-blue-600 hover:bg-blue-700"
-                      : "bg-red-600 hover:bg-red-700"
+                      : selectionMode === "fenologia"
+                        ? "bg-purple-600 hover:bg-purple-700"
+                        : "bg-red-600 hover:bg-red-700"
                 }
               >
-                {selectionMode === "eliminar" ? <Trash2 className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                Confirmar {selectionMode === "alta" ? "Alta" : selectionMode === "replante" ? "Replante" : selectionMode === "eliminar" ? "Eliminar" : "Baja"} ({selectedPositions.size})
+                {selectionMode === "eliminar" ? <Trash2 className="h-4 w-4" /> : selectionMode === "fenologia" ? <Leaf className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                Confirmar {selectionMode === "alta" ? "Alta" : selectionMode === "replante" ? "Replante" : selectionMode === "fenologia" ? "Fenologia" : selectionMode === "eliminar" ? "Eliminar" : "Baja"} ({selectedPositions.size})
               </Button>
             </div>
           </div>
@@ -1363,6 +1433,16 @@ export function TestblockDetailPage() {
         onSubmit={handleReplanteSubmit}
         fields={replanteConfirmFields}
         title={`Replante de Plantas (${selectedPositions.size} posiciones)`}
+        isLoading={isProcessing}
+      />
+
+      {/* Fenologia confirmation dialog */}
+      <CrudForm
+        open={fenologiaConfirmOpen}
+        onClose={() => { setFenologiaConfirmOpen(false); exitSelectionMode(); }}
+        onSubmit={handleFenologiaSubmit}
+        fields={fenologiaConfirmFields}
+        title={`Registro Fenologico (${selectedPositions.size} posiciones)`}
         isLoading={isProcessing}
       />
 

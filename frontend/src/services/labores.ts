@@ -27,7 +27,23 @@ export interface Evidencia {
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
+export interface TipoLabor {
+  id_labor: number;
+  codigo: string;
+  nombre: string;
+  categoria: string;
+  descripcion?: string | null;
+  aplica_especies?: string | null;
+  aplica_a?: string | null;
+  frecuencia?: string | null;
+  activo?: boolean;
+}
+
 export const laboresService = {
+  tiposLabor: () =>
+    get<TipoLabor[]>("/labores/tipos-labor"),
+  seedTiposLabor: () =>
+    post<{ message: string; created: number }>("/labores/seed-tipos-labor", {}),
   planificacion: (params?: { testblock?: number }) =>
     get<EjecucionLabor[]>("/labores/planificacion", params),
   crearPlanificacion: (data: Record<string, unknown>) =>
@@ -49,4 +65,8 @@ export const laboresService = {
     get<EjecucionLabor[]>("/labores/hoy"),
   ejecutarMasivo: (ids: number[], fecha_ejecucion?: string, ejecutor?: string) =>
     post<{ updated: number }>("/labores/ejecutar-masivo", { ids, fecha_ejecucion, ejecutor }),
+  registroFenologico: (data: Record<string, unknown>) =>
+    post<{ created: number; tipo_labor_id: number }>("/labores/registro-fenologico", data),
+  historialFenologico: (testblockId: number) =>
+    get<EjecucionLabor[]>(`/labores/historial-fenologico/${testblockId}`),
 };
