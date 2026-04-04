@@ -48,6 +48,14 @@ export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, 
       const val = formData[f.key];
       if (f.type === "number" && val !== "" && val != null) {
         cleaned[f.key] = Number(val);
+      } else if (f.type === "select" && val !== "" && val != null) {
+        // Convert select values back to number when the original options use numeric values
+        const numericOptions = f.options?.some((o) => typeof o.value === "number");
+        if (numericOptions && !isNaN(Number(val))) {
+          cleaned[f.key] = Number(val);
+        } else {
+          cleaned[f.key] = val;
+        }
       } else if (f.type === "boolean") {
         cleaned[f.key] = Boolean(val);
       } else if (val === "") {

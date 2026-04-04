@@ -168,7 +168,7 @@ export function LaboresPage() {
   };
 
   const tbOpts = (testblocks || []).map((tb) => ({
-    value: String(tb.id_testblock),
+    value: tb.id_testblock,
     label: `${tb.nombre} (${tb.codigo})`,
   }));
   const laborOpts = ((tiposLabor || []) as any[]).map((t: any) => ({
@@ -539,7 +539,7 @@ export function LaboresPage() {
           <SelectContent>
             <SelectItem value="all">Todos</SelectItem>
             {tbOpts.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              <SelectItem key={String(o.value)} value={String(o.value)}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
