@@ -59,6 +59,16 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             ["ESP-002", "Ciruela", "Prunus domestica"],
         ],
     },
+    "pmg": {
+        "columns": [
+            "nombre", "pais", "ciudad", "contacto_nombre",
+            "contacto_email", "contacto_telefono",
+        ],
+        "examples": [
+            ["Peter Stoppel - Cerasina", "Alemania", "Kressbronn", "Pablo Courbis", "info@cerezas.cl", "+56998280601"],
+            ["Hortifrut", "Chile", "Santiago", "Juan Perez", "jp@hortifrut.cl", "+56912345678"],
+        ],
+    },
     "viveros": {
         "columns": ["codigo", "nombre", "representante", "telefono", "email"],
         "examples": [
@@ -103,6 +113,7 @@ MODEL_MAP: dict[str, type] = {
     "especies": Especie,
     "viveros": Vivero,
     "campos": Campo,
+    "pmg": Pmg,
     "inventario": InventarioVivero,
     "plantas": Planta,
 }
