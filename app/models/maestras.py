@@ -305,6 +305,12 @@ class EstadoFenologico(SQLModel, table=True):
     orden: int = Field(default=0)
     descripcion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(200)))
     color_hex: Optional[str] = Field(default=None, sa_column=Column(sa.String(7)))
+    mes_orientativo: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(20)))
+    activo: Optional[bool] = Field(default=True)
+    fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    usuario_modificacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
 
 
 # ── estados_planta ──────────────────────────────────────────────────────────
