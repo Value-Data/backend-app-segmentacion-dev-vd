@@ -119,6 +119,22 @@ class RegistroFenologico(SQLModel, table=True):
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 
+class DetalleLabor(SQLModel, table=True):
+    """Sub-items / instructions for each tipo_labor, optionally filtered by species."""
+    __tablename__ = "detalles_labor"
+    id_detalle: Optional[int] = Field(default=None, primary_key=True)
+    id_labor: int = Field(foreign_key="tipos_labor.id_labor")
+    descripcion: str = Field(sa_column=Column(sa.NVARCHAR(500), nullable=False))
+    aplica_especie: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    orden: Optional[int] = Field(default=0)
+    es_checklist: Optional[bool] = Field(default=True)
+    activo: Optional[bool] = Field(default=True)
+    fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    usuario_modificacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+
+
 class EjecucionLabor(SQLModel, table=True):
     __tablename__ = "ejecucion_labores"
     id_ejecucion: Optional[int] = Field(default=None, primary_key=True)
