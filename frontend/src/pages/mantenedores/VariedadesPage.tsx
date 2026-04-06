@@ -97,8 +97,8 @@ export function VariedadesPage() {
       { value: "alto", label: "Alto" },
     ]},
     { key: "req_frio_horas", label: "Req. Frio (horas)", type: "number" },
-    { key: "calibre_esperado", label: "Calibre Esperado", type: "number" },
-    { key: "firmeza_esperada", label: "Firmeza Esperada", type: "number" },
+    { key: "calibre_esperado", label: "Calibre Esperado", type: "text" },
+    { key: "firmeza_esperada", label: "Firmeza Esperada", type: "text" },
     { key: "auto_fertil", label: "Auto Fertil", type: "boolean" },
     { key: "observaciones", label: "Observaciones", type: "textarea" },
   ];

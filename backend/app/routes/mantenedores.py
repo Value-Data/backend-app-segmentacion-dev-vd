@@ -139,7 +139,17 @@ def create_entity(
     user: Usuario = Depends(require_role("admin")),
 ):
     model, create_schema, _ = _resolve(entidad)
-    validated = create_schema(**data)
+    from pydantic import ValidationError as PydanticValidationError
+    try:
+        validated = create_schema(**data)
+    except PydanticValidationError:
+        coerced = {}
+        for k, v in data.items():
+            if isinstance(v, (int, float)) and v is not True and v is not False:
+                coerced[k] = str(v)
+            else:
+                coerced[k] = v
+        validated = create_schema(**coerced)
     return crud.create(db, model, validated, usuario=user.username)
 
 
@@ -153,7 +163,20 @@ def update_entity(
     user: Usuario = Depends(require_role("admin")),
 ):
     model, _, update_schema = _resolve(entidad)
-    validated = update_schema(**data)
+    # Coerce numeric values to string where the schema expects str
+    # (prevents ValidationError when frontend sends numbers for string fields)
+    from pydantic import ValidationError as PydanticValidationError
+    try:
+        validated = update_schema(**data)
+    except PydanticValidationError:
+        # Retry with all values coerced to string where needed
+        coerced = {}
+        for k, v in data.items():
+            if isinstance(v, (int, float)) and v is not True and v is not False:
+                coerced[k] = str(v)
+            else:
+                coerced[k] = v
+        validated = update_schema(**coerced)
     return crud.update(db, model, id, validated, usuario=user.username)
 
 
