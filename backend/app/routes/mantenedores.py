@@ -169,6 +169,91 @@ def delete_entity(
     return crud.soft_delete(db, model, id, usuario=user.username)
 
 
+# ── MERGE: fusionar registros duplicados ────────────────────────────────────
+
+# FK map: entity → list of (Model, fk_field) that reference this entity
+from app.models.inventario import InventarioVivero
+from app.models.testblock import TestBlock, Planta
+
+_MERGE_FK_MAP = {
+    "viveros": [
+        (InventarioVivero, "id_vivero"),
+    ],
+    "campos": [
+        (Cuartel, "id_campo"),
+        (TestBlock, "id_campo"),
+    ],
+    "pmg": [
+        (Variedad, "id_pmg"),
+        (InventarioVivero, "id_pmg"),
+        (PmgEspecie, "id_pmg"),
+        (Planta, "id_pmg"),
+    ],
+}
+
+_MERGE_MODELS = {
+    "viveros": (Vivero, "id_vivero"),
+    "campos": (Campo, "id_campo"),
+    "pmg": (Pmg, "id_pmg"),
+}
+
+
+@router.post("/{entidad}/merge")
+def merge_entities(
+    entidad: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Merge source entity into target: move all FK references, then deactivate source.
+
+    Body: { "source_id": int, "target_id": int }
+    """
+    if entidad not in _MERGE_MODELS:
+        raise HTTPException(status_code=400, detail=f"Merge no soportado para '{entidad}'")
+
+    source_id = data.get("source_id")
+    target_id = data.get("target_id")
+    if not source_id or not target_id:
+        raise HTTPException(status_code=422, detail="source_id y target_id son requeridos")
+    if source_id == target_id:
+        raise HTTPException(status_code=400, detail="source_id y target_id deben ser diferentes")
+
+    model, pk_field = _MERGE_MODELS[entidad]
+
+    # Verify both exist
+    source = db.get(model, source_id)
+    target = db.get(model, target_id)
+    if not source:
+        raise HTTPException(status_code=404, detail=f"Registro origen {source_id} no encontrado")
+    if not target:
+        raise HTTPException(status_code=404, detail=f"Registro destino {target_id} no encontrado")
+
+    # Move all FK references from source to target
+    fk_refs = _MERGE_FK_MAP.get(entidad, [])
+    moved = 0
+    for ref_model, fk_field_name in fk_refs:
+        rows = db.query(ref_model).filter(getattr(ref_model, fk_field_name) == source_id).all()
+        for row in rows:
+            setattr(row, fk_field_name, target_id)
+            moved += 1
+
+    # Soft-delete source
+    if hasattr(source, "activo"):
+        source.activo = False
+
+    db.commit()
+
+    source_name = getattr(source, "nombre", str(source_id))
+    target_name = getattr(target, "nombre", str(target_id))
+    return {
+        "ok": True,
+        "message": f"'{source_name}' fusionado en '{target_name}'",
+        "moved_references": moved,
+        "source_deactivated": True,
+    }
+
+
 # ── SPECIAL: variedades susceptibilidades ───────────────────────────────────
 @router.get("/variedades/{id}/susceptibilidades")
 def get_variedad_susceptibilidades(

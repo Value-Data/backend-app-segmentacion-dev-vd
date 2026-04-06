@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, LayoutGrid, List, Pencil, Trash2, Search, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, LayoutGrid, List, Pencil, Trash2, Search, Loader2, Merge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CrudTable } from "@/components/shared/CrudTable";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import type { FieldDef } from "@/types";
 import { col } from "./GenericMantenedorPage";
+import { MergeDialog } from "@/components/shared/MergeDialog";
 
 type ViewMode = "cards" | "table";
 
@@ -60,6 +61,7 @@ export function ViverosPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Record<string, unknown> | null>(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState<string>("");
 
   const rows = data as Record<string, unknown>[];
@@ -130,6 +132,10 @@ export function ViverosPage() {
               <List className="h-3.5 w-3.5" />
             </Button>
           </div>
+          <Button size="sm" variant="outline" onClick={() => setMergeOpen(true)}>
+            <Merge className="h-4 w-4 mr-1" />
+            Fusionar
+          </Button>
           <Button size="sm" onClick={handleCreate}>
             <Plus className="h-4 w-4 mr-1" />
             Nuevo
@@ -249,6 +255,16 @@ export function ViverosPage() {
         onFieldChange={(key, value) => {
           if (key === "region") setSelectedRegion(value as string || "");
         }}
+      />
+
+      {/* Merge dialog */}
+      <MergeDialog
+        open={mergeOpen}
+        onClose={() => setMergeOpen(false)}
+        entidad="viveros"
+        queryKey="viveros"
+        entityLabel="Viveros"
+        items={rows.map((r) => ({ value: r.id_vivero as number, label: String(r.nombre || r.codigo) }))}
       />
     </div>
   );

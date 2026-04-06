@@ -163,6 +163,11 @@ export function InventarioPage() {
       },
     },
     {
+      accessorKey: "ano_plantacion",
+      header: "Ano",
+      cell: ({ getValue }: any) => getValue() ?? "-",
+    },
+    {
       accessorKey: "cantidad_actual",
       header: "Stock",
       cell: ({ row }: any) => (
