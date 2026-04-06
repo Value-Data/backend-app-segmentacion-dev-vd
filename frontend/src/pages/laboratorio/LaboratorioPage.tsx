@@ -422,13 +422,22 @@ export function LaboratorioPage() {
     especie: string;
     campo: string;
     temporada: string;
-  }>({ especie: "", campo: "", temporada: "" });
+    variedad: string;
+    pmg: string;
+    color: string;
+    fecha_cosecha_desde: string;
+    fecha_cosecha_hasta: string;
+  }>({ especie: "", campo: "", temporada: "", variedad: "", pmg: "", color: "", fecha_cosecha_desde: "", fecha_cosecha_hasta: "" });
 
   const medicionesParams = useMemo(() => {
-    const p: { especie?: number; campo?: number; temporada?: string } = {};
+    const p: Record<string, number | string> = {};
     if (appliedFilters.especie) p.especie = Number(appliedFilters.especie);
     if (appliedFilters.campo) p.campo = Number(appliedFilters.campo);
     if (appliedFilters.temporada) p.temporada = appliedFilters.temporada;
+    if (appliedFilters.variedad) p.variedad = Number(appliedFilters.variedad);
+    if (appliedFilters.pmg) p.pmg = Number(appliedFilters.pmg);
+    if (appliedFilters.fecha_cosecha_desde) p.fecha_cosecha_desde = appliedFilters.fecha_cosecha_desde;
+    if (appliedFilters.fecha_cosecha_hasta) p.fecha_cosecha_hasta = appliedFilters.fecha_cosecha_hasta;
     return p;
   }, [appliedFilters]);
 
@@ -472,8 +481,13 @@ export function LaboratorioPage() {
       especie: filterEspecie,
       campo: filterCampo,
       temporada: filterTemporada,
+      variedad: filterVariedad,
+      pmg: filterPmg,
+      color: filterColor,
+      fecha_cosecha_desde: (document.getElementById("filter-fecha-desde") as HTMLInputElement)?.value || "",
+      fecha_cosecha_hasta: (document.getElementById("filter-fecha-hasta") as HTMLInputElement)?.value || "",
     });
-  }, [filterEspecie, filterCampo, filterTemporada]);
+  }, [filterEspecie, filterCampo, filterTemporada, filterVariedad, filterPmg, filterColor]);
 
   const handleClearFilters = useCallback(() => {
     setFilterEspecie("");
@@ -484,21 +498,22 @@ export function LaboratorioPage() {
     setFilterColor("");
     setDiasMin("");
     setDiasMax("");
-    setAppliedFilters({ especie: "", campo: "", temporada: "" });
+    const desde = document.getElementById("filter-fecha-desde") as HTMLInputElement;
+    const hasta = document.getElementById("filter-fecha-hasta") as HTMLInputElement;
+    if (desde) desde.value = "";
+    if (hasta) hasta.value = "";
+    setAppliedFilters({ especie: "", campo: "", temporada: "", variedad: "", pmg: "", color: "", fecha_cosecha_desde: "", fecha_cosecha_hasta: "" });
   }, []);
 
-  // ── Client-side filtering for variedad/pmg/color (not in API) ──
+  // ── Client-side filtering for color (not in API) ──
   const filteredMediciones = useMemo(() => {
     let data = mediciones || [];
-    if (filterVariedad) {
-      data = data.filter((m: any) => String(m.id_variedad) === filterVariedad);
-    }
-    // Note: pmg and color are client-side filters when data includes those fields
-    if (filterColor) {
-      data = data.filter((m: any) => m.color_pulpa === filterColor);
+    // Color pulpa is client-side only (not a backend column filter)
+    if (appliedFilters.color) {
+      data = data.filter((m: any) => m.color_pulpa === appliedFilters.color);
     }
     return data;
-  }, [mediciones, filterVariedad, filterColor]);
+  }, [mediciones, appliedFilters.color]);
 
   // ── Poscosecha data: filter for periodo_almacenaje > 0 + range ──
   const poscosechaData = useMemo(() => {
@@ -746,6 +761,13 @@ export function LaboratorioPage() {
               options={COLOR_PULPA_OPTIONS.map((c) => ({ value: c, label: c }))}
               placeholder="Todos"
             />
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Fecha cosecha</label>
+              <div className="flex gap-1">
+                <input id="filter-fecha-desde" type="date" className="h-8 rounded-md border px-2 text-xs w-[120px]" placeholder="Desde" />
+                <input id="filter-fecha-hasta" type="date" className="h-8 rounded-md border px-2 text-xs w-[120px]" placeholder="Hasta" />
+              </div>
+            </div>
             <div className="flex gap-2 self-end">
               <Button
                 size="sm"

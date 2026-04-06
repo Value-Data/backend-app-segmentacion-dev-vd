@@ -56,6 +56,8 @@ export interface PosicionTestBlock {
   planta_portainjerto?: number | null;
   planta_especie?: number | null;
   planta_condicion?: string | null;
+  ano_plantacion?: number | null;
+  tipo_injertacion?: string | null;
 }
 
 export interface QrData {

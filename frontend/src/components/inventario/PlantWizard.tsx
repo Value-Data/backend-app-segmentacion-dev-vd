@@ -43,6 +43,7 @@ interface WizardData {
   id_vivero: string;
   id_bodega: string;
   tipo_planta: string;
+  tipo_injerto: string;
   fecha_ingreso: string;
   observaciones: string;
 }
@@ -57,6 +58,7 @@ const INITIAL_DATA: WizardData = {
   id_vivero: "",
   id_bodega: "",
   tipo_planta: "",
+  tipo_injerto: "",
   fecha_ingreso: new Date().toISOString().slice(0, 10),
   observaciones: "",
 };
@@ -317,6 +319,7 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
       id_vivero: data.id_vivero ? Number(data.id_vivero) : null,
       id_bodega: data.id_bodega ? Number(data.id_bodega) : null,
       tipo_planta: data.tipo_planta || null,
+      tipo_injertacion: data.tipo_injerto || null,
       cantidad_inicial: Number(data.cantidad_inicial),
       cantidad_actual: Number(data.cantidad_inicial),
       fecha_ingreso: data.fecha_ingreso,
@@ -537,8 +540,24 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
                     <SelectValue placeholder="Seleccionar tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Raíz desnuda">Raiz desnuda</SelectItem>
-                    <SelectItem value="Bolsa primavera">Bolsa primavera</SelectItem>
+                    <SelectItem value="Planta terminada raiz desnuda">Planta terminada raiz desnuda</SelectItem>
+                    <SelectItem value="Planta en bolsa o maceta">Planta en bolsa o maceta</SelectItem>
+                    <SelectItem value="Ramillas">Ramillas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Tipo injerto */}
+              <div>
+                <Label htmlFor="wiz-injerto">Tipo Injerto</Label>
+                <Select value={data.tipo_injerto || ""} onValueChange={(v) => set("tipo_injerto", v)}>
+                  <SelectTrigger className="mt-1" id="wiz-injerto">
+                    <SelectValue placeholder="Seleccionar tipo injerto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Ojo vivo">Ojo vivo</SelectItem>
+                    <SelectItem value="Ojo dormido">Ojo dormido</SelectItem>
+                    <SelectItem value="Invierno (pua)">Invierno (pua)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -662,8 +681,14 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
                   </div>
                   {data.tipo_planta && (
                     <div>
-                      <span className="text-muted-foreground">Tipo:</span>{" "}
+                      <span className="text-muted-foreground">Tipo planta:</span>{" "}
                       <span className="font-medium">{data.tipo_planta}</span>
+                    </div>
+                  )}
+                  {data.tipo_injerto && (
+                    <div>
+                      <span className="text-muted-foreground">Tipo injerto:</span>{" "}
+                      <span className="font-medium">{data.tipo_injerto}</span>
                     </div>
                   )}
                   <div>

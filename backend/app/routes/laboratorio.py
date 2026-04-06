@@ -231,6 +231,10 @@ def list_mediciones(
     temporada: str | None = Query(None),
     especie: int | None = Query(None),
     campo: int | None = Query(None),
+    variedad: int | None = Query(None),
+    pmg: int | None = Query(None),
+    fecha_cosecha_desde: str | None = Query(None, description="Fecha cosecha desde (YYYY-MM-DD)"),
+    fecha_cosecha_hasta: str | None = Query(None, description="Fecha cosecha hasta (YYYY-MM-DD)"),
     tipo_evaluacion: str | None = Query(None, description="'laboratorio' o 'poscosecha'"),
     periodo_almacenaje_min: int | None = Query(None, description="Periodo almacenaje minimo (dias)"),
     periodo_almacenaje_max: int | None = Query(None, description="Periodo almacenaje maximo (dias)"),
@@ -249,6 +253,22 @@ def list_mediciones(
         q = q.filter(MedicionLaboratorio.id_especie == especie)
     if campo:
         q = q.filter(MedicionLaboratorio.id_campo == campo)
+    if variedad:
+        q = q.filter(MedicionLaboratorio.id_variedad == variedad)
+    if pmg:
+        # PMG requires joining through variedades
+        from app.models.variedades import Variedad
+        var_ids = [v.id_variedad for v in db.query(Variedad.id_variedad).filter(Variedad.id_pmg == pmg).all()]
+        if var_ids:
+            q = q.filter(MedicionLaboratorio.id_variedad.in_(var_ids))
+        else:
+            q = q.filter(False)  # No variedades for this PMG
+    if fecha_cosecha_desde:
+        from datetime import date as date_type
+        q = q.filter(MedicionLaboratorio.fecha_cosecha >= date_type.fromisoformat(fecha_cosecha_desde))
+    if fecha_cosecha_hasta:
+        from datetime import date as date_type
+        q = q.filter(MedicionLaboratorio.fecha_cosecha <= date_type.fromisoformat(fecha_cosecha_hasta))
     if tipo_evaluacion:
         if tipo_evaluacion == "poscosecha":
             q = q.filter(MedicionLaboratorio.periodo_almacenaje != None)

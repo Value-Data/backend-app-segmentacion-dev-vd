@@ -1172,6 +1172,18 @@ export function TestblockDetailPage() {
                   <span className="font-semibold">{selectedPos.planta_condicion}</span>
                 </div>
               )}
+              {selectedPos.ano_plantacion && (
+                <div>
+                  <span className="text-muted-foreground">Ano plantacion:</span>{" "}
+                  <span className="font-semibold">{selectedPos.ano_plantacion}</span>
+                </div>
+              )}
+              {selectedPos.tipo_injertacion && (
+                <div>
+                  <span className="text-muted-foreground">Tipo injerto:</span>{" "}
+                  <span className="font-semibold">{selectedPos.tipo_injertacion}</span>
+                </div>
+              )}
               {selectedPos.conduccion && (
                 <div>
                   <span className="text-muted-foreground">Conduccion:</span>{" "}

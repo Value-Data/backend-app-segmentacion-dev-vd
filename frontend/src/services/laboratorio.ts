@@ -14,7 +14,11 @@ export const laboratorioService = {
     get<Planta[]>("/laboratorio/plantas", params),
   crearMedicion: (data: Record<string, unknown>) =>
     post<MedicionCreateResponse>("/laboratorio/mediciones", data),
-  mediciones: (params?: { testblock?: number; temporada?: string; especie?: number; campo?: number }) =>
+  mediciones: (params?: {
+    testblock?: number; temporada?: string; especie?: number; campo?: number;
+    variedad?: number; pmg?: number;
+    fecha_cosecha_desde?: string; fecha_cosecha_hasta?: string;
+  }) =>
     get<MedicionLaboratorio[]>("/laboratorio/mediciones", params),
   medicionesByPlanta: (idPlanta: number) =>
     get<(MedicionLaboratorio & { cluster?: number | null; cluster_label?: string | null })[]>(
