@@ -39,11 +39,40 @@ export interface TipoLabor {
   activo?: boolean;
 }
 
+export interface EstadoFenologico {
+  id_estado: number;
+  id_especie: number;
+  codigo: string;
+  nombre: string;
+  orden: number;
+  descripcion?: string | null;
+  color_hex?: string | null;
+  mes_orientativo?: string | null;
+  activo?: boolean;
+}
+
+export interface RegistroFenologicoHistorial {
+  id_registro: number;
+  id_posicion: number;
+  id_planta?: number | null;
+  id_estado_fenol?: number | null;
+  temporada?: string | null;
+  fecha_registro?: string | null;
+  porcentaje?: number | null;
+  observaciones?: string | null;
+  usuario_registro?: string | null;
+  estado?: { nombre: string; color_hex: string; codigo: string; mes_orientativo: string } | null;
+}
+
 export const laboresService = {
   tiposLabor: () =>
     get<TipoLabor[]>("/labores/tipos-labor"),
   seedTiposLabor: () =>
     post<{ message: string; created: number }>("/labores/seed-tipos-labor", {}),
+  estadosFenologicos: (params?: { especie?: number }) =>
+    get<EstadoFenologico[]>("/mantenedores/estados-fenologicos", params),
+  seedEstadosFenologicos: () =>
+    post<{ message: string; created: number; skipped_species: string[] }>("/labores/seed-estados-fenologicos", {}),
   planificacion: (params?: { testblock?: number }) =>
     get<EjecucionLabor[]>("/labores/planificacion", params),
   crearPlanificacion: (data: Record<string, unknown>) =>
@@ -68,5 +97,5 @@ export const laboresService = {
   registroFenologico: (data: Record<string, unknown>) =>
     post<{ created: number; tipo_labor_id: number }>("/labores/registro-fenologico", data),
   historialFenologico: (testblockId: number) =>
-    get<EjecucionLabor[]>(`/labores/historial-fenologico/${testblockId}`),
+    get<RegistroFenologicoHistorial[]>(`/labores/historial-fenologico/${testblockId}`),
 };

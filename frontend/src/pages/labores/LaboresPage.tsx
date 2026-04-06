@@ -23,9 +23,10 @@ import { CrudForm } from "@/components/shared/CrudForm";
 import { KpiCard } from "@/components/shared/KpiCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { laboresService } from "@/services/labores";
-import type { LaborDashboard } from "@/services/labores";
+import type { LaborDashboard, EstadoFenologico } from "@/services/labores";
 import { useTestblocks } from "@/hooks/useTestblock";
 import { useAuthStore } from "@/stores/authStore";
+import { useLookups } from "@/hooks/useLookups";
 import { mantenedorService } from "@/services/mantenedores";
 import { formatDate } from "@/lib/utils";
 import type { FieldDef } from "@/types";
@@ -36,27 +37,16 @@ import { LaborCalendar } from "@/components/labores/LaborCalendar";
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Pauta data for Cerezo species (hardcoded from agronomic calendar) */
-const PAUTA_CEREZO = [
-  { id: 1, tipo: "Fenologia", nombre: "Inicio caida de hoja", icon: "L", mes: "Abr", cat: "fenologia" },
-  { id: 2, tipo: "Fenologia", nombre: "50% caida de hoja", icon: "L", mes: "May", cat: "fenologia" },
-  { id: 3, tipo: "Fenologia", nombre: "100% caida de hoja", icon: "L", mes: "Jun", cat: "fenologia" },
-  { id: 4, tipo: "Labor", nombre: "Poda de formacion", icon: "P", mes: "Jun-Jul", cat: "poda" },
-  { id: 5, tipo: "Fenologia", nombre: "Yema dormante", icon: "Y", mes: "Jul", cat: "fenologia" },
-  { id: 6, tipo: "Labor", nombre: "Aplicacion Dormex", icon: "D", mes: "Jul", cat: "fitosanidad" },
-  { id: 7, tipo: "Labor", nombre: "Fertilizacion base", icon: "F", mes: "Ago", cat: "fertilizacion" },
-  { id: 8, tipo: "Fenologia", nombre: "Yema hinchada", icon: "Y", mes: "Ago", cat: "fenologia" },
-  { id: 9, tipo: "Fenologia", nombre: "Punta verde", icon: "P", mes: "Sep", cat: "fenologia" },
-  { id: 10, tipo: "Fenologia", nombre: "Inicio floracion", icon: "F", mes: "Sep", cat: "fenologia" },
-  { id: 11, tipo: "Fenologia", nombre: "Plena floracion", icon: "F", mes: "Oct", cat: "fenologia" },
-  { id: 12, tipo: "Labor", nombre: "Aplicacion GA3", icon: "G", mes: "Oct", cat: "fitosanidad" },
-  { id: 13, tipo: "Fenologia", nombre: "Cuaja", icon: "C", mes: "Oct-Nov", cat: "fenologia" },
-  { id: 14, tipo: "Labor", nombre: "Raleo", icon: "R", mes: "Nov", cat: "manejo" },
-  { id: 15, tipo: "Fenologia", nombre: "Pinta / Envero", icon: "E", mes: "Nov", cat: "fenologia" },
-  { id: 16, tipo: "Labor", nombre: "Cosecha", icon: "C", mes: "Nov-Dic", cat: "cosecha" },
-];
-
-const SPECIES_PILLS = ["Cerezo", "Ciruela", "Nectarin", "Durazno"] as const;
+/** Unified pauta item — composed from API data (estados_fenologicos + tipos_labor) */
+interface PautaItem {
+  id: string;
+  tipo: "Fenologia" | "Labor";
+  nombre: string;
+  mes: string;
+  cat: string;
+  orden: number;
+  color_hex?: string | null;
+}
 
 const CAT_COLORS: Record<string, string> = {
   fenologia: "bg-violet-100 text-violet-700 border-violet-200",
@@ -115,11 +105,21 @@ function todayFormatted(): string {
 export function LaboresPage() {
   const queryClient = useQueryClient();
   const token = useAuthStore((s) => s.token);
+  const lk = useLookups();
   const { data: testblocks } = useTestblocks();
   const { data: tiposLabor } = useQuery({
     queryKey: ["tipos-labor"],
     queryFn: () => mantenedorService("tipos-labor").list(),
   });
+
+  // Fetch estados fenologicos from API
+  const { data: allEstadosFenol } = useQuery({
+    queryKey: ["estados-fenologicos"],
+    queryFn: () => laboresService.estadosFenologicos(),
+    staleTime: 5 * 60_000,
+  });
+
+  const especiesRaw = (lk.rawData.especies || []) as { id_especie: number; nombre: string }[];
 
   // --- state ---
   const [tbFilter, setTbFilter] = useState<string>("");
@@ -133,10 +133,8 @@ export function LaboresPage() {
   const [qrLabor, setQrLabor] = useState<EjecucionLabor | null>(null);
   const [addEvidOpen, setAddEvidOpen] = useState(false);
   const [qrBlobUrl, setQrBlobUrl] = useState<string | null>(null);
-  const [selectedPauta, setSelectedPauta] = useState<string | null>(null);
-  const [pautaChecked, setPautaChecked] = useState<Set<number>>(
-    () => new Set(PAUTA_CEREZO.map((p) => p.id)),
-  );
+  const [selectedPautaEspecieId, setSelectedPautaEspecieId] = useState<number | null>(null);
+  const [pautaChecked, setPautaChecked] = useState<Set<string>>(new Set());
 
   const tbFilterNum = tbFilter && tbFilter !== "all" ? Number(tbFilter) : undefined;
 
@@ -156,6 +154,60 @@ export function LaboresPage() {
     queryFn: () => laboresService.evidencias(evidenciaLabor!.id_ejecucion),
     enabled: !!evidenciaLabor,
   });
+
+  // --- Compose pauta from API data ---
+  const pautaItems: PautaItem[] = useMemo(() => {
+    if (!selectedPautaEspecieId) return [];
+    const items: PautaItem[] = [];
+
+    // Add fenological states for selected species
+    const estados = ((allEstadosFenol || []) as EstadoFenologico[])
+      .filter((e) => e.id_especie === selectedPautaEspecieId && e.activo !== false)
+      .sort((a, b) => a.orden - b.orden);
+
+    for (const e of estados) {
+      items.push({
+        id: `fen-${e.id_estado}`,
+        tipo: "Fenologia",
+        nombre: e.nombre,
+        mes: e.mes_orientativo || "-",
+        cat: "fenologia",
+        orden: e.orden * 2, // even numbers for fenologia to interleave with labores
+        color_hex: e.color_hex,
+      });
+    }
+
+    // Add labor types (non-fenologia)
+    const labores = ((tiposLabor || []) as any[])
+      .filter((t: any) => t.categoria !== "fenologia" && t.activo !== false);
+    for (const t of labores) {
+      items.push({
+        id: `lab-${t.id_labor}`,
+        tipo: "Labor",
+        nombre: t.nombre,
+        mes: "-",
+        cat: t.categoria || "manejo",
+        orden: 999 + (t.id_labor || 0),
+        color_hex: null,
+      });
+    }
+
+    // Sort: fenologia by orden first, then labores appended
+    items.sort((a, b) => a.orden - b.orden);
+
+    return items;
+  }, [selectedPautaEspecieId, allEstadosFenol, tiposLabor]);
+
+  // Initialize checked set when pauta changes
+  useMemo(() => {
+    if (pautaItems.length > 0) {
+      setPautaChecked(new Set(pautaItems.map((p) => p.id)));
+    }
+  }, [pautaItems]);
+
+  const selectedPautaEspecieName = selectedPautaEspecieId
+    ? especiesRaw.find((e) => e.id_especie === selectedPautaEspecieId)?.nombre ?? ""
+    : "";
 
   // --- lookup maps ---
   const laborMap = new Map<number, string>();
@@ -441,7 +493,7 @@ export function LaboresPage() {
   };
 
   // --- Pauta checkbox toggle ---
-  const togglePautaItem = (id: number) => {
+  const togglePautaItem = (id: string) => {
     setPautaChecked((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -781,41 +833,40 @@ export function LaboresPage() {
           </div>
         </TabsContent>
 
-        {/* ==================== TAB: PAUTA POR ESPECIE ==================== */}
+        {/* ==================== TAB: PAUTA POR ESPECIE (API-driven) ==================== */}
         <TabsContent value="pauta">
           <div className="space-y-4">
-            {/* Species selector pills */}
+            {/* Species selector pills — from API */}
             <div className="flex gap-2 flex-wrap">
-              {SPECIES_PILLS.map((especie) => {
-                const key = especie.toLowerCase();
-                const isSelected = selectedPauta === key;
+              {especiesRaw.map((especie) => {
+                const isSelected = selectedPautaEspecieId === especie.id_especie;
                 return (
                   <button
-                    key={especie}
-                    onClick={() => setSelectedPauta(isSelected ? null : key)}
+                    key={especie.id_especie}
+                    onClick={() => setSelectedPautaEspecieId(isSelected ? null : especie.id_especie)}
                     className={`px-4 py-1.5 rounded-full border text-xs font-semibold transition-colors ${
                       isSelected
                         ? "border-garces-cherry bg-garces-cherry/10 text-garces-cherry"
                         : "border-gray-200 bg-white text-muted-foreground hover:border-gray-300"
                     }`}
                   >
-                    {especie}
+                    {especie.nombre}
                   </button>
                 );
               })}
             </div>
 
-            {/* Pauta table when species selected */}
-            {selectedPauta === "cerezo" && (
+            {/* Pauta table when species selected and has data */}
+            {selectedPautaEspecieId && pautaItems.length > 0 && (
               <div className="bg-white rounded-xl border overflow-hidden">
                 {/* Pauta header */}
                 <div className="flex items-center justify-between px-5 py-3.5 border-b bg-gray-50/80">
                   <div className="flex items-center gap-3">
                     <span className="font-bold text-sm">
-                      Pauta Cerezo -- Temporada 2025-2026
+                      Pauta {selectedPautaEspecieName} -- Temporada 2025-2026
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      16 items (9 fenologia + 7 labores)
+                      {pautaItems.length} items ({pautaItems.filter((p) => p.tipo === "Fenologia").length} fenologia + {pautaItems.filter((p) => p.tipo === "Labor").length} labores)
                     </span>
                   </div>
                   <Button
@@ -828,7 +879,7 @@ export function LaboresPage() {
 
                 {/* Pauta items */}
                 <div className="divide-y divide-gray-100">
-                  {PAUTA_CEREZO.map((p) => {
+                  {pautaItems.map((p) => {
                     const catClass = CAT_COLORS[p.cat] || "bg-gray-100 text-gray-700";
                     const dotClass = CAT_DOT_COLORS[p.cat] || "bg-gray-400";
 
@@ -864,18 +915,21 @@ export function LaboresPage() {
               </div>
             )}
 
-            {/* Placeholder for other species */}
-            {selectedPauta && selectedPauta !== "cerezo" && (
+            {/* Empty state for selected species with no data */}
+            {selectedPautaEspecieId && pautaItems.length === 0 && (
               <div className="bg-white rounded-xl border p-12 text-center">
                 <Scissors className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
                 <p className="text-sm font-semibold text-muted-foreground">
-                  Pauta para {selectedPauta.charAt(0).toUpperCase() + selectedPauta.slice(1)} en desarrollo
+                  Sin estados fenologicos para {selectedPautaEspecieName}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Un administrador puede poblar los estados desde Mantenedores o ejecutando el seed.
                 </p>
               </div>
             )}
 
             {/* Empty state */}
-            {!selectedPauta && (
+            {!selectedPautaEspecieId && (
               <div className="bg-white rounded-xl border p-16 text-center">
                 <Plus className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
                 <p className="text-sm font-semibold text-muted-foreground">

@@ -6,45 +6,58 @@ import { Button } from "@/components/ui/button";
 import { useLookups } from "@/hooks/useLookups";
 import { useTestblocks } from "@/hooks/useTestblock";
 import { laboresService } from "@/services/labores";
+import type { EstadoFenologico } from "@/services/labores";
 import { formatDate } from "@/lib/utils";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
-/* ── Pauta fenologica por especie (referencia visual) ── */
-
-const PAUTA_CEREZO = [
-  { nombre: "Inicio caida de hoja", mes: "Abr", icon: Leaf, color: "#D97706" },
-  { nombre: "50% caida de hoja", mes: "May", icon: Leaf, color: "#D97706" },
-  { nombre: "100% caida de hoja", mes: "Jun", icon: Leaf, color: "#92400E" },
-  { nombre: "Yema dormante", mes: "Jul", icon: Snowflake, color: "#6B7280" },
-  { nombre: "Yema hinchada", mes: "Ago", icon: Droplets, color: "#2563EB" },
-  { nombre: "Punta verde", mes: "Sep", icon: Leaf, color: "#16A34A" },
-  { nombre: "Inicio floracion", mes: "Sep", icon: Flower2, color: "#EC4899" },
-  { nombre: "Plena floracion", mes: "Oct", icon: Flower2, color: "#DB2777" },
-  { nombre: "Cuaja", mes: "Oct-Nov", icon: Cherry, color: "#7C3AED" },
-  { nombre: "Pinta / Envero", mes: "Nov", icon: Sun, color: "#DC2626" },
-];
-
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
+/** Pick an icon based on estado name */
+function iconForEstado(nombre: string) {
+  const n = nombre.toLowerCase();
+  if (n.includes("hoja") || n.includes("verde") || n.includes("crecim")) return Leaf;
+  if (n.includes("yema") && n.includes("dorm")) return Snowflake;
+  if (n.includes("yema")) return Droplets;
+  if (n.includes("flor")) return Flower2;
+  if (n.includes("cuaja") || n.includes("cosecha") || n.includes("madur")) return Cherry;
+  if (n.includes("pinta") || n.includes("envero") || n.includes("pintado")) return Sun;
+  return Leaf;
+}
 
 export function FenologiaPage() {
   const navigate = useNavigate();
   const lk = useLookups();
   const { data: testblocks } = useTestblocks();
-  const [selectedEspecie, setSelectedEspecie] = useState<string>("cerezo");
 
-  const { data: labores } = useQuery({
-    queryKey: ["labores", "planificacion"],
-    queryFn: () => laboresService.planificacion(),
+  const especiesRaw = (lk.rawData.especies || []) as { id_especie: number; nombre: string }[];
+  const [selectedEspecieId, setSelectedEspecieId] = useState<number | null>(null);
+
+  // Fetch all estados fenologicos
+  const { data: allEstados } = useQuery({
+    queryKey: ["estados-fenologicos"],
+    queryFn: () => laboresService.estadosFenologicos(),
+    staleTime: 5 * 60_000,
   });
 
-  // Filter fenologia-type labores
-  // EjecucionLabor has id_labor (FK) but not nombre_labor.
-  // We show all labores and let the user browse — the backend can enrich with labor names.
-  const fenologiaLabores = useMemo(() => {
-    if (!labores) return [];
-    // Show recent labores (last 20) as proxy for fenologia activity
-    return (labores as any[]).slice(0, 20);
-  }, [labores]);
+  // Filter estados for selected species
+  const estadosEspecie = useMemo(() => {
+    if (!allEstados || !selectedEspecieId) return [];
+    return (allEstados as EstadoFenologico[])
+      .filter((e) => e.id_especie === selectedEspecieId && e.activo !== false)
+      .sort((a, b) => a.orden - b.orden);
+  }, [allEstados, selectedEspecieId]);
+
+  const selectedEspecieName = selectedEspecieId
+    ? especiesRaw.find((e) => e.id_especie === selectedEspecieId)?.nombre ?? ""
+    : "";
+
+  // Fetch recent historial (use first testblock as default)
+  const firstTbId = testblocks?.[0]?.id_testblock;
+  const { data: historial } = useQuery({
+    queryKey: ["historial-fenologico", firstTbId],
+    queryFn: () => laboresService.historialFenologico(firstTbId!),
+    enabled: !!firstTbId,
+  });
 
   return (
     <div className="space-y-6">
@@ -71,35 +84,37 @@ export function FenologiaPage() {
         </p>
       </div>
 
-      {/* Especie selector */}
-      <div className="flex gap-2">
-        {[
-          { key: "cerezo", label: "Cerezo", color: "border-red-500 bg-red-50 text-red-700" },
-          { key: "ciruela", label: "Ciruela", color: "border-purple-500 bg-purple-50 text-purple-700" },
-          { key: "nectarin", label: "Nectarin", color: "border-amber-500 bg-amber-50 text-amber-700" },
-          { key: "durazno", label: "Durazno", color: "border-orange-500 bg-orange-50 text-orange-700" },
-        ].map((esp) => (
-          <button
-            key={esp.key}
-            onClick={() => setSelectedEspecie(esp.key)}
-            className={`px-4 py-2 rounded-full text-xs font-semibold border-2 transition-colors ${
-              selectedEspecie === esp.key ? esp.color : "border-gray-200 bg-white text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {esp.label}
-          </button>
-        ))}
+      {/* Especie selector — driven by API data */}
+      <div className="flex gap-2 flex-wrap">
+        {especiesRaw.map((esp) => {
+          const isSelected = selectedEspecieId === esp.id_especie;
+          return (
+            <button
+              key={esp.id_especie}
+              onClick={() => setSelectedEspecieId(isSelected ? null : esp.id_especie)}
+              className={`px-4 py-2 rounded-full text-xs font-semibold border-2 transition-colors ${
+                isSelected
+                  ? "border-garces-cherry bg-garces-cherry/10 text-garces-cherry"
+                  : "border-gray-200 bg-white text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {esp.nombre}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Pauta visual timeline */}
-      {selectedEspecie === "cerezo" && (
+      {/* Pauta visual timeline — from API */}
+      {selectedEspecieId && estadosEspecie.length > 0 && (
         <div className="bg-white rounded-lg border">
           <div className="px-5 py-3 border-b bg-muted/30">
-            <h3 className="font-semibold text-sm">Ciclo Fenologico del Cerezo</h3>
-            <p className="text-xs text-muted-foreground">Referencia de estados a lo largo de la temporada</p>
+            <h3 className="font-semibold text-sm">Ciclo Fenologico: {selectedEspecieName}</h3>
+            <p className="text-xs text-muted-foreground">
+              {estadosEspecie.length} estados fenologicos registrados
+            </p>
           </div>
 
-          {/* Timeline visual */}
+          {/* Timeline bar */}
           <div className="px-5 py-4">
             <div className="flex justify-between mb-2">
               {MESES.map((m) => (
@@ -108,34 +123,32 @@ export function FenologiaPage() {
                 </div>
               ))}
             </div>
-            <div className="relative h-2 bg-gray-100 rounded-full mb-6">
-              {/* Colored segments for active fenologia months */}
-              <div className="absolute h-full bg-amber-300 rounded-l-full" style={{ left: "25%", width: "17%" }} title="Caida de hoja (Abr-Jun)" />
-              <div className="absolute h-full bg-blue-300" style={{ left: "50%", width: "8%" }} title="Yema (Jul-Ago)" />
-              <div className="absolute h-full bg-pink-400" style={{ left: "58%", width: "17%" }} title="Floracion (Sep-Oct)" />
-              <div className="absolute h-full bg-red-400 rounded-r-full" style={{ left: "75%", width: "17%" }} title="Cuaja-Cosecha (Oct-Dic)" />
-            </div>
+            <div className="relative h-2 bg-gray-100 rounded-full mb-6" />
           </div>
 
-          {/* Pauta items */}
+          {/* Estado items */}
           <div className="divide-y">
-            {PAUTA_CEREZO.map((item, i) => {
-              const Icon = item.icon;
+            {estadosEspecie.map((estado) => {
+              const Icon = iconForEstado(estado.nombre);
+              const color = estado.color_hex || "#6B7280";
               return (
-                <div key={i} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/20 transition-colors">
+                <div key={estado.id_estado} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/20 transition-colors">
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: item.color + "18" }}
+                    style={{ backgroundColor: color + "18" }}
                   >
-                    <Icon className="h-4 w-4" style={{ color: item.color }} />
+                    <Icon className="h-4 w-4" style={{ color }} />
                   </div>
                   <div className="flex-1">
-                    <span className="text-sm font-medium">{item.nombre}</span>
+                    <span className="text-sm font-medium">{estado.nombre}</span>
+                    {estado.descripcion && (
+                      <p className="text-xs text-muted-foreground">{estado.descripcion}</p>
+                    )}
                   </div>
                   <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                    {item.mes}
+                    {estado.mes_orientativo || "-"}
                   </span>
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
                 </div>
               );
             })}
@@ -143,13 +156,21 @@ export function FenologiaPage() {
         </div>
       )}
 
-      {selectedEspecie !== "cerezo" && (
+      {selectedEspecieId && estadosEspecie.length === 0 && (
         <div className="bg-white rounded-lg border p-8 text-center">
           <Flower2 className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-sm font-semibold">Pauta de {selectedEspecie} en desarrollo</p>
+          <p className="text-sm font-semibold">Sin estados fenologicos para {selectedEspecieName}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            La pauta fenologica para {selectedEspecie} se configurara proximamente.
+            No hay estados fenologicos registrados para esta especie.
+            Un administrador puede poblarlos desde Mantenedores o ejecutando el seed.
           </p>
+        </div>
+      )}
+
+      {!selectedEspecieId && (
+        <div className="bg-white rounded-lg border p-8 text-center">
+          <Flower2 className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm font-semibold">Selecciona una especie para ver su ciclo fenologico</p>
         </div>
       )}
 
@@ -161,7 +182,7 @@ export function FenologiaPage() {
             Registrar nuevo
           </Button>
         </div>
-        {fenologiaLabores.length === 0 ? (
+        {!historial || historial.length === 0 ? (
           <div className="p-8 text-center">
             <Calendar className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">
@@ -173,18 +194,24 @@ export function FenologiaPage() {
           </div>
         ) : (
           <div className="divide-y">
-            {fenologiaLabores.slice(0, 10).map((l: any, i: number) => (
-              <div key={i} className="flex items-center justify-between px-5 py-3 text-sm">
+            {historial.slice(0, 10).map((r, i) => (
+              <div key={r.id_registro ?? i} className="flex items-center justify-between px-5 py-3 text-sm">
                 <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-purple-500 flex-shrink-0" />
+                  <div
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: r.estado?.color_hex || "#8B5CF6" }}
+                  />
                   <div>
-                    <span className="font-medium">{l.nombre_labor || `Labor #${l.id_ejecucion}`}</span>
-                    <span className="text-muted-foreground ml-2">TB #{l.id_posicion}</span>
+                    <span className="font-medium">{r.estado?.nombre || `Registro #${r.id_registro}`}</span>
+                    <span className="text-muted-foreground ml-2">Pos #{r.id_posicion}</span>
+                    {r.porcentaje != null && (
+                      <span className="text-muted-foreground ml-2">{r.porcentaje}%</span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <StatusBadge status={l.estado} />
-                  <span className="text-xs text-muted-foreground">{formatDate(l.fecha_programada)}</span>
+                  <span className="text-xs text-muted-foreground">{r.temporada}</span>
+                  <span className="text-xs text-muted-foreground">{formatDate(r.fecha_registro)}</span>
                 </div>
               </div>
             ))}

@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.models.sistema import Usuario
 from app.models.laboratorio import EjecucionLabor, RegistroFenologico
-from app.models.maestras import TipoLabor, EstadoFenologico
+from app.models.maestras import TipoLabor, EstadoFenologico, Especie
 from app.models.testblock import PosicionTestBlock
 from app.models.evidencia import EvidenciaLabor
 from app.schemas.laboratorio import LaborPlanificacion, LaborPlanificacionTestblock, LaborEjecucion
@@ -72,6 +72,114 @@ def seed_tipos_labor(
 
     db.commit()
     return {"message": f"Se crearon {created} tipos de labor.", "created": created}
+
+
+# ---------------------------------------------------------------------------
+# Seed estados fenologicos
+# ---------------------------------------------------------------------------
+
+SEED_ESTADOS_FENOLOGICOS: dict[str, list[dict]] = {
+    "Cerezo": [
+        {"codigo": "CER_HOJ_CAI_INI", "nombre": "Inicio caida de hoja", "orden": 1, "mes_orientativo": "Abr", "color_hex": "#A0522D"},
+        {"codigo": "CER_HOJ_CAI_50", "nombre": "50% caida de hoja", "orden": 2, "mes_orientativo": "May", "color_hex": "#8B4513"},
+        {"codigo": "CER_HOJ_CAI_100", "nombre": "100% caida de hoja", "orden": 3, "mes_orientativo": "Jun", "color_hex": "#6B3A2A"},
+        {"codigo": "CER_YEMA_DORM", "nombre": "Yema dormante", "orden": 4, "mes_orientativo": "Jul", "color_hex": "#708090"},
+        {"codigo": "CER_YEMA_HINCH", "nombre": "Yema hinchada", "orden": 5, "mes_orientativo": "Ago", "color_hex": "#9ACD32"},
+        {"codigo": "CER_PUNTA_VERDE", "nombre": "Punta verde", "orden": 6, "mes_orientativo": "Sep", "color_hex": "#6B8E23"},
+        {"codigo": "CER_FLOR_INI", "nombre": "Inicio floracion", "orden": 7, "mes_orientativo": "Sep", "color_hex": "#FFB6C1"},
+        {"codigo": "CER_FLOR_PLENA", "nombre": "Plena floracion", "orden": 8, "mes_orientativo": "Oct", "color_hex": "#FF69B4"},
+        {"codigo": "CER_CUAJA", "nombre": "Cuaja", "orden": 9, "mes_orientativo": "Oct-Nov", "color_hex": "#90EE90"},
+        {"codigo": "CER_ENVERO", "nombre": "Pinta / Envero", "orden": 10, "mes_orientativo": "Nov", "color_hex": "#DC143C"},
+    ],
+    "Ciruela": [
+        {"codigo": "CIR_HOJ_CAI_INI", "nombre": "Inicio caida de hoja", "orden": 1, "mes_orientativo": "Mar-Abr", "color_hex": "#A0522D"},
+        {"codigo": "CIR_HOJ_CAI_100", "nombre": "Caida total de hoja", "orden": 2, "mes_orientativo": "May", "color_hex": "#6B3A2A"},
+        {"codigo": "CIR_YEMA_DORM", "nombre": "Yema dormante", "orden": 3, "mes_orientativo": "Jun-Jul", "color_hex": "#708090"},
+        {"codigo": "CIR_YEMA_HINCH", "nombre": "Yema hinchada", "orden": 4, "mes_orientativo": "Ago", "color_hex": "#9ACD32"},
+        {"codigo": "CIR_FLOR_INI", "nombre": "Inicio floracion", "orden": 5, "mes_orientativo": "Ago-Sep", "color_hex": "#DDA0DD"},
+        {"codigo": "CIR_FLOR_PLENA", "nombre": "Plena floracion", "orden": 6, "mes_orientativo": "Sep", "color_hex": "#9932CC"},
+        {"codigo": "CIR_CUAJA", "nombre": "Cuaja", "orden": 7, "mes_orientativo": "Sep-Oct", "color_hex": "#90EE90"},
+        {"codigo": "CIR_CRECIM", "nombre": "Crecimiento de fruto", "orden": 8, "mes_orientativo": "Oct-Nov", "color_hex": "#32CD32"},
+        {"codigo": "CIR_ENVERO", "nombre": "Envero", "orden": 9, "mes_orientativo": "Nov-Dic", "color_hex": "#8B008B"},
+        {"codigo": "CIR_COSECHA", "nombre": "Maduracion cosecha", "orden": 10, "mes_orientativo": "Dic-Ene", "color_hex": "#4B0082"},
+    ],
+    "Nectarina": [
+        {"codigo": "NEC_HOJ_CAI", "nombre": "Caida de hoja", "orden": 1, "mes_orientativo": "Abr-May", "color_hex": "#A0522D"},
+        {"codigo": "NEC_YEMA_DORM", "nombre": "Yema dormante", "orden": 2, "mes_orientativo": "Jun-Jul", "color_hex": "#708090"},
+        {"codigo": "NEC_YEMA_HINCH", "nombre": "Yema hinchada", "orden": 3, "mes_orientativo": "Ago", "color_hex": "#9ACD32"},
+        {"codigo": "NEC_FLOR_INI", "nombre": "Inicio floracion", "orden": 4, "mes_orientativo": "Sep", "color_hex": "#FFB6C1"},
+        {"codigo": "NEC_FLOR_PLENA", "nombre": "Plena floracion", "orden": 5, "mes_orientativo": "Sep", "color_hex": "#FF1493"},
+        {"codigo": "NEC_CUAJA", "nombre": "Cuaja", "orden": 6, "mes_orientativo": "Oct", "color_hex": "#90EE90"},
+        {"codigo": "NEC_RALEO", "nombre": "Estado raleo", "orden": 7, "mes_orientativo": "Oct-Nov", "color_hex": "#228B22"},
+        {"codigo": "NEC_CRECIM", "nombre": "Crecimiento rapido", "orden": 8, "mes_orientativo": "Nov", "color_hex": "#00FF7F"},
+        {"codigo": "NEC_MADURACION", "nombre": "Maduracion", "orden": 9, "mes_orientativo": "Dic-Ene", "color_hex": "#FF8C00"},
+    ],
+    "Durazno": [
+        {"codigo": "DUR_HOJ_CAI", "nombre": "Caida de hoja", "orden": 1, "mes_orientativo": "Abr-May", "color_hex": "#A0522D"},
+        {"codigo": "DUR_YEMA_DORM", "nombre": "Yema dormante", "orden": 2, "mes_orientativo": "Jun-Jul", "color_hex": "#708090"},
+        {"codigo": "DUR_YEMA_HINCH", "nombre": "Yema hinchada", "orden": 3, "mes_orientativo": "Jul-Ago", "color_hex": "#9ACD32"},
+        {"codigo": "DUR_FLOR_INI", "nombre": "Inicio floracion", "orden": 4, "mes_orientativo": "Ago-Sep", "color_hex": "#FFB6C1"},
+        {"codigo": "DUR_FLOR_PLENA", "nombre": "Plena floracion", "orden": 5, "mes_orientativo": "Sep", "color_hex": "#FF69B4"},
+        {"codigo": "DUR_CUAJA", "nombre": "Cuaja", "orden": 6, "mes_orientativo": "Sep-Oct", "color_hex": "#90EE90"},
+        {"codigo": "DUR_CRECIM", "nombre": "Crecimiento de fruto", "orden": 7, "mes_orientativo": "Oct-Nov", "color_hex": "#228B22"},
+        {"codigo": "DUR_PINTADO", "nombre": "Pintado / Color", "orden": 8, "mes_orientativo": "Nov-Dic", "color_hex": "#FF4500"},
+        {"codigo": "DUR_MADURACION", "nombre": "Maduracion cosecha", "orden": 9, "mes_orientativo": "Dic-Ene", "color_hex": "#FF6347"},
+    ],
+}
+
+
+@router.post("/seed-estados-fenologicos", status_code=201)
+def seed_estados_fenologicos(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Seed estados_fenologicos for 4 main species. Admin only.
+
+    - Updates existing records for species that already have data (fills missing fields).
+    - Inserts new records for species that have no data yet.
+    """
+    created = 0
+    updated = 0
+    skipped_species = []
+
+    for especie_nombre, estados in SEED_ESTADOS_FENOLOGICOS.items():
+        especie = db.query(Especie).filter(Especie.nombre == especie_nombre).first()
+        if not especie:
+            skipped_species.append(especie_nombre)
+            continue
+
+        existing = (
+            db.query(EstadoFenologico)
+            .filter(EstadoFenologico.id_especie == especie.id_especie)
+            .all()
+        )
+
+        if existing:
+            # Update existing records: fill in missing fields (mes_orientativo, color_hex, activo)
+            existing_by_orden = {e.orden: e for e in existing}
+            for seed_item in estados:
+                ef = existing_by_orden.get(seed_item["orden"])
+                if ef:
+                    if not ef.color_hex:
+                        ef.color_hex = seed_item.get("color_hex")
+                    if not getattr(ef, "mes_orientativo", None):
+                        ef.mes_orientativo = seed_item.get("mes_orientativo")
+                    if getattr(ef, "activo", None) is None:
+                        ef.activo = True
+                    db.add(ef)
+                    updated += 1
+        else:
+            # Insert new records for this species
+            for estado in estados:
+                ef = EstadoFenologico(id_especie=especie.id_especie, **estado)
+                db.add(ef)
+                created += 1
+
+    db.commit()
+    msg = f"Seed completo: {created} creados, {updated} actualizados."
+    if skipped_species:
+        msg += f" Especies no encontradas: {', '.join(skipped_species)}"
+    return {"message": msg, "created": created, "updated": updated, "skipped_species": skipped_species}
 
 
 # ---------------------------------------------------------------------------
@@ -412,12 +520,20 @@ def registrar_fenologico(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
-    """Register fenological observation for one or more positions."""
+    """Register fenological observation for one or more positions.
+
+    Expects:
+        id_estado_fenol: int  (FK to estados_fenologicos)
+        posiciones_ids: list[int]
+        porcentaje: int | None
+        fecha: str (YYYY-MM-DD)
+        observaciones: str
+        temporada: str
+    """
     from datetime import date as date_type
 
-    testblock_id = data.get("testblock_id")
     posiciones_ids = data.get("posiciones_ids", [])
-    estado_fenologico = data.get("estado_fenologico")
+    id_estado_fenol = data.get("id_estado_fenol")
     porcentaje = data.get("porcentaje")
     fecha = data.get("fecha", date_type.today().isoformat())
     observaciones = data.get("observaciones", "")
@@ -425,46 +541,45 @@ def registrar_fenologico(
 
     if not posiciones_ids:
         raise HTTPException(status_code=400, detail="Debe seleccionar al menos una posicion")
-    if not estado_fenologico:
-        raise HTTPException(status_code=400, detail="Debe indicar el estado fenologico")
+    if not id_estado_fenol:
+        raise HTTPException(status_code=400, detail="Debe indicar el estado fenologico (id_estado_fenol)")
 
-    # Find or create the tipo_labor for fenologia
-    tipo_labor = db.query(TipoLabor).filter(
-        TipoLabor.nombre == estado_fenologico,
-        TipoLabor.categoria == "fenologia",
-    ).first()
+    # Validate the estado_fenologico exists
+    estado = db.get(EstadoFenologico, id_estado_fenol)
+    if not estado:
+        raise HTTPException(status_code=404, detail=f"Estado fenologico {id_estado_fenol} no encontrado")
 
+    # Use the generic REG_FENOL tipo_labor (not a dynamic one)
+    tipo_labor = db.query(TipoLabor).filter(TipoLabor.codigo == "REG_FENOL").first()
     if not tipo_labor:
-        # Generate a safe codigo from the estado name
-        codigo = "FEN_" + estado_fenologico[:12].upper().replace(" ", "_")
-        tipo_labor = TipoLabor(
-            codigo=codigo,
-            nombre=estado_fenologico,
-            categoria="fenologia",
-            activo=True,
-        )
-        db.add(tipo_labor)
-        db.flush()
+        raise HTTPException(status_code=400, detail="Tipo de labor REG_FENOL no existe. Ejecute seed-tipos-labor primero.")
 
     created = 0
     for pos_id in posiciones_ids:
+        # Resolve planta from position
+        pos = db.get(PosicionTestBlock, pos_id)
+        id_planta = getattr(pos, "id_planta", None) if pos else None
+
         # Create EjecucionLabor entry (for labor tracking)
         ej = EjecucionLabor(
             id_labor=tipo_labor.id_labor,
             id_posicion=pos_id,
+            id_planta=id_planta,
             temporada=temporada,
             fecha_programada=fecha,
             fecha_ejecucion=fecha,
             estado="ejecutada",
             ejecutor=user.username,
-            observaciones=f"{observaciones} | Porcentaje: {porcentaje}%" if porcentaje else observaciones,
+            observaciones=f"{estado.nombre}: {porcentaje}% - {observaciones}" if porcentaje else f"{estado.nombre} - {observaciones}",
             usuario_registro=user.username,
         )
         db.add(ej)
 
-        # Also create RegistroFenologico entry (specific fenologia table)
+        # Create RegistroFenologico entry with proper FK
         reg = RegistroFenologico(
             id_posicion=pos_id,
+            id_planta=id_planta,
+            id_estado_fenol=id_estado_fenol,
             temporada=temporada,
             fecha_registro=fecha,
             porcentaje=porcentaje,
@@ -475,7 +590,7 @@ def registrar_fenologico(
         created += 1
 
     db.commit()
-    return {"created": created, "tipo_labor_id": tipo_labor.id_labor}
+    return {"created": created, "estado": estado.nombre, "id_estado_fenol": id_estado_fenol}
 
 
 @router.get("/historial-fenologico/{testblock_id}")
@@ -484,8 +599,9 @@ def historial_fenologico(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
-    """Get fenologia history for a testblock."""
-    # Get positions for this TB
+    """Get fenologia history for a testblock from registros_fenologicos."""
+    from sqlalchemy import literal_column
+
     posiciones = db.query(PosicionTestBlock.id_posicion).filter(
         PosicionTestBlock.id_testblock == testblock_id
     ).all()
@@ -494,18 +610,41 @@ def historial_fenologico(
     if not pos_ids:
         return []
 
-    # Get labores that are fenologia type
-    results = (
-        db.query(EjecucionLabor)
-        .join(TipoLabor, EjecucionLabor.id_labor == TipoLabor.id_labor)
-        .filter(
-            EjecucionLabor.id_posicion.in_(pos_ids),
-            TipoLabor.categoria == "fenologia",
-        )
-        .order_by(EjecucionLabor.fecha_ejecucion.desc())
-        .limit(100)
+    rows = (
+        db.query(RegistroFenologico)
+        .filter(RegistroFenologico.id_posicion.in_(pos_ids))
+        .order_by(RegistroFenologico.fecha_registro.desc())
+        .limit(200)
         .all()
     )
+
+    # Enrich with estado name/color for the response
+    estado_ids = list({r.id_estado_fenol for r in rows if r.id_estado_fenol})
+    estado_map: dict[int, dict] = {}
+    if estado_ids:
+        for ef in db.query(EstadoFenologico).filter(EstadoFenologico.id_estado.in_(estado_ids)).all():
+            estado_map[ef.id_estado] = {
+                "nombre": ef.nombre,
+                "color_hex": ef.color_hex,
+                "codigo": ef.codigo,
+                "mes_orientativo": ef.mes_orientativo,
+            }
+
+    results = []
+    for r in rows:
+        item = {
+            "id_registro": r.id_registro,
+            "id_posicion": r.id_posicion,
+            "id_planta": r.id_planta,
+            "id_estado_fenol": r.id_estado_fenol,
+            "temporada": r.temporada,
+            "fecha_registro": str(r.fecha_registro) if r.fecha_registro else None,
+            "porcentaje": r.porcentaje,
+            "observaciones": r.observaciones,
+            "usuario_registro": r.usuario_registro,
+            "estado": estado_map.get(r.id_estado_fenol, {}) if r.id_estado_fenol else None,
+        }
+        results.append(item)
 
     return results
 

@@ -257,6 +257,27 @@ class SusceptibilidadUpdate(BaseModel):
     activo: Optional[bool] = None
 
 
+# ── EstadoFenologico ───────────────────────────────────────────────────────
+class EstadoFenologicoCreate(BaseModel):
+    id_especie: int
+    codigo: str
+    nombre: str
+    orden: int = 0
+    descripcion: Optional[str] = None
+    color_hex: Optional[str] = None
+    mes_orientativo: Optional[str] = None
+
+class EstadoFenologicoUpdate(BaseModel):
+    id_especie: Optional[int] = None
+    codigo: Optional[str] = None
+    nombre: Optional[str] = None
+    orden: Optional[int] = None
+    descripcion: Optional[str] = None
+    color_hex: Optional[str] = None
+    mes_orientativo: Optional[str] = None
+    activo: Optional[bool] = None
+
+
 # ── TipoLabor ──────────────────────────────────────────────────────────────
 class TipoLaborCreate(BaseModel):
     codigo: str
