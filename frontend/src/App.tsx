@@ -17,6 +17,7 @@ const CamposPage = lazy(() => import("@/pages/mantenedores/CamposPage").then(m =
 const ColoresPage = lazy(() => import("@/pages/mantenedores/ColoresPage").then(m => ({ default: m.ColoresPage })));
 const SusceptibilidadesPage = lazy(() => import("@/pages/mantenedores/SusceptibilidadesPage").then(m => ({ default: m.SusceptibilidadesPage })));
 const TiposLaborPage = lazy(() => import("@/pages/mantenedores/TiposLaborPage").then(m => ({ default: m.TiposLaborPage })));
+const EstadosFenologicosPage = lazy(() => import("@/pages/mantenedores/EstadosFenologicosPage").then(m => ({ default: m.EstadosFenologicosPage })));
 const EstadosPlantaPage = lazy(() => import("@/pages/mantenedores/EstadosPlantaPage").then(m => ({ default: m.EstadosPlantaPage })));
 const PaisesPage = lazy(() => import("@/pages/mantenedores/PaisesPage").then(m => ({ default: m.PaisesPage })));
 const OrigenesPage = lazy(() => import("@/pages/mantenedores/OrigenesPage").then(m => ({ default: m.OrigenesPage })));
@@ -81,6 +82,7 @@ export function App() {
         <Route path="catalogos/colores" element={<ColoresPage />} />
         <Route path="catalogos/susceptibilidades" element={<SusceptibilidadesPage />} />
         <Route path="catalogos/tipos-labor" element={<TiposLaborPage />} />
+        <Route path="catalogos/estados-fenologicos" element={<EstadosFenologicosPage />} />
         <Route path="catalogos/estados-planta" element={<EstadosPlantaPage />} />
         <Route path="catalogos/paises" element={<PaisesPage />} />
         <Route path="catalogos/origenes" element={<OrigenesPage />} />

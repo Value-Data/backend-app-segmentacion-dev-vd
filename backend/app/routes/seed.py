@@ -30,6 +30,7 @@ ESPECIES_DATA = [
     {"codigo": "CER", "nombre": "Cerezo", "nombre_cientifico": "Prunus avium", "color_hex": "#DC2626"},
     {"codigo": "CIR", "nombre": "Ciruela", "nombre_cientifico": "Prunus domestica", "color_hex": "#7C3AED"},
     {"codigo": "NEC", "nombre": "Nectarina", "nombre_cientifico": "Prunus persica var. nucipersica", "color_hex": "#F59E0B"},
+    {"codigo": "CAR", "nombre": "Carozo", "nombre_cientifico": "Prunus spp.", "color_hex": "#E67E22"},
 ]
 
 VARIEDADES_DATA = {

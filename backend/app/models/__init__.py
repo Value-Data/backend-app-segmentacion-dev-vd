@@ -20,7 +20,7 @@ from app.models.testblock import (  # noqa: F401
 )
 from app.models.laboratorio import (  # noqa: F401
     MedicionLaboratorio, ClasificacionCluster, UmbralCalidad,
-    RegistroFenologico, EjecucionLabor,
+    RegistroFenologico, DetalleLabor, EjecucionLabor,
 )
 from app.models.analisis import PaqueteTecnologico, Alerta, ReglaAlerta  # noqa: F401
 from app.models.bitacora import BitacoraVariedad  # noqa: F401

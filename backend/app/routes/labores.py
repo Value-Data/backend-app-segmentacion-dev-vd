@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.models.sistema import Usuario
-from app.models.laboratorio import EjecucionLabor, RegistroFenologico
+from app.models.laboratorio import EjecucionLabor, RegistroFenologico, DetalleLabor
 from app.models.maestras import TipoLabor, EstadoFenologico, Especie
 from app.models.testblock import PosicionTestBlock
 from app.models.evidencia import EvidenciaLabor
@@ -46,22 +46,40 @@ def seed_tipos_labor(
         return {"message": f"Ya existen {existing} tipos de labor. No se inserto nada.", "created": 0}
 
     seed_data = [
-        {"codigo": "PODA_FORM", "nombre": "Poda de formacion", "categoria": "poda",
-         "descripcion": "Poda estructural para guiar el crecimiento del arbol", "aplica_a": "planta"},
-        {"codigo": "FERT_BASE", "nombre": "Fertilizacion base", "categoria": "fertilizacion",
-         "descripcion": "Aplicacion de fertilizante basal de temporada", "aplica_a": "testblock"},
-        {"codigo": "DORMEX", "nombre": "Aplicacion Dormex", "categoria": "fitosanidad",
-         "descripcion": "Aplicacion de cianamida hidrogenada para romper dormancia", "aplica_a": "testblock"},
-        {"codigo": "GA3", "nombre": "Aplicacion GA3", "categoria": "fitosanidad",
-         "descripcion": "Aplicacion de acido giberelico para aumento de calibre", "aplica_a": "testblock"},
+        # === Labores reales de Garces Fruit (Excel Planificacion) ===
+        {"codigo": "FORMACION", "nombre": "Formacion", "categoria": "manejo",
+         "descripcion": "Formacion del arbol: definir eje, amarrar, eliminar sierpes", "aplica_a": "planta",
+         "aplica_especies": "General"},
+        {"codigo": "PLANTACION", "nombre": "Plantacion", "categoria": "manejo",
+         "descripcion": "Plantacion de nuevos ejemplares en testblock", "aplica_a": "planta",
+         "aplica_especies": "General"},
+        {"codigo": "INJERTACION", "nombre": "Injertacion", "categoria": "manejo",
+         "descripcion": "Injertacion de yema, chequeo cicatrizacion, manejo de cintas", "aplica_a": "planta",
+         "aplica_especies": "General"},
+        {"codigo": "INCISIONES", "nombre": "Incisiones", "categoria": "manejo",
+         "descripcion": "Incisiones en yemas para estimular brotacion", "aplica_a": "planta",
+         "aplica_especies": "Cerezo"},
+        {"codigo": "ORTOPEDIA", "nombre": "Ortopedia", "categoria": "manejo",
+         "descripcion": "Ortopedia de laterales, entrepisos y punteros", "aplica_a": "planta",
+         "aplica_especies": "Cerezo,Ciruela"},
         {"codigo": "RALEO", "nombre": "Raleo", "categoria": "manejo",
-         "descripcion": "Eliminacion de frutos excedentes para mejorar calibre", "aplica_a": "planta"},
-        {"codigo": "RIEGO", "nombre": "Riego", "categoria": "riego",
-         "descripcion": "Aplicacion de riego programado", "aplica_a": "testblock"},
+         "descripcion": "Eliminacion de frutos excedentes para mejorar calibre", "aplica_a": "planta",
+         "aplica_especies": "Carozo,Ciruela"},
         {"codigo": "COSECHA", "nombre": "Cosecha", "categoria": "cosecha",
-         "descripcion": "Cosecha de frutos para evaluacion o comercializacion", "aplica_a": "planta"},
+         "descripcion": "Cosecha de frutos: numero de pasada, rendimiento por planta", "aplica_a": "planta",
+         "aplica_especies": "Cerezo,General"},
+        {"codigo": "RIEGO", "nombre": "Riego", "categoria": "riego",
+         "descripcion": "Riego programado, revision de calicata", "aplica_a": "testblock",
+         "aplica_especies": "General"},
+        {"codigo": "MALEZAS", "nombre": "Malezas", "categoria": "fitosanidad",
+         "descripcion": "Control de malezas con herbicida de contacto", "aplica_a": "testblock",
+         "aplica_especies": "General"},
+        {"codigo": "CARTELES", "nombre": "Carteles", "categoria": "manejo",
+         "descripcion": "Realizar carteles post injertacion para identificacion", "aplica_a": "testblock",
+         "aplica_especies": "General"},
         {"codigo": "REG_FENOL", "nombre": "Registro fenologico", "categoria": "fenologia",
-         "descripcion": "Registro del estado fenologico actual de la planta", "aplica_a": "planta"},
+         "descripcion": "Registro del estado fenologico actual de la planta", "aplica_a": "planta",
+         "aplica_especies": "Cerezo,Ciruela,Carozo"},
     ]
 
     created = 0
@@ -75,33 +93,285 @@ def seed_tipos_labor(
 
 
 # ---------------------------------------------------------------------------
+# Detalles labor: sub-items/instructions per labor type and species
+# ---------------------------------------------------------------------------
+
+SEED_DETALLES_LABOR: dict[str, dict[str, list[str]]] = {
+    "FORMACION": {
+        "General": [
+            "Definir eje",
+            "Definir dos ejes",
+            "Amarrar eje al colihue, sin estrangular",
+            "Amarrar los dos ejes a los colihues, sin estrangular",
+            "Definir laterales (dejar uno por cordel y un entrepiso desde el tercer cordel hacia arriba) eliminar el resto con corte apegado, priorizar brotes con vigor y activos",
+            "Eliminar brotes restantes de la variedad",
+            "Eliminar sierpes",
+            "Limpiar sierpes",
+        ],
+    },
+    "PLANTACION": {
+        "General": [
+            "Dimension hoyo de plantacion 50 x 50 x 50 cm de profundidad (dependera del tamano del pan de raices)",
+            "El suelo debe estar a capacidad de campo",
+            "Sacar planta de la bolsa plastica / maceta",
+            "Escarmenar raices (lateralmente y en la base)",
+            "Aplicar 10 gr por hoyo de nematicida RUGBY alrededor de las raices (sin tocarlas)",
+            "Presentar planta y acomodar al suelo del hoyo de plantacion al mismo nivel que viene el sustrato",
+            "Tapar raices con tierra mullida, libre de bloques o piedras",
+            "Terminar de plantar con tierra mullida realizando un lomo de 10 a 20 cm sobre el nivel de suelo (jamas pisar el hoyo)",
+            "Poner protector para evitar dano de animales y del control de malezas",
+            "Riego post plantacion",
+        ],
+    },
+    "INJERTACION": {
+        "General": [
+            "Limpiar portainjertos los primeros 50 cm",
+            "Injertar de yema",
+            "Cubrir firmemente con cinta",
+            "Chequear cicatrizacion",
+            "Eliminar cinta",
+            "Quebrar brotes sobre el injerto",
+            "Quebrar eje 40 cm sobre el injerto",
+            "Despuntar apices activos de brotes",
+            "Rebajar ejes 10 cm sobre la ultima yema injertada",
+        ],
+    },
+    "INCISIONES": {
+        "Cerezo": [
+            "Realizar corte sobre yemas en estado puntas verdes",
+            "Realizar incisiones cada 10 cm o un puno en yemas verdes dejando los ultimos 30 cm libres",
+            "Realizar un corte (que salga aserrin) con sierra sobre las yemas ubicadas en los cordeles (2 yemas por cordel)",
+            "Realizar un corte (que salga aserrin) con sierra sobre las yemas ubicadas en los entrepisos (2 yemas)",
+            "Dejar 30 cm libre de incisiones cuando el eje no ha llegado a su altura",
+            "Pintar completamente el corte",
+            "Dosis producto bien mezclado: 50 cc de promalina/perlan + 5 gr de streptoplus/agrygent plus + 1 Litro de pintura latex negro",
+            "Repase incisiones",
+        ],
+    },
+    "ORTOPEDIA": {
+        "Cerezo": [
+            "Ortopediar todos los laterales de manera que queden horizontales",
+            "Ortopediar laterales que tengan desde 60 cm de largo en portainjertos vigorosos",
+            "Ortopediar laterales que tengan desde 80 cm de largo en portainjertos debiles",
+            "Ortopediar punteros",
+            "Ortopediar sobre piso (sobre el alambre)",
+            "Ortopediar un entre piso por lado desde el tercer cordel hacia arriba",
+        ],
+        "Ciruela": [
+            "Ortopediar laterales",
+            "Ortopediar entrepisos",
+        ],
+    },
+    "RALEO": {
+        "Carozo": [
+            "Dejar 1 fruto en la parte baja",
+            "Dejar 3 frutos en la parte aerea",
+            "Dejar 2 frutos en la parte baja",
+            "Dejar 1 fruto en ramillas de 20 o menos cm",
+            "Dejar 2 frutos en ramillas entre 20 y 40 cm",
+            "Dejar 3 frutos en ramillas sobre 40 cm",
+        ],
+        "Ciruela": [
+            "Dejar X frutos por planta",
+            "Dejar frutos distribuidos a X cm",
+            "Dejar frutos mas grandes",
+        ],
+    },
+    "COSECHA": {
+        "Cerezo": [
+            "Numero de pasada",
+            "Rendimiento por planta",
+        ],
+        "General": [
+            "Observaciones",
+        ],
+    },
+    "RIEGO": {
+        "General": [
+            "Revision de calicata si / no",
+            "Comentarios",
+        ],
+    },
+    "MALEZAS": {
+        "General": [
+            "Aplicar herbicida de contacto",
+        ],
+    },
+    "CARTELES": {
+        "General": [
+            "Realizar carteles post injertacion",
+        ],
+    },
+}
+
+
+@router.post("/seed-detalles-labor", status_code=201)
+def seed_detalles_labor(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Seed detalles_labor (sub-items/instructions per labor type). Admin only."""
+    existing = db.query(DetalleLabor).count()
+    if existing > 0:
+        return {"message": f"Ya existen {existing} detalles de labor. No se inserto nada.", "created": 0}
+
+    created = 0
+    for labor_codigo, especies_dict in SEED_DETALLES_LABOR.items():
+        tipo_labor = db.query(TipoLabor).filter(TipoLabor.codigo == labor_codigo).first()
+        if not tipo_labor:
+            continue
+        for especie_nombre, detalles in especies_dict.items():
+            for orden, desc in enumerate(detalles, 1):
+                dl = DetalleLabor(
+                    id_labor=tipo_labor.id_labor,
+                    descripcion=desc,
+                    aplica_especie=especie_nombre,
+                    orden=orden,
+                    usuario_creacion=user.username,
+                )
+                db.add(dl)
+                created += 1
+
+    db.commit()
+    return {"message": f"Se crearon {created} detalles de labor.", "created": created}
+
+
+# ---------------------------------------------------------------------------
+# CRUD Detalles labor
+# ---------------------------------------------------------------------------
+
+@router.get("/tipos-labor/{id_labor}/detalles")
+def list_detalles_labor(
+    id_labor: int,
+    especie: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """List detail items for a labor type, optionally filtered by species."""
+    q = db.query(DetalleLabor).filter(
+        DetalleLabor.id_labor == id_labor,
+        DetalleLabor.activo == True,
+    )
+    if especie:
+        q = q.filter(DetalleLabor.aplica_especie.in_([especie, "General"]))
+    return q.order_by(DetalleLabor.aplica_especie, DetalleLabor.orden).all()
+
+
+@router.post("/tipos-labor/{id_labor}/detalles", status_code=201)
+def create_detalle_labor(
+    id_labor: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Add a new detail item to a labor type."""
+    if "descripcion" not in data or not data["descripcion"]:
+        raise HTTPException(status_code=422, detail="descripcion es requerida")
+    dl = DetalleLabor(
+        id_labor=id_labor,
+        descripcion=data["descripcion"],
+        aplica_especie=data.get("aplica_especie", "General"),
+        orden=data.get("orden", 0),
+        es_checklist=data.get("es_checklist", True),
+        usuario_creacion=user.username,
+    )
+    db.add(dl)
+    db.commit()
+    db.refresh(dl)
+    return dl
+
+
+@router.put("/detalles-labor/{id_detalle}")
+def update_detalle_labor(
+    id_detalle: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Update a detail item."""
+    dl = db.get(DetalleLabor, id_detalle)
+    if not dl:
+        raise HTTPException(status_code=404, detail="Detalle no encontrado")
+    for field in ["descripcion", "aplica_especie", "orden", "es_checklist", "activo"]:
+        if field in data:
+            setattr(dl, field, data[field])
+    dl.usuario_modificacion = user.username
+    from app.core.utils import utcnow
+    dl.fecha_modificacion = utcnow()
+    db.commit()
+    db.refresh(dl)
+    return dl
+
+
+@router.delete("/detalles-labor/{id_detalle}")
+def delete_detalle_labor(
+    id_detalle: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Soft-delete a detail item."""
+    dl = db.get(DetalleLabor, id_detalle)
+    if not dl:
+        raise HTTPException(status_code=404, detail="Detalle no encontrado")
+    dl.activo = False
+    db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # Seed estados fenologicos
 # ---------------------------------------------------------------------------
 
 SEED_ESTADOS_FENOLOGICOS: dict[str, list[dict]] = {
     "Cerezo": [
-        {"codigo": "CER_HOJ_CAI_INI", "nombre": "Inicio caida de hoja", "orden": 1, "mes_orientativo": "Abr", "color_hex": "#A0522D"},
-        {"codigo": "CER_HOJ_CAI_50", "nombre": "50% caida de hoja", "orden": 2, "mes_orientativo": "May", "color_hex": "#8B4513"},
-        {"codigo": "CER_HOJ_CAI_100", "nombre": "100% caida de hoja", "orden": 3, "mes_orientativo": "Jun", "color_hex": "#6B3A2A"},
-        {"codigo": "CER_YEMA_DORM", "nombre": "Yema dormante", "orden": 4, "mes_orientativo": "Jul", "color_hex": "#708090"},
-        {"codigo": "CER_YEMA_HINCH", "nombre": "Yema hinchada", "orden": 5, "mes_orientativo": "Ago", "color_hex": "#9ACD32"},
-        {"codigo": "CER_PUNTA_VERDE", "nombre": "Punta verde", "orden": 6, "mes_orientativo": "Sep", "color_hex": "#6B8E23"},
-        {"codigo": "CER_FLOR_INI", "nombre": "Inicio floracion", "orden": 7, "mes_orientativo": "Sep", "color_hex": "#FFB6C1"},
-        {"codigo": "CER_FLOR_PLENA", "nombre": "Plena floracion", "orden": 8, "mes_orientativo": "Oct", "color_hex": "#FF69B4"},
-        {"codigo": "CER_CUAJA", "nombre": "Cuaja", "orden": 9, "mes_orientativo": "Oct-Nov", "color_hex": "#90EE90"},
-        {"codigo": "CER_ENVERO", "nombre": "Pinta / Envero", "orden": 10, "mes_orientativo": "Nov", "color_hex": "#DC143C"},
+        {"codigo": "CER_YEMA_HINCH", "nombre": "Yema hinchada", "orden": 1, "mes_orientativo": "Ago", "color_hex": "#9ACD32"},
+        {"codigo": "CER_PUNTA_VERDE", "nombre": "Puntas verdes", "orden": 2, "mes_orientativo": "Sep", "color_hex": "#6B8E23"},
+        {"codigo": "CER_FLOR_INI", "nombre": "Inicio de flor (5-10%)", "orden": 3, "mes_orientativo": "Sep", "color_hex": "#FFB6C1"},
+        {"codigo": "CER_FLOR_PLENA", "nombre": "Plena flor (100%)", "orden": 4, "mes_orientativo": "Oct", "color_hex": "#FF69B4"},
+        {"codigo": "CER_CAIDA_PET", "nombre": "Caida de petalos", "orden": 5, "mes_orientativo": "Oct", "color_hex": "#DDA0DD"},
+        {"codigo": "CER_CAIDA_CHQ", "nombre": "Caida de chaqueta", "orden": 6, "mes_orientativo": "Oct", "color_hex": "#C9A0DC"},
+        {"codigo": "CER_CUAJA", "nombre": "Fruto cuajado", "orden": 7, "mes_orientativo": "Oct-Nov", "color_hex": "#90EE90"},
+        {"codigo": "CER_ARVEJADO", "nombre": "Fruto arvejado (10 mm)", "orden": 8, "mes_orientativo": "Nov", "color_hex": "#32CD32"},
+        {"codigo": "CER_PAJIZO", "nombre": "Fruto color pajizo", "orden": 9, "mes_orientativo": "Nov", "color_hex": "#DAA520"},
+        {"codigo": "CER_VIRAJE", "nombre": "Viraje de color", "orden": 10, "mes_orientativo": "Nov-Dic", "color_hex": "#DC143C"},
+        {"codigo": "CER_PRE_COS", "nombre": "Color pre cosecha", "orden": 11, "mes_orientativo": "Dic", "color_hex": "#8B0000"},
+        {"codigo": "CER_REG_FOTO", "nombre": "Registro fotografico", "orden": 12, "mes_orientativo": None, "color_hex": "#4682B4"},
+        {"codigo": "CER_HOJ_CAI_INI", "nombre": "Inicio caida de hoja", "orden": 13, "mes_orientativo": "Mar-Abr", "color_hex": "#A0522D"},
+        {"codigo": "CER_HOJ_CAI_50", "nombre": "50% caida de hoja", "orden": 14, "mes_orientativo": "Abr-May", "color_hex": "#8B4513"},
+        {"codigo": "CER_HOJ_CAI_100", "nombre": "100% caida de hoja", "orden": 15, "mes_orientativo": "May-Jun", "color_hex": "#6B3A2A"},
     ],
     "Ciruela": [
-        {"codigo": "CIR_HOJ_CAI_INI", "nombre": "Inicio caida de hoja", "orden": 1, "mes_orientativo": "Mar-Abr", "color_hex": "#A0522D"},
-        {"codigo": "CIR_HOJ_CAI_100", "nombre": "Caida total de hoja", "orden": 2, "mes_orientativo": "May", "color_hex": "#6B3A2A"},
-        {"codigo": "CIR_YEMA_DORM", "nombre": "Yema dormante", "orden": 3, "mes_orientativo": "Jun-Jul", "color_hex": "#708090"},
-        {"codigo": "CIR_YEMA_HINCH", "nombre": "Yema hinchada", "orden": 4, "mes_orientativo": "Ago", "color_hex": "#9ACD32"},
-        {"codigo": "CIR_FLOR_INI", "nombre": "Inicio floracion", "orden": 5, "mes_orientativo": "Ago-Sep", "color_hex": "#DDA0DD"},
-        {"codigo": "CIR_FLOR_PLENA", "nombre": "Plena floracion", "orden": 6, "mes_orientativo": "Sep", "color_hex": "#9932CC"},
-        {"codigo": "CIR_CUAJA", "nombre": "Cuaja", "orden": 7, "mes_orientativo": "Sep-Oct", "color_hex": "#90EE90"},
-        {"codigo": "CIR_CRECIM", "nombre": "Crecimiento de fruto", "orden": 8, "mes_orientativo": "Oct-Nov", "color_hex": "#32CD32"},
-        {"codigo": "CIR_ENVERO", "nombre": "Envero", "orden": 9, "mes_orientativo": "Nov-Dic", "color_hex": "#8B008B"},
-        {"codigo": "CIR_COSECHA", "nombre": "Maduracion cosecha", "orden": 10, "mes_orientativo": "Dic-Ene", "color_hex": "#4B0082"},
+        {"codigo": "CIR_YEMA_INV", "nombre": "Yema de invierno", "orden": 1, "mes_orientativo": "Jun-Jul", "color_hex": "#708090"},
+        {"codigo": "CIR_YEMA_HINCH", "nombre": "Yema hinchada", "orden": 2, "mes_orientativo": "Ago", "color_hex": "#9ACD32"},
+        {"codigo": "CIR_BOT_SEP", "nombre": "Botones separados", "orden": 3, "mes_orientativo": "Ago-Sep", "color_hex": "#BDB76B"},
+        {"codigo": "CIR_FLOR_INI", "nombre": "Inicio de flor", "orden": 4, "mes_orientativo": "Sep", "color_hex": "#DDA0DD"},
+        {"codigo": "CIR_FLOR_PLENA", "nombre": "Plena flor (100%)", "orden": 5, "mes_orientativo": "Sep", "color_hex": "#9932CC"},
+        {"codigo": "CIR_CAIDA_PET", "nombre": "Caida de petalos", "orden": 6, "mes_orientativo": "Sep-Oct", "color_hex": "#E6C2DC"},
+        {"codigo": "CIR_CUAJA", "nombre": "Fruto cuajado", "orden": 7, "mes_orientativo": "Oct", "color_hex": "#90EE90"},
+        {"codigo": "CIR_FRUTO_8MM", "nombre": "Fruto (8mm)", "orden": 8, "mes_orientativo": "Oct-Nov", "color_hex": "#32CD32"},
+        {"codigo": "CIR_END_CAROZO", "nombre": "Endurecimiento carozo", "orden": 9, "mes_orientativo": "Nov", "color_hex": "#556B2F"},
+        {"codigo": "CIR_VIRAJE", "nombre": "Viraje color (pinta)", "orden": 10, "mes_orientativo": "Nov-Dic", "color_hex": "#8B008B"},
+        {"codigo": "CIR_COSECHA", "nombre": "Madurez de cosecha", "orden": 11, "mes_orientativo": "Dic-Ene", "color_hex": "#4B0082"},
+        {"codigo": "CIR_REG_FOTO", "nombre": "Registro fotografico", "orden": 12, "mes_orientativo": None, "color_hex": "#4682B4"},
+        {"codigo": "CIR_HOJ_CAI_INI", "nombre": "Inicio caida de hoja", "orden": 13, "mes_orientativo": "Mar-Abr", "color_hex": "#A0522D"},
+        {"codigo": "CIR_HOJ_CAI_50", "nombre": "50% caida de hoja", "orden": 14, "mes_orientativo": "Abr-May", "color_hex": "#8B4513"},
+        {"codigo": "CIR_HOJ_CAI_100", "nombre": "100% caida de hoja", "orden": 15, "mes_orientativo": "May-Jun", "color_hex": "#6B3A2A"},
+    ],
+    "Carozo": [
+        {"codigo": "CAR_YEMA_HINCH", "nombre": "Yema hinchada", "orden": 1, "mes_orientativo": "Ago", "color_hex": "#9ACD32"},
+        {"codigo": "CAR_PUNTA_VERDE", "nombre": "Puntas verdes", "orden": 2, "mes_orientativo": "Ago-Sep", "color_hex": "#6B8E23"},
+        {"codigo": "CAR_FLOR_INI", "nombre": "Inicio flor", "orden": 3, "mes_orientativo": "Sep", "color_hex": "#FFB6C1"},
+        {"codigo": "CAR_FLOR_PLENA", "nombre": "Plena flor (100%)", "orden": 4, "mes_orientativo": "Sep", "color_hex": "#FF69B4"},
+        {"codigo": "CAR_CAIDA_PET", "nombre": "Caida de petalos", "orden": 5, "mes_orientativo": "Sep-Oct", "color_hex": "#DDA0DD"},
+        {"codigo": "CAR_CAIDA_CHQ", "nombre": "Caida de chaqueta", "orden": 6, "mes_orientativo": "Oct", "color_hex": "#C9A0DC"},
+        {"codigo": "CAR_CUAJA", "nombre": "Fruto cuajado", "orden": 7, "mes_orientativo": "Oct", "color_hex": "#90EE90"},
+        {"codigo": "CAR_END_CAROZO", "nombre": "Endurecimiento carozo", "orden": 8, "mes_orientativo": "Nov", "color_hex": "#556B2F"},
+        {"codigo": "CAR_VIRAJE", "nombre": "Viraje color (pinta)", "orden": 9, "mes_orientativo": "Nov-Dic", "color_hex": "#DC143C"},
+        {"codigo": "CAR_COSECHA", "nombre": "Madurez de cosecha", "orden": 10, "mes_orientativo": "Dic-Ene", "color_hex": "#8B0000"},
+        {"codigo": "CAR_REG_FOTO", "nombre": "Registro fotografico", "orden": 11, "mes_orientativo": None, "color_hex": "#4682B4"},
+        {"codigo": "CAR_HOJ_CAI_INI", "nombre": "Inicio caida de hoja", "orden": 12, "mes_orientativo": "Mar-Abr", "color_hex": "#A0522D"},
+        {"codigo": "CAR_HOJ_CAI_50", "nombre": "50% caida de hoja", "orden": 13, "mes_orientativo": "Abr-May", "color_hex": "#8B4513"},
+        {"codigo": "CAR_HOJ_CAI_100", "nombre": "100% caida de hoja", "orden": 14, "mes_orientativo": "May-Jun", "color_hex": "#6B3A2A"},
     ],
     "Nectarina": [
         {"codigo": "NEC_HOJ_CAI", "nombre": "Caida de hoja", "orden": 1, "mes_orientativo": "Abr-May", "color_hex": "#A0522D"},

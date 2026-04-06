@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import {
   Cherry, TreeDeciduous, Grape, FlaskConical, Trees, MapPin,
   Palette, Bug, Hammer, Leaf, Globe, Navigation, Calendar, Warehouse,
-  Map, Building2,
+  Map, Building2, Flower2,
 } from "lucide-react";
 
 const cards = [
@@ -15,6 +15,7 @@ const cards = [
   { to: "/catalogos/colores", label: "Colores", desc: "Fruto, pulpa, cubrimiento", icon: Palette },
   { to: "/catalogos/susceptibilidades", label: "Susceptibilidades", desc: "Enfermedades y plagas", icon: Bug },
   { to: "/catalogos/tipos-labor", label: "Tipos de Labor", desc: "Labores agricolas", icon: Hammer },
+  { to: "/catalogos/estados-fenologicos", label: "Estados Fenologicos", desc: "Ciclo fenologico por especie", icon: Flower2 },
   { to: "/catalogos/estados-planta", label: "Estados Planta", desc: "Alta, baja, replante...", icon: Leaf },
   { to: "/catalogos/paises", label: "Paises", desc: "Chile, EEUU, etc.", icon: Globe },
   { to: "/catalogos/origenes", label: "Origenes", desc: "Licenciantes y obtentores", icon: Navigation },

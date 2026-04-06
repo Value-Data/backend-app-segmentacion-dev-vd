@@ -64,7 +64,22 @@ export interface RegistroFenologicoHistorial {
   estado?: { nombre: string; color_hex: string; codigo: string; mes_orientativo: string } | null;
 }
 
+export interface DetalleLabor {
+  id_detalle: number;
+  id_labor: number;
+  descripcion: string;
+  aplica_especie?: string | null;
+  orden?: number;
+  es_checklist?: boolean;
+  activo?: boolean;
+}
+
 export const laboresService = {
+  // Detalles labor
+  detallesLabor: (idLabor: number, especie?: string) =>
+    get<DetalleLabor[]>(`/labores/tipos-labor/${idLabor}/detalles`, especie ? { especie } : undefined),
+  seedDetallesLabor: () =>
+    post<{ message: string; created: number }>("/labores/seed-detalles-labor", {}),
   tiposLabor: () =>
     get<TipoLabor[]>("/labores/tipos-labor"),
   seedTiposLabor: () =>

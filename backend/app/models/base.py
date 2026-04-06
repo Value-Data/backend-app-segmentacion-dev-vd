@@ -43,6 +43,7 @@ TABLE_PK_MAP: dict[str, str] = {
     "clasificacion_cluster": "id_clasificacion",
     "umbrales_calidad": "id_umbral",
     "registros_fenologicos": "id_registro",
+    "detalles_labor": "id_detalle",
     "ejecucion_labores": "id_ejecucion",
     "paquete_tecnologico": "id_paquete",
     "alertas": "id_alerta",

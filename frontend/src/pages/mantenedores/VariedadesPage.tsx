@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf } from "lucide-react";
+import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -160,6 +160,10 @@ export function VariedadesPage() {
   const handleSubmit = async (formData: Record<string, unknown>) => {
     if (editRow) {
       await update({ id: editRow.id_variedad as number, data: formData });
+      // Refresh detail view if editing from it
+      if (selectedVar && (selectedVar.id_variedad === editRow.id_variedad)) {
+        setSelectedVar({ ...selectedVar, ...formData });
+      }
     } else {
       await create(formData);
     }
@@ -176,6 +180,19 @@ export function VariedadesPage() {
           </Button>
           <h2 className="text-xl font-bold text-garces-cherry">{selectedVar.nombre as string}</h2>
           <StatusBadge status={(selectedVar.estado as string) || "prospecto"} />
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => { setEditRow(selectedVar); setFormOpen(true); }}>
+              <Pencil className="h-4 w-4 mr-1" /> Editar
+            </Button>
+            <Button size="sm" variant="destructive" onClick={async () => {
+              if (confirm("Eliminar esta variedad?")) {
+                await remove(selectedVar.id_variedad as number);
+                setSelectedVar(null);
+              }
+            }}>
+              <Trash2 className="h-4 w-4 mr-1" /> Eliminar
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -362,9 +379,17 @@ export function VariedadesPage() {
             return (
               <div
                 key={v.id_variedad as number}
-                className="bg-white rounded-lg border hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
+                className="bg-white rounded-lg border hover:shadow-md transition-shadow cursor-pointer overflow-hidden relative group"
                 onClick={() => setSelectedVar(v)}
               >
+                {/* Edit button on hover */}
+                <button
+                  className="absolute top-2 right-2 z-10 bg-white/90 rounded-full p-1.5 shadow opacity-0 group-hover:opacity-100 transition-opacity hover:bg-garces-cherry hover:text-white"
+                  title="Editar"
+                  onClick={(e) => { e.stopPropagation(); setEditRow(v); setFormOpen(true); }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
                 {/* Image */}
                 {img ? (
                   <img

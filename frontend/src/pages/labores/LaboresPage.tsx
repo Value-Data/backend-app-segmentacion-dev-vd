@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Hammer, CheckCircle2, Clock, AlertTriangle, Plus, CalendarDays,
   TrendingUp, QrCode, Camera, FileText, Download, X, Image as ImageIcon,
-  Calendar, MoreHorizontal, Leaf, Scissors,
+  Calendar, MoreHorizontal, Leaf, Scissors, ChevronDown, ChevronRight, ListChecks,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -23,7 +23,7 @@ import { CrudForm } from "@/components/shared/CrudForm";
 import { KpiCard } from "@/components/shared/KpiCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { laboresService } from "@/services/labores";
-import type { LaborDashboard, EstadoFenologico } from "@/services/labores";
+import type { LaborDashboard, EstadoFenologico, DetalleLabor } from "@/services/labores";
 import { useTestblocks } from "@/hooks/useTestblock";
 import { useAuthStore } from "@/stores/authStore";
 import { useLookups } from "@/hooks/useLookups";
@@ -135,6 +135,7 @@ export function LaboresPage() {
   const [qrBlobUrl, setQrBlobUrl] = useState<string | null>(null);
   const [selectedPautaEspecieId, setSelectedPautaEspecieId] = useState<number | null>(null);
   const [pautaChecked, setPautaChecked] = useState<Set<string>>(new Set());
+  const [expandedPautaLabor, setExpandedPautaLabor] = useState<number | null>(null);
 
   const tbFilterNum = tbFilter && tbFilter !== "all" ? Number(tbFilter) : undefined;
 
@@ -153,6 +154,16 @@ export function LaboresPage() {
     queryKey: ["labores", "evidencias", evidenciaLabor?.id_ejecucion],
     queryFn: () => laboresService.evidencias(evidenciaLabor!.id_ejecucion),
     enabled: !!evidenciaLabor,
+  });
+
+  // Detalles for expanded labor in pauta
+  const selectedPautaEspecieName2 = selectedPautaEspecieId
+    ? (especiesRaw.find((e) => e.id_especie === selectedPautaEspecieId)?.nombre ?? "")
+    : "";
+  const { data: pautaDetalles } = useQuery({
+    queryKey: ["detalles-labor", expandedPautaLabor, selectedPautaEspecieName2],
+    queryFn: () => laboresService.detallesLabor(expandedPautaLabor!, selectedPautaEspecieName2 || undefined),
+    enabled: expandedPautaLabor != null,
   });
 
   // --- Compose pauta from API data ---
@@ -882,32 +893,81 @@ export function LaboresPage() {
                   {pautaItems.map((p) => {
                     const catClass = CAT_COLORS[p.cat] || "bg-gray-100 text-gray-700";
                     const dotClass = CAT_DOT_COLORS[p.cat] || "bg-gray-400";
+                    const laborId = p.tipo === "Labor" ? Number(p.id.replace("lab-", "")) : null;
+                    const isExpanded = laborId != null && expandedPautaLabor === laborId;
 
                     return (
-                      <div
-                        key={p.id}
-                        className="flex items-center gap-3 px-5 py-2.5 hover:bg-gray-50/50 transition-colors"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={pautaChecked.has(p.id)}
-                          onChange={() => togglePautaItem(p.id)}
-                          className="h-4 w-4 rounded border-gray-300 text-garces-cherry focus:ring-garces-cherry"
-                        />
-                        <span className="flex-1 font-semibold text-sm">
-                          {p.nombre}
-                        </span>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${catClass}`}
+                      <div key={p.id}>
+                        <div
+                          className="flex items-center gap-3 px-5 py-2.5 hover:bg-gray-50/50 transition-colors cursor-pointer"
+                          onClick={() => {
+                            if (laborId != null) {
+                              setExpandedPautaLabor(isExpanded ? null : laborId);
+                            }
+                          }}
                         >
-                          {p.tipo}
-                        </span>
-                        <span className="text-xs text-muted-foreground w-16 text-right">
-                          {p.mes}
-                        </span>
-                        <span
-                          className={`w-2 h-2 rounded-full ${dotClass} opacity-60`}
-                        />
+                          <input
+                            type="checkbox"
+                            checked={pautaChecked.has(p.id)}
+                            onChange={(e) => { e.stopPropagation(); togglePautaItem(p.id); }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-4 w-4 rounded border-gray-300 text-garces-cherry focus:ring-garces-cherry"
+                          />
+                          {laborId != null ? (
+                            isExpanded
+                              ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          ) : (
+                            p.color_hex
+                              ? <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: p.color_hex }} />
+                              : <span className="w-3.5" />
+                          )}
+                          <span className="flex-1 font-semibold text-sm">
+                            {p.nombre}
+                          </span>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${catClass}`}
+                          >
+                            {p.tipo}
+                          </span>
+                          <span className="text-xs text-muted-foreground w-16 text-right">
+                            {p.mes}
+                          </span>
+                          <span
+                            className={`w-2 h-2 rounded-full ${dotClass} opacity-60`}
+                          />
+                        </div>
+
+                        {/* Expanded detalles for labor items */}
+                        {isExpanded && (
+                          <div className="bg-gray-50/80 border-t border-gray-100 px-10 py-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <ListChecks className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Instrucciones / Checklist
+                              </span>
+                            </div>
+                            {!pautaDetalles || pautaDetalles.length === 0 ? (
+                              <p className="text-xs text-muted-foreground italic">Sin instrucciones configuradas</p>
+                            ) : (
+                              <div className="space-y-1">
+                                {(pautaDetalles as DetalleLabor[]).map((d, idx) => (
+                                  <div key={d.id_detalle} className="flex items-start gap-2 text-sm">
+                                    <span className="text-xs text-muted-foreground font-mono w-5 shrink-0 mt-0.5">
+                                      {idx + 1}.
+                                    </span>
+                                    <span>{d.descripcion}</span>
+                                    {d.aplica_especie && d.aplica_especie !== "General" && (
+                                      <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded shrink-0">
+                                        {d.aplica_especie}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
