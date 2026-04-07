@@ -265,6 +265,17 @@ export function VariedadesPage() {
           title="Nueva Entrada de Bitacora"
           isLoading={addBitacoraMut.isPending}
         />
+
+        {/* Edit form — must be inside the detail view return block */}
+        <CrudForm
+          open={formOpen}
+          onClose={() => setFormOpen(false)}
+          onSubmit={handleSubmit}
+          fields={fields}
+          initialData={editRow}
+          title="Editar Variedad"
+          isLoading={isCreating || isUpdating}
+        />
       </div>
     );
   }
