@@ -265,7 +265,11 @@ def merge_entities(
     if hasattr(source, "activo"):
         source.activo = False
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al fusionar: {str(e)[:200]}")
 
     source_name = getattr(source, "nombre", str(source_id))
     target_name = getattr(target, "nombre", str(target_id))
