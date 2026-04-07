@@ -1345,6 +1345,201 @@ function TabTestBlock({ filters }: { filters: ReportFilters }) {
 
 /* ─── Main Page ────────────────────────────────────────────────────────── */
 
+/* ─── Tab Evaluacion Cosecha (interactive report builder with AI) ─────── */
+
+function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
+  const lk = useLookups();
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [generating, setGenerating] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [nivel, setNivel] = useState<"alto" | "bajo">("alto");
+
+  const { data: variedades } = useQuery({
+    queryKey: ["variedades"],
+    queryFn: () => mantenedorService("variedades").list(),
+  });
+
+  const filtered = useMemo(() => {
+    let items = (variedades || []) as any[];
+    if (filters.especie) items = items.filter((v: any) => String(v.id_especie) === filters.especie);
+    if (filters.pmg) items = items.filter((v: any) => String(v.id_pmg) === filters.pmg);
+    return items.filter((v: any) => v.activo !== false);
+  }, [variedades, filters.especie, filters.pmg]);
+
+  const selectedNames = useMemo(() => {
+    return filtered
+      .filter((v: any) => selectedIds.has(v.id_variedad))
+      .map((v: any) => v.nombre)
+      .join(", ");
+  }, [filtered, selectedIds]);
+
+  const toggle = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleAI = async () => {
+    if (selectedIds.size === 0) return;
+    setAiLoading(true);
+    setAiResponse("");
+    try {
+      const pregunta = aiPrompt
+        || (nivel === "alto"
+          ? `Genera un resumen ejecutivo de alto nivel de las variedades: ${selectedNames}. Incluye conclusiones y recomendaciones clave para la toma de decisiones.`
+          : `Genera un analisis detallado de bajo nivel con todos los parametros de cosecha de las variedades: ${selectedNames}. Incluye firmeza por punto, distribucion de calibre, color de cubrimiento, SS%, acidez, y comparacion entre portainjertos.`);
+      const ids = Array.from(selectedIds);
+      // Use first selected variedad for the AI context
+      const res = await reportesService.aiAnalisis({
+        tipo_reporte: "variedad",
+        id_entidad: ids[0],
+        pregunta,
+      });
+      setAiResponse(res.analisis);
+    } catch (e: any) {
+      setAiResponse("Error: " + (e?.message || "No se pudo generar el analisis"));
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleGenerate = async (tipo: "evaluacion" | "resumen") => {
+    if (selectedIds.size === 0) return;
+    setGenerating(true);
+    try {
+      const params = {
+        variedad_ids: Array.from(selectedIds),
+        temporada: filters.temporada || undefined,
+        campo: filters.campo ? Number(filters.campo) : undefined,
+        incluir_ia: true,
+      };
+      if (tipo === "evaluacion") {
+        await reportesService.downloadEvaluacionCosecha(params);
+      } else {
+        await reportesService.downloadResumenCosechas(params);
+      }
+    } catch (e: any) {
+      const { default: toast } = await import("react-hot-toast");
+      toast.error("Error generando reporte: " + (e?.message || "desconocido"));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Step 1: Select varieties */}
+      <div className="bg-white rounded-xl border p-4 space-y-3">
+        <h3 className="font-semibold text-sm flex items-center gap-2">
+          <span className="bg-garces-cherry text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">1</span>
+          Seleccionar variedades
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+          {filtered.map((v: any) => {
+            const isSelected = selectedIds.has(v.id_variedad);
+            return (
+              <div
+                key={v.id_variedad}
+                className={`rounded-lg border-2 p-2 cursor-pointer transition-all text-xs ${
+                  isSelected ? "border-garces-cherry bg-garces-cherry/5" : "border-gray-100 hover:border-gray-300"
+                }`}
+                onClick={() => toggle(v.id_variedad)}
+              >
+                <div className="flex items-center gap-1.5">
+                  <input type="checkbox" checked={isSelected} readOnly className="rounded text-garces-cherry h-3.5 w-3.5" />
+                  <span className="font-semibold truncate">{v.nombre}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground ml-5">{lk.especie(v.id_especie)}</p>
+              </div>
+            );
+          })}
+        </div>
+        {selectedIds.size > 0 && (
+          <p className="text-xs text-garces-cherry font-medium">{selectedIds.size} seleccionadas: {selectedNames}</p>
+        )}
+      </div>
+
+      {/* Step 2: AI Analysis (interactive) */}
+      {selectedIds.size > 0 && (
+        <div className="bg-white rounded-xl border p-4 space-y-3">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <span className="bg-garces-cherry text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">2</span>
+            Analisis con IA
+          </h3>
+
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="flex bg-muted rounded-md p-0.5">
+              <button
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${nivel === "alto" ? "bg-white shadow text-garces-cherry" : "text-muted-foreground"}`}
+                onClick={() => setNivel("alto")}
+              >
+                Alto nivel (ejecutivo)
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${nivel === "bajo" ? "bg-white shadow text-garces-cherry" : "text-muted-foreground"}`}
+                onClick={() => setNivel("bajo")}
+              >
+                Bajo nivel (detallado)
+              </button>
+            </div>
+            <Button size="sm" onClick={handleAI} disabled={aiLoading}>
+              {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              {aiLoading ? "Analizando..." : "Generar analisis"}
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            <textarea
+              className="w-full rounded-md border px-3 py-2 text-sm min-h-[60px]"
+              placeholder="Personaliza tu consulta... (opcional). Ej: 'Compara firmeza entre portainjertos Gisela 6 y Maxma 14 para las variedades seleccionadas'"
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+            />
+          </div>
+
+          {aiResponse && (
+            <div className="bg-gray-50 border rounded-lg p-4 prose prose-sm max-w-none">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="h-4 w-4 text-purple-500" />
+                <span className="font-semibold text-xs text-purple-600">Analisis IA</span>
+              </div>
+              <div className="whitespace-pre-wrap text-sm">{aiResponse}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 3: Download PDF */}
+      {selectedIds.size > 0 && (
+        <div className="bg-white rounded-xl border p-4 space-y-3">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <span className="bg-garces-cherry text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">3</span>
+            Descargar reporte PDF
+          </h3>
+          <div className="flex gap-3">
+            <Button disabled={generating} onClick={() => handleGenerate("evaluacion")}>
+              {generating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
+              Evaluacion de Cosecha (por variedad)
+            </Button>
+            <Button variant="outline" disabled={generating} onClick={() => handleGenerate("resumen")}>
+              {generating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <ClipboardList className="h-4 w-4 mr-1" />}
+              Resumen Cosechas (tabla comparativa)
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            El PDF incluye tablas de parametros, graficos de calibre y color, fotos (si disponibles), y analisis IA.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 export function ReportesPage() {
   const [filters, setFilters] = useState<ReportFilters>({ ...EMPTY_FILTERS });
 
@@ -1365,8 +1560,12 @@ export function ReportesPage() {
       {/* Universal filter bar */}
       <FilterBar filters={filters} onChange={setFilters} />
 
-      <Tabs defaultValue="variedad">
+      <Tabs defaultValue="evaluacion">
         <TabsList className="w-full sm:w-auto">
+          <TabsTrigger value="evaluacion" className="gap-1">
+            <FlaskConical className="h-3.5 w-3.5" />
+            Evaluacion Cosecha
+          </TabsTrigger>
           <TabsTrigger value="variedad" className="gap-1">
             <Sprout className="h-3.5 w-3.5" />
             Por Variedad
@@ -1381,6 +1580,9 @@ export function ReportesPage() {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="evaluacion">
+          <TabEvaluacionCosecha filters={filters} />
+        </TabsContent>
         <TabsContent value="variedad">
           <TabVariedad filters={filters} />
         </TabsContent>

@@ -51,4 +51,58 @@ export const reportesService = {
     a.click();
     window.URL.revokeObjectURL(url);
   },
+
+  /** Generate "Evaluación de cosecha" PDF (Javiera-style) */
+  downloadEvaluacionCosecha: async (params: {
+    variedad_ids: number[];
+    temporada?: string;
+    campo?: number;
+    incluir_ia?: boolean;
+  }) => {
+    const { useAuthStore } = await import("@/stores/authStore");
+    const token = useAuthStore.getState().token;
+    const qs = new URLSearchParams();
+    qs.set("variedad_ids", params.variedad_ids.join(","));
+    if (params.temporada) qs.set("temporada", params.temporada);
+    if (params.campo) qs.set("campo", String(params.campo));
+    if (params.incluir_ia !== undefined) qs.set("incluir_ia", String(params.incluir_ia));
+    const response = await fetch(`${BASE}/reportes/evaluacion-cosecha/pdf?${qs}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Error ${response.status}`);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `evaluacion_cosecha_${params.variedad_ids.join("-")}.pdf`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
+
+  /** Generate "Resumen de cosechas" PDF (summary table) */
+  downloadResumenCosechas: async (params: {
+    variedad_ids: number[];
+    temporada?: string;
+    campo?: number;
+    incluir_ia?: boolean;
+  }) => {
+    const { useAuthStore } = await import("@/stores/authStore");
+    const token = useAuthStore.getState().token;
+    const qs = new URLSearchParams();
+    qs.set("variedad_ids", params.variedad_ids.join(","));
+    if (params.temporada) qs.set("temporada", params.temporada);
+    if (params.campo) qs.set("campo", String(params.campo));
+    if (params.incluir_ia !== undefined) qs.set("incluir_ia", String(params.incluir_ia));
+    const response = await fetch(`${BASE}/reportes/resumen-cosechas/pdf?${qs}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Error ${response.status}`);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `resumen_cosechas_${params.variedad_ids.join("-")}.pdf`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
 };

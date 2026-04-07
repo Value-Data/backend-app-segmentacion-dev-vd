@@ -1,6 +1,6 @@
 """Reporting routes: cross-entity reports with optional AI analysis."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
@@ -2075,6 +2075,1187 @@ def report_lote_pdf(
 
     codigo_safe = lote.codigo_lote.replace("/", "-")
     filename = f"lote_{id_inventario}_{codigo_safe}_{dt.now().strftime('%Y%m%d')}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# ── PDF Report: Evaluacion de Cosecha (Javiera-style) ─────────────────────
+
+def _build_bar_chart(
+    data: list[tuple[str, float]],
+    width: float = 400,
+    height: float = 160,
+    bar_color: str = "#8B1A1A",
+    title: str = "",
+):
+    """Build a simple bar chart using reportlab Drawing primitives.
+
+    Args:
+        data: list of (label, value) tuples.
+        width/height: drawing dimensions in points.
+        bar_color: hex color for bars.
+        title: optional title displayed above chart.
+
+    Returns:
+        A reportlab Drawing object.
+    """
+    from reportlab.graphics.shapes import Drawing, Rect, String, Line
+    from reportlab.lib import colors as rl_colors
+
+    if not data:
+        d = Drawing(width, 30)
+        d.add(String(10, 10, "Sin datos", fontSize=9, fillColor=rl_colors.gray))
+        return d
+
+    max_val = max((v for _, v in data), default=1) or 1
+    n = len(data)
+    margin_left = 60
+    margin_bottom = 40
+    margin_top = 25 if title else 10
+    margin_right = 20
+    chart_w = width - margin_left - margin_right
+    chart_h = height - margin_bottom - margin_top
+    bar_w = max(chart_w / n * 0.65, 8)
+    gap = chart_w / n
+    fill = rl_colors.HexColor(bar_color)
+
+    d = Drawing(width, height)
+
+    # Title
+    if title:
+        d.add(String(
+            width / 2, height - 12, title,
+            fontSize=9, fontName="Helvetica-Bold",
+            fillColor=rl_colors.HexColor("#333333"), textAnchor="middle",
+        ))
+
+    # Y-axis line
+    d.add(Line(
+        margin_left, margin_bottom, margin_left, height - margin_top,
+        strokeColor=rl_colors.HexColor("#CCCCCC"), strokeWidth=0.5,
+    ))
+    # X-axis line
+    d.add(Line(
+        margin_left, margin_bottom, width - margin_right, margin_bottom,
+        strokeColor=rl_colors.HexColor("#CCCCCC"), strokeWidth=0.5,
+    ))
+
+    # Y-axis ticks (5 levels)
+    for i in range(6):
+        y_val = max_val * i / 5
+        y_pos = margin_bottom + chart_h * i / 5
+        d.add(String(
+            margin_left - 5, y_pos - 3, f"{y_val:.0f}",
+            fontSize=7, fillColor=rl_colors.gray, textAnchor="end",
+        ))
+        if i > 0:
+            d.add(Line(
+                margin_left, y_pos, width - margin_right, y_pos,
+                strokeColor=rl_colors.HexColor("#EEEEEE"), strokeWidth=0.3,
+            ))
+
+    # Bars + labels
+    for idx, (label, val) in enumerate(data):
+        x = margin_left + idx * gap + (gap - bar_w) / 2
+        bar_h = (val / max_val) * chart_h if max_val > 0 else 0
+        d.add(Rect(
+            x, margin_bottom, bar_w, bar_h,
+            fillColor=fill, strokeColor=None,
+        ))
+        # Value on top of bar
+        d.add(String(
+            x + bar_w / 2, margin_bottom + bar_h + 3, f"{val:.1f}",
+            fontSize=6, fillColor=rl_colors.HexColor("#333333"), textAnchor="middle",
+        ))
+        # Label below
+        truncated = label[:8] + ".." if len(label) > 10 else label
+        d.add(String(
+            x + bar_w / 2, margin_bottom - 12, truncated,
+            fontSize=6, fillColor=rl_colors.HexColor("#333333"), textAnchor="middle",
+        ))
+
+    return d
+
+
+def _build_stacked_bar_chart(
+    categories: list[str],
+    segments: list[tuple[str, str, list[float]]],
+    width: float = 420,
+    height: float = 160,
+    title: str = "",
+):
+    """Build a horizontal stacked bar chart.
+
+    Args:
+        categories: labels for each bar (e.g. variety names).
+        segments: list of (segment_name, hex_color, values_per_category).
+        width/height: drawing dimensions.
+        title: optional title.
+
+    Returns:
+        A reportlab Drawing object.
+    """
+    from reportlab.graphics.shapes import Drawing, Rect, String, Line
+    from reportlab.lib import colors as rl_colors
+
+    if not categories:
+        d = Drawing(width, 30)
+        d.add(String(10, 10, "Sin datos", fontSize=9, fillColor=rl_colors.gray))
+        return d
+
+    n = len(categories)
+    margin_left = 80
+    margin_bottom = 30
+    margin_top = 30 if title else 12
+    margin_right = 20
+    chart_w = width - margin_left - margin_right
+    row_h = min((height - margin_bottom - margin_top) / n, 24)
+    bar_h = row_h * 0.7
+
+    actual_height = margin_bottom + margin_top + n * row_h + 20
+    d = Drawing(width, actual_height)
+
+    if title:
+        d.add(String(
+            width / 2, actual_height - 12, title,
+            fontSize=9, fontName="Helvetica-Bold",
+            fillColor=rl_colors.HexColor("#333333"), textAnchor="middle",
+        ))
+
+    # Compute totals per category for scaling
+    totals = []
+    for cat_idx in range(n):
+        t = sum(seg_vals[cat_idx] for _, _, seg_vals in segments if cat_idx < len(seg_vals))
+        totals.append(t)
+    max_total = max(totals) if totals else 1
+    if max_total == 0:
+        max_total = 1
+
+    for cat_idx, cat_label in enumerate(categories):
+        y_base = margin_bottom + (n - 1 - cat_idx) * row_h
+        # Category label
+        truncated = cat_label[:12] + ".." if len(cat_label) > 14 else cat_label
+        d.add(String(
+            margin_left - 5, y_base + bar_h / 2 - 3, truncated,
+            fontSize=7, fillColor=rl_colors.HexColor("#333333"), textAnchor="end",
+        ))
+        x_offset = margin_left
+        for seg_name, seg_color, seg_vals in segments:
+            val = seg_vals[cat_idx] if cat_idx < len(seg_vals) else 0
+            seg_w = (val / max_total) * chart_w if max_total > 0 else 0
+            if seg_w > 0.5:
+                d.add(Rect(
+                    x_offset, y_base, seg_w, bar_h,
+                    fillColor=rl_colors.HexColor(seg_color), strokeColor=None,
+                ))
+                if seg_w > 18:
+                    d.add(String(
+                        x_offset + seg_w / 2, y_base + bar_h / 2 - 3,
+                        f"{val:.0f}%",
+                        fontSize=5, fillColor=rl_colors.white, textAnchor="middle",
+                    ))
+            x_offset += seg_w
+
+    # Legend at bottom
+    legend_x = margin_left
+    for seg_name, seg_color, _ in segments:
+        d.add(Rect(
+            legend_x, 4, 8, 8,
+            fillColor=rl_colors.HexColor(seg_color), strokeColor=None,
+        ))
+        d.add(String(
+            legend_x + 11, 4, seg_name,
+            fontSize=6, fillColor=rl_colors.HexColor("#555555"),
+        ))
+        legend_x += len(seg_name) * 4.5 + 22
+
+    return d
+
+
+def _fetch_mediciones_for_variedad(
+    db: Session,
+    id_variedad: int,
+    temporada: str | None = None,
+    id_campo: int | None = None,
+) -> list:
+    """Fetch lab mediciones for a variedad, optionally filtered by temporada/campo.
+
+    Returns a list of MedicionLaboratorio ORM objects.
+    """
+    from sqlalchemy import or_
+
+    # Get plant IDs for this variety
+    planta_ids = [
+        r[0] for r in
+        db.query(Planta.id_planta).filter(Planta.id_variedad == id_variedad).all()
+    ]
+
+    filters = []
+    if planta_ids:
+        filters.append(MedicionLaboratorio.id_planta.in_(planta_ids))
+    filters.append(MedicionLaboratorio.id_variedad == id_variedad)
+
+    q = db.query(MedicionLaboratorio).filter(or_(*filters))
+
+    if temporada:
+        q = q.filter(MedicionLaboratorio.temporada == temporada)
+    if id_campo:
+        q = q.filter(MedicionLaboratorio.id_campo == id_campo)
+
+    return q.order_by(MedicionLaboratorio.fecha_cosecha.desc()).all()
+
+
+def _compute_variety_stats(mediciones: list) -> dict:
+    """Compute aggregate statistics for a set of mediciones.
+
+    Returns a dict with averages, distributions, and sub-metrics for
+    firmeza by position, color coverage, and color background.
+    """
+
+    def _avg(vals):
+        return sum(vals) / len(vals) if vals else None
+
+    def _safe(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+
+    n = len(mediciones)
+
+    # Basic metrics
+    peso_vals = [_safe(m.peso) for m in mediciones if _safe(m.peso) is not None]
+    brix_vals = [_safe(m.brix) for m in mediciones if _safe(m.brix) is not None]
+    acidez_vals = [_safe(m.acidez) for m in mediciones if _safe(m.acidez) is not None]
+    calibre_vals = [_safe(m.calibre) for m in mediciones if _safe(m.calibre) is not None]
+    firmeza_vals = [_safe(m.firmeza) for m in mediciones if _safe(m.firmeza) is not None]
+
+    # Firmeza detallada
+    f_punta = [_safe(m.firmeza_punta) for m in mediciones if _safe(m.firmeza_punta) is not None]
+    f_quilla = [_safe(m.firmeza_quilla) for m in mediciones if _safe(m.firmeza_quilla) is not None]
+    f_hombro = [_safe(m.firmeza_hombro) for m in mediciones if _safe(m.firmeza_hombro) is not None]
+    f_mejilla1 = [_safe(m.firmeza_mejilla_1) for m in mediciones if _safe(m.firmeza_mejilla_1) is not None]
+    f_mejilla2 = [_safe(m.firmeza_mejilla_2) for m in mediciones if _safe(m.firmeza_mejilla_2) is not None]
+
+    # Color cubrimiento distribution (sum across mediciones, then compute %)
+    c_0_30 = [_safe(m.color_0_30) for m in mediciones if _safe(m.color_0_30) is not None]
+    c_30_50 = [_safe(m.color_30_50) for m in mediciones if _safe(m.color_30_50) is not None]
+    c_50_75 = [_safe(m.color_50_75) for m in mediciones if _safe(m.color_50_75) is not None]
+    c_75_100 = [_safe(m.color_75_100) for m in mediciones if _safe(m.color_75_100) is not None]
+
+    # Color de fondo distribution
+    c_verde = [_safe(m.color_verde) for m in mediciones if _safe(m.color_verde) is not None]
+    c_crema = [_safe(m.color_crema) for m in mediciones if _safe(m.color_crema) is not None]
+    c_amarillo = [_safe(m.color_amarillo) for m in mediciones if _safe(m.color_amarillo) is not None]
+    c_full = [_safe(m.color_full) for m in mediciones if _safe(m.color_full) is not None]
+
+    # Calibre distribution for bar chart (group by bins)
+    calibre_bins = {"<24": 0, "24-26": 0, "26-28": 0, "28-30": 0, "30-32": 0, ">32": 0}
+    for c in calibre_vals:
+        if c < 24:
+            calibre_bins["<24"] += 1
+        elif c < 26:
+            calibre_bins["24-26"] += 1
+        elif c < 28:
+            calibre_bins["26-28"] += 1
+        elif c < 30:
+            calibre_bins["28-30"] += 1
+        elif c < 32:
+            calibre_bins["30-32"] += 1
+        else:
+            calibre_bins[">32"] += 1
+
+    # Collect harvest dates
+    fechas = set()
+    for m in mediciones:
+        if m.fecha_cosecha:
+            fechas.add(str(m.fecha_cosecha))
+
+    return {
+        "n": n,
+        "peso_avg": _avg(peso_vals),
+        "brix_avg": _avg(brix_vals),
+        "acidez_avg": _avg(acidez_vals),
+        "calibre_avg": _avg(calibre_vals),
+        "firmeza_avg": _avg(firmeza_vals),
+        "firmeza_punta_avg": _avg(f_punta),
+        "firmeza_quilla_avg": _avg(f_quilla),
+        "firmeza_hombro_avg": _avg(f_hombro),
+        "firmeza_mejilla1_avg": _avg(f_mejilla1),
+        "firmeza_mejilla2_avg": _avg(f_mejilla2),
+        "color_0_30_avg": _avg(c_0_30),
+        "color_30_50_avg": _avg(c_30_50),
+        "color_50_75_avg": _avg(c_50_75),
+        "color_75_100_avg": _avg(c_75_100),
+        "color_verde_avg": _avg(c_verde),
+        "color_crema_avg": _avg(c_crema),
+        "color_amarillo_avg": _avg(c_amarillo),
+        "color_full_avg": _avg(c_full),
+        "calibre_bins": calibre_bins,
+        "fechas_cosecha": sorted(fechas),
+    }
+
+
+def _fmt(val, decimals=1) -> str:
+    """Format a float value or return '-' if None."""
+    if val is None:
+        return "-"
+    return f"{val:.{decimals}f}"
+
+
+@router.get("/evaluacion-cosecha/pdf")
+def report_evaluacion_cosecha_pdf(
+    variedad_ids: str = Query(..., description="Comma-separated variedad IDs"),
+    temporada: str = Query(None, description="Filtrar por temporada"),
+    campo: int = Query(None, description="Filtrar por id_campo"),
+    incluir_ia: bool = Query(True, description="Incluir analisis AI"),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Generate a professional PDF report styled after the Javiera reference.
+
+    Produces a harvest evaluation report with per-variety sections including:
+    context table, parameters table, color coverage, color background,
+    calibre distribution chart, color distribution chart, and optional
+    AI-generated interpretive analysis.
+    """
+    from io import BytesIO
+    from datetime import datetime as dt
+    from fastapi.responses import StreamingResponse
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        HRFlowable, PageBreak,
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+
+    # Parse variedad_ids
+    try:
+        var_id_list = [int(x.strip()) for x in variedad_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="variedad_ids debe ser IDs separados por comas")
+
+    if not var_id_list:
+        raise HTTPException(status_code=400, detail="Debe indicar al menos un id de variedad")
+
+    if len(var_id_list) > 30:
+        raise HTTPException(status_code=400, detail="Maximo 30 variedades por reporte")
+
+    # Fetch variedad records
+    variedades_db = db.query(Variedad).filter(Variedad.id_variedad.in_(var_id_list)).all()
+    if not variedades_db:
+        raise HTTPException(status_code=404, detail="No se encontraron variedades con los IDs proporcionados")
+
+    # Build variedad map {id -> Variedad}
+    var_map = {v.id_variedad: v for v in variedades_db}
+
+    # Fetch mediciones and stats per variedad
+    var_data: list[dict] = []
+    for vid in var_id_list:
+        v = var_map.get(vid)
+        if not v:
+            continue
+        meds = _fetch_mediciones_for_variedad(db, vid, temporada, campo)
+        stats = _compute_variety_stats(meds)
+        especie_nombre = _resolve_name(db, Especie, Especie.id_especie, v.id_especie) or "-"
+        pmg_nombre = _resolve_name(db, Pmg, Pmg.id_pmg, v.id_pmg) or "-"
+
+        # Resolve campo name if available from mediciones
+        campo_nombres = set()
+        for m in meds:
+            if m.id_campo:
+                cn = _resolve_name(db, Campo, Campo.id_campo, m.id_campo)
+                if cn:
+                    campo_nombres.add(cn)
+
+        # Resolve portainjerto from plants
+        portainjerto_nombres = set()
+        planta_rows = db.query(Planta).filter(Planta.id_variedad == vid).all()
+        for p in planta_rows:
+            if p.id_portainjerto:
+                pn = _resolve_name(db, Portainjerto, Portainjerto.id_portainjerto, p.id_portainjerto)
+                if pn:
+                    portainjerto_nombres.add(pn)
+
+        var_data.append({
+            "id": vid,
+            "variedad": v,
+            "nombre": v.nombre,
+            "especie": especie_nombre,
+            "pmg": pmg_nombre,
+            "campos": ", ".join(sorted(campo_nombres)) or "-",
+            "portainjertos": ", ".join(sorted(portainjerto_nombres)) or "-",
+            "mediciones": meds,
+            "stats": stats,
+        })
+
+    if not var_data:
+        raise HTTPException(status_code=404, detail="No se encontraron datos para las variedades indicadas")
+
+    # Determine especie from first variedad for the title
+    especie_title = var_data[0]["especie"]
+
+    # ── Build PDF ─────────────────────────────────────────────────────────
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=letter,
+        topMargin=0.5 * inch, bottomMargin=0.7 * inch,
+        leftMargin=0.6 * inch, rightMargin=0.6 * inch,
+    )
+    styles = getSampleStyleSheet()
+
+    # Colors
+    cherry = colors.HexColor("#8B1A1A")
+    cherry_light = colors.HexColor("#C45050")
+    dark_green = colors.HexColor("#2D5F2D")
+    bg_cream = colors.HexColor("#FFF8F0")
+    bg_light_red = colors.HexColor("#FFF5F5")
+
+    # Styles
+    title_style = ParagraphStyle(
+        "ECTitle", parent=styles["Title"], textColor=cherry,
+        fontSize=20, spaceAfter=4, fontName="Helvetica-Bold",
+    )
+    subtitle_style = ParagraphStyle(
+        "ECSubtitle", parent=styles["Normal"], textColor=colors.HexColor("#555555"),
+        fontSize=11, spaceAfter=2,
+    )
+    h2_style = ParagraphStyle(
+        "ECH2", parent=styles["Heading2"], textColor=cherry,
+        fontSize=13, spaceBefore=14, spaceAfter=6,
+    )
+    h3_style = ParagraphStyle(
+        "ECH3", parent=styles["Heading3"], textColor=dark_green,
+        fontSize=11, spaceBefore=10, spaceAfter=4,
+    )
+    body_style = ParagraphStyle(
+        "ECBody", parent=styles["Normal"], fontSize=9,
+        leading=13, alignment=TA_JUSTIFY, spaceAfter=6,
+    )
+    small = ParagraphStyle(
+        "ECSmall", parent=styles["Normal"], fontSize=8, textColor=colors.gray,
+    )
+    footer_style = ParagraphStyle(
+        "ECFooter", parent=styles["Normal"], fontSize=8,
+        textColor=colors.HexColor("#666666"), alignment=TA_CENTER,
+    )
+    ai_style = ParagraphStyle(
+        "ECAI", parent=styles["Normal"], fontSize=9,
+        leading=13, alignment=TA_JUSTIFY, spaceAfter=4,
+        leftIndent=8, rightIndent=8,
+    )
+
+    # Table styles
+    context_table_style = TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F5F0F0")),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ])
+
+    params_header_style = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), cherry),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, -1), 8),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, bg_light_red]),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ])
+
+    story: list = []
+
+    # ── Page 1: Title / Header ────────────────────────────────────────────
+    story.append(Paragraph(
+        "Garces Fruit — Departamento Desarrollo Varietal y Genetico",
+        small,
+    ))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"Evaluacion de {especie_title}", title_style))
+    temporada_label = f"Temporada {temporada}" if temporada else "Todas las temporadas"
+    campo_nombre_label = ""
+    if campo:
+        campo_nombre_label = _resolve_name(db, Campo, Campo.id_campo, campo) or f"Campo #{campo}"
+    story.append(Paragraph(
+        f"{temporada_label}"
+        + (f" | {campo_nombre_label}" if campo_nombre_label else "")
+        + f" | {len(var_data)} variedad(es)",
+        subtitle_style,
+    ))
+    story.append(Paragraph(
+        f"Generado: {dt.now().strftime('%d/%m/%Y %H:%M')} | Usuario: {user.username}",
+        small,
+    ))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=cherry, spaceAfter=12))
+
+    # ── Per-variety sections ──────────────────────────────────────────────
+    for var_idx, vd in enumerate(var_data):
+        if var_idx > 0:
+            story.append(PageBreak())
+
+        stats = vd["stats"]
+        v = vd["variedad"]
+
+        # Variety section header
+        story.append(Paragraph(
+            f"Variedad: {vd['nombre']}",
+            h2_style,
+        ))
+
+        # Context table
+        story.append(Paragraph("Informacion de contexto", h3_style))
+        fechas_str = ", ".join(stats["fechas_cosecha"][:5]) if stats["fechas_cosecha"] else "-"
+        context_rows = [
+            ["Variedad", str(vd["nombre"])],
+            ["Especie", str(vd["especie"])],
+            ["PMG", str(vd["pmg"])],
+            ["Campo / Localidad", str(vd["campos"])],
+            ["Portainjerto", str(vd["portainjertos"])],
+            ["Fecha(s) de cosecha", fechas_str],
+            ["N mediciones", str(stats["n"])],
+        ]
+        ctx_t = Table(context_rows, colWidths=[1.6 * inch, 4.5 * inch])
+        ctx_t.setStyle(context_table_style)
+        story.append(ctx_t)
+        story.append(Spacer(1, 8))
+
+        # Parameters table
+        story.append(Paragraph("Parametros de calidad", h3_style))
+        params_data = [
+            ["Parametro", "Promedio", "Unidad"],
+            ["Peso", _fmt(stats["peso_avg"]), "g"],
+            ["Calibre", _fmt(stats["calibre_avg"]), "mm"],
+            ["Firmeza (general)", _fmt(stats["firmeza_avg"]), "lb"],
+            ["Firmeza Punta", _fmt(stats["firmeza_punta_avg"]), "lb"],
+            ["Firmeza Quilla", _fmt(stats["firmeza_quilla_avg"]), "lb"],
+            ["Firmeza Hombro", _fmt(stats["firmeza_hombro_avg"]), "lb"],
+            ["Firmeza Mejilla 1", _fmt(stats["firmeza_mejilla1_avg"]), "lb"],
+            ["Firmeza Mejilla 2", _fmt(stats["firmeza_mejilla2_avg"]), "lb"],
+            ["Solidos solubles (Brix)", _fmt(stats["brix_avg"]), "%"],
+            ["Acidez", _fmt(stats["acidez_avg"], 2), "%"],
+        ]
+        p_t = Table(params_data, colWidths=[2.2 * inch, 1.5 * inch, 1.0 * inch])
+        p_t.setStyle(params_header_style)
+        story.append(p_t)
+        story.append(Spacer(1, 8))
+
+        # Color de cubrimiento table
+        story.append(Paragraph("Color de cubrimiento (%)", h3_style))
+        color_cub_data = [
+            ["Rango", "0 - 30%", "30 - 50%", "50 - 75%", "75 - 100%"],
+            [
+                "Promedio (%)",
+                _fmt(stats["color_0_30_avg"]),
+                _fmt(stats["color_30_50_avg"]),
+                _fmt(stats["color_50_75_avg"]),
+                _fmt(stats["color_75_100_avg"]),
+            ],
+        ]
+        cc_t = Table(color_cub_data, colWidths=[1.2 * inch, 1.2 * inch, 1.2 * inch, 1.2 * inch, 1.2 * inch])
+        cc_style = TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), cherry),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("BACKGROUND", (0, 1), (0, 1), colors.HexColor("#F5F0F0")),
+            ("FONTNAME", (0, 1), (0, 1), "Helvetica-Bold"),
+        ])
+        cc_t.setStyle(cc_style)
+        story.append(cc_t)
+        story.append(Spacer(1, 8))
+
+        # Color de fondo table
+        story.append(Paragraph("Color de fondo (%)", h3_style))
+        color_fondo_data = [
+            ["Categoria", "Verde", "Verde-amarillo", "Amarillo", "Full"],
+            [
+                "Promedio (%)",
+                _fmt(stats["color_verde_avg"]),
+                _fmt(stats["color_crema_avg"]),
+                _fmt(stats["color_amarillo_avg"]),
+                _fmt(stats["color_full_avg"]),
+            ],
+        ]
+        cf_t = Table(color_fondo_data, colWidths=[1.2 * inch, 1.2 * inch, 1.4 * inch, 1.2 * inch, 1.0 * inch])
+        cf_style = TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), dark_green),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("BACKGROUND", (0, 1), (0, 1), colors.HexColor("#F0F5F0")),
+            ("FONTNAME", (0, 1), (0, 1), "Helvetica-Bold"),
+        ])
+        cf_t.setStyle(cf_style)
+        story.append(cf_t)
+        story.append(Spacer(1, 10))
+
+        # Calibre distribution chart
+        story.append(Paragraph("Distribucion de calibre", h3_style))
+        calibre_chart_data = [
+            (label, float(count))
+            for label, count in stats["calibre_bins"].items()
+        ]
+        chart = _build_bar_chart(
+            calibre_chart_data, width=420, height=150,
+            bar_color="#8B1A1A",
+            title=f"Calibre (mm) — {vd['nombre']}",
+        )
+        story.append(chart)
+        story.append(Spacer(1, 10))
+
+        # Color distribution chart (stacked horizontal)
+        story.append(Paragraph("Distribucion de color", h3_style))
+        cub_vals = [
+            stats["color_0_30_avg"] or 0,
+            stats["color_30_50_avg"] or 0,
+            stats["color_50_75_avg"] or 0,
+            stats["color_75_100_avg"] or 0,
+        ]
+        fondo_vals = [
+            stats["color_verde_avg"] or 0,
+            stats["color_crema_avg"] or 0,
+            stats["color_amarillo_avg"] or 0,
+            stats["color_full_avg"] or 0,
+        ]
+
+        # Simple bar chart for color coverage ranges
+        color_chart_data = [
+            ("0-30%", cub_vals[0]),
+            ("30-50%", cub_vals[1]),
+            ("50-75%", cub_vals[2]),
+            ("75-100%", cub_vals[3]),
+        ]
+        color_chart = _build_bar_chart(
+            color_chart_data, width=420, height=140,
+            bar_color="#2D5F2D",
+            title=f"Color cubrimiento — {vd['nombre']}",
+        )
+        story.append(color_chart)
+        story.append(Spacer(1, 6))
+
+        # Color de fondo bar chart
+        fondo_chart_data = [
+            ("Verde", fondo_vals[0]),
+            ("Verd-Am", fondo_vals[1]),
+            ("Amarillo", fondo_vals[2]),
+            ("Full", fondo_vals[3]),
+        ]
+        fondo_chart = _build_bar_chart(
+            fondo_chart_data, width=420, height=140,
+            bar_color="#8B6914",
+            title=f"Color de fondo — {vd['nombre']}",
+        )
+        story.append(fondo_chart)
+        story.append(Spacer(1, 10))
+
+    # ── AI Analysis section ───────────────────────────────────────────────
+    if incluir_ia:
+        story.append(PageBreak())
+        story.append(Paragraph("Analisis Profesional (AI)", h2_style))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=cherry, spaceAfter=8))
+
+        # Build context string for AI
+        ai_context_parts = [
+            f"EVALUACION DE COSECHA — {especie_title}",
+            f"Temporada: {temporada_label}",
+            f"Variedades evaluadas: {len(var_data)}",
+            "",
+        ]
+        for vd in var_data:
+            stats = vd["stats"]
+            ai_context_parts.append(f"VARIEDAD: {vd['nombre']}")
+            ai_context_parts.append(f"  Especie: {vd['especie']}, PMG: {vd['pmg']}")
+            ai_context_parts.append(f"  Campo: {vd['campos']}, Portainjerto: {vd['portainjertos']}")
+            ai_context_parts.append(f"  N mediciones: {stats['n']}")
+            ai_context_parts.append(f"  Peso: {_fmt(stats['peso_avg'])} g")
+            ai_context_parts.append(f"  Calibre: {_fmt(stats['calibre_avg'])} mm")
+            ai_context_parts.append(f"  Firmeza general: {_fmt(stats['firmeza_avg'])} lb")
+            ai_context_parts.append(
+                f"  Firmeza detallada: Punta={_fmt(stats['firmeza_punta_avg'])}, "
+                f"Quilla={_fmt(stats['firmeza_quilla_avg'])}, "
+                f"Hombro={_fmt(stats['firmeza_hombro_avg'])}, "
+                f"Mejilla1={_fmt(stats['firmeza_mejilla1_avg'])}, "
+                f"Mejilla2={_fmt(stats['firmeza_mejilla2_avg'])}"
+            )
+            ai_context_parts.append(f"  Brix: {_fmt(stats['brix_avg'])} %")
+            ai_context_parts.append(f"  Acidez: {_fmt(stats['acidez_avg'], 2)} %")
+            ai_context_parts.append(
+                f"  Color cubrimiento: 0-30%={_fmt(stats['color_0_30_avg'])}, "
+                f"30-50%={_fmt(stats['color_30_50_avg'])}, "
+                f"50-75%={_fmt(stats['color_50_75_avg'])}, "
+                f"75-100%={_fmt(stats['color_75_100_avg'])}"
+            )
+            ai_context_parts.append(
+                f"  Color fondo: Verde={_fmt(stats['color_verde_avg'])}, "
+                f"Verde-am={_fmt(stats['color_crema_avg'])}, "
+                f"Amarillo={_fmt(stats['color_amarillo_avg'])}, "
+                f"Full={_fmt(stats['color_full_avg'])}"
+            )
+            ai_context_parts.append(
+                f"  Calibre distrib: {stats['calibre_bins']}"
+            )
+            ai_context_parts.append("")
+
+        ai_context = "\n".join(ai_context_parts)
+        ai_question = (
+            "Genera un analisis profesional de esta evaluacion de cosecha. "
+            "Evalua la calidad de las variedades, compara entre ellas si hay mas de una, "
+            "destaca fortalezas y debilidades, y da recomendaciones concretas."
+        )
+
+        try:
+            ai_text = get_ai_analysis(ai_context, ai_question)
+        except Exception as e:
+            ai_text = f"Error al generar analisis AI: {str(e)[:200]}"
+
+        # Render AI text as paragraphs (handle markdown-ish text)
+        for line in ai_text.split("\n"):
+            line = line.strip()
+            if not line:
+                story.append(Spacer(1, 4))
+            elif line.startswith("## "):
+                story.append(Paragraph(line[3:], h3_style))
+            elif line.startswith("# "):
+                story.append(Paragraph(line[2:], h2_style))
+            elif line.startswith("**") and line.endswith("**"):
+                story.append(Paragraph(f"<b>{line.strip('*')}</b>", ai_style))
+            else:
+                # Escape HTML-sensitive chars but keep <b>/<i> from markdown
+                safe_line = (
+                    line
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                )
+                # Restore bold/italic markdown as HTML
+                import re
+                safe_line = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe_line)
+                safe_line = re.sub(r"\*(.+?)\*", r"<i>\1</i>", safe_line)
+                story.append(Paragraph(safe_line, ai_style))
+
+    # ── Footer ────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 20))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey, spaceAfter=6))
+    story.append(Paragraph(
+        "Departamento Desarrollo Varietal y Genetico — Garces Fruit",
+        footer_style,
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+
+    filename = f"evaluacion_cosecha_{especie_title}_{dt.now().strftime('%Y%m%d_%H%M')}.pdf"
+    # Sanitize filename
+    filename = filename.replace(" ", "_").replace("/", "-")
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# ── PDF Report: Resumen de Cosechas (summary table) ───────────────────────
+
+@router.get("/resumen-cosechas/pdf")
+def report_resumen_cosechas_pdf(
+    variedad_ids: str = Query(..., description="Comma-separated variedad IDs"),
+    temporada: str = Query(None, description="Filtrar por temporada"),
+    campo: int = Query(None, description="Filtrar por id_campo"),
+    incluir_ia: bool = Query(True, description="Incluir analisis AI"),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Generate a summary PDF with all varieties in one comparison table.
+
+    Produces a single wide table grouped by Campo with columns for:
+    harvest dates, color coverage ranges, color background categories,
+    peso, firmeza by measurement point, brix, and acidez.
+    Optionally includes AI-generated interpretive analysis.
+    """
+    from io import BytesIO
+    from datetime import datetime as dt
+    from fastapi.responses import StreamingResponse
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        HRFlowable,
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+
+    # Parse variedad_ids
+    try:
+        var_id_list = [int(x.strip()) for x in variedad_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="variedad_ids debe ser IDs separados por comas")
+
+    if not var_id_list:
+        raise HTTPException(status_code=400, detail="Debe indicar al menos un id de variedad")
+
+    if len(var_id_list) > 50:
+        raise HTTPException(status_code=400, detail="Maximo 50 variedades por resumen")
+
+    # Fetch variedad records
+    variedades_db = db.query(Variedad).filter(Variedad.id_variedad.in_(var_id_list)).all()
+    if not variedades_db:
+        raise HTTPException(status_code=404, detail="No se encontraron variedades")
+
+    var_map = {v.id_variedad: v for v in variedades_db}
+
+    # Build data per variedad, grouped by campo
+    campo_groups: dict[str, list[dict]] = {}  # campo_name -> list of variety data
+
+    for vid in var_id_list:
+        v = var_map.get(vid)
+        if not v:
+            continue
+        meds = _fetch_mediciones_for_variedad(db, vid, temporada, campo)
+        stats = _compute_variety_stats(meds)
+
+        # Resolve campo names from mediciones
+        campo_nombres = set()
+        for m in meds:
+            if m.id_campo:
+                cn = _resolve_name(db, Campo, Campo.id_campo, m.id_campo)
+                if cn:
+                    campo_nombres.add(cn)
+        campo_label = ", ".join(sorted(campo_nombres)) or "Sin campo"
+
+        # Resolve portainjerto
+        portainjerto_nombres = set()
+        planta_rows = db.query(Planta).filter(Planta.id_variedad == vid).limit(20).all()
+        for p in planta_rows:
+            if p.id_portainjerto:
+                pn = _resolve_name(db, Portainjerto, Portainjerto.id_portainjerto, p.id_portainjerto)
+                if pn:
+                    portainjerto_nombres.add(pn)
+
+        row_data = {
+            "nombre": v.nombre,
+            "codigo": v.codigo,
+            "portainjerto": ", ".join(sorted(portainjerto_nombres)) or "-",
+            "stats": stats,
+        }
+
+        if campo_label not in campo_groups:
+            campo_groups[campo_label] = []
+        campo_groups[campo_label].append(row_data)
+
+    if not campo_groups:
+        raise HTTPException(status_code=404, detail="No se encontraron datos")
+
+    # Determine especie from first variedad for the title
+    first_var = var_map.get(var_id_list[0])
+    especie_title = "-"
+    if first_var:
+        especie_title = _resolve_name(db, Especie, Especie.id_especie, first_var.id_especie) or "-"
+
+    # ── Build PDF (landscape for wide table) ──────────────────────────────
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=landscape(letter),
+        topMargin=0.4 * inch, bottomMargin=0.5 * inch,
+        leftMargin=0.3 * inch, rightMargin=0.3 * inch,
+    )
+    styles = getSampleStyleSheet()
+
+    cherry = colors.HexColor("#8B1A1A")
+    dark_green = colors.HexColor("#2D5F2D")
+
+    title_style = ParagraphStyle(
+        "RSTitle", parent=styles["Title"], textColor=cherry,
+        fontSize=16, spaceAfter=4, fontName="Helvetica-Bold",
+    )
+    subtitle_style = ParagraphStyle(
+        "RSSubtitle", parent=styles["Normal"], textColor=colors.HexColor("#555555"),
+        fontSize=10, spaceAfter=2,
+    )
+    h2_style = ParagraphStyle(
+        "RSH2", parent=styles["Heading2"], textColor=cherry,
+        fontSize=12, spaceBefore=10, spaceAfter=4,
+    )
+    h3_style = ParagraphStyle(
+        "RSH3", parent=styles["Heading3"], textColor=dark_green,
+        fontSize=10, spaceBefore=8, spaceAfter=3,
+    )
+    body_style = ParagraphStyle(
+        "RSBody", parent=styles["Normal"], fontSize=9,
+        leading=12, alignment=TA_JUSTIFY, spaceAfter=4,
+    )
+    small = ParagraphStyle(
+        "RSSmall", parent=styles["Normal"], fontSize=7, textColor=colors.gray,
+    )
+    footer_style = ParagraphStyle(
+        "RSFooter", parent=styles["Normal"], fontSize=8,
+        textColor=colors.HexColor("#666666"), alignment=TA_CENTER,
+    )
+    ai_style = ParagraphStyle(
+        "RSAI", parent=styles["Normal"], fontSize=9,
+        leading=13, alignment=TA_JUSTIFY, spaceAfter=4,
+        leftIndent=8, rightIndent=8,
+    )
+
+    story: list = []
+
+    # Header
+    story.append(Paragraph(
+        "Garces Fruit — Departamento Desarrollo Varietal y Genetico",
+        small,
+    ))
+    story.append(Paragraph(f"Resumen de Cosechas — {especie_title}", title_style))
+    temporada_label = f"Temporada {temporada}" if temporada else "Todas las temporadas"
+    campo_nombre_label = ""
+    if campo:
+        campo_nombre_label = _resolve_name(db, Campo, Campo.id_campo, campo) or f"Campo #{campo}"
+    story.append(Paragraph(
+        f"{temporada_label}"
+        + (f" | {campo_nombre_label}" if campo_nombre_label else "")
+        + f" | {sum(len(v) for v in campo_groups.values())} variedad(es)",
+        subtitle_style,
+    ))
+    story.append(Paragraph(
+        f"Generado: {dt.now().strftime('%d/%m/%Y %H:%M')} | Usuario: {user.username}",
+        small,
+    ))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=cherry, spaceAfter=10))
+
+    # Build the wide summary table
+    # Column headers (2 rows: group headers + sub-headers)
+    header_row_1 = [
+        "Campo", "Variedad", "Cosechas",
+        "Color cubrimiento (%)", "", "", "",
+        "Color fondo (%)", "", "", "",
+        "Peso", "Firmeza (lb)", "", "", "", "",
+        "Brix", "Acidez",
+    ]
+    header_row_2 = [
+        "", "", "",
+        "0-30", "30-50", "50-75", "75-100",
+        "Verde", "Ver-Am", "Amar.", "Full",
+        "(g)", "Punta", "Quilla", "Hombro", "Mej.1", "Mej.2",
+        "(%)", "(%)",
+    ]
+
+    # Column widths for landscape letter (11 inches usable ~ 10.4 with margins)
+    col_widths = [
+        0.75 * inch,   # Campo
+        0.8 * inch,    # Variedad
+        0.65 * inch,   # Cosechas
+        0.42 * inch,   # 0-30
+        0.42 * inch,   # 30-50
+        0.42 * inch,   # 50-75
+        0.46 * inch,   # 75-100
+        0.42 * inch,   # Verde
+        0.42 * inch,   # Ver-Am
+        0.42 * inch,   # Amar.
+        0.42 * inch,   # Full
+        0.42 * inch,   # Peso
+        0.42 * inch,   # Punta
+        0.42 * inch,   # Quilla
+        0.46 * inch,   # Hombro
+        0.42 * inch,   # Mej.1
+        0.42 * inch,   # Mej.2
+        0.42 * inch,   # Brix
+        0.42 * inch,   # Acidez
+    ]
+
+    table_data = [header_row_1, header_row_2]
+
+    for campo_name in sorted(campo_groups.keys()):
+        varieties = campo_groups[campo_name]
+        for row_idx, rd in enumerate(varieties):
+            stats = rd["stats"]
+            fechas_str = ", ".join(stats["fechas_cosecha"][:3]) if stats["fechas_cosecha"] else "-"
+
+            row = [
+                campo_name if row_idx == 0 else "",  # Only show campo on first row
+                rd["nombre"],
+                fechas_str,
+                _fmt(stats["color_0_30_avg"]),
+                _fmt(stats["color_30_50_avg"]),
+                _fmt(stats["color_50_75_avg"]),
+                _fmt(stats["color_75_100_avg"]),
+                _fmt(stats["color_verde_avg"]),
+                _fmt(stats["color_crema_avg"]),
+                _fmt(stats["color_amarillo_avg"]),
+                _fmt(stats["color_full_avg"]),
+                _fmt(stats["peso_avg"]),
+                _fmt(stats["firmeza_punta_avg"]),
+                _fmt(stats["firmeza_quilla_avg"]),
+                _fmt(stats["firmeza_hombro_avg"]),
+                _fmt(stats["firmeza_mejilla1_avg"]),
+                _fmt(stats["firmeza_mejilla2_avg"]),
+                _fmt(stats["brix_avg"]),
+                _fmt(stats["acidez_avg"], 2),
+            ]
+            table_data.append(row)
+
+    summary_table = Table(table_data, colWidths=col_widths, repeatRows=2)
+
+    # Spans for grouped header columns
+    summary_style = TableStyle([
+        # Header row 1 background
+        ("BACKGROUND", (0, 0), (-1, 0), cherry),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7),
+        # Header row 2 background
+        ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#C45050")),
+        ("TEXTCOLOR", (0, 1), (-1, 1), colors.white),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 1), (-1, 1), 7),
+        # Span grouped headers in row 1
+        ("SPAN", (3, 0), (6, 0)),   # Color cubrimiento
+        ("SPAN", (7, 0), (10, 0)),  # Color fondo
+        ("SPAN", (12, 0), (16, 0)), # Firmeza
+        # Span single-column headers across both rows
+        ("SPAN", (0, 0), (0, 1)),   # Campo
+        ("SPAN", (1, 0), (1, 1)),   # Variedad
+        ("SPAN", (2, 0), (2, 1)),   # Cosechas
+        ("SPAN", (11, 0), (11, 1)), # Peso
+        ("SPAN", (17, 0), (17, 1)), # Brix
+        ("SPAN", (18, 0), (18, 1)), # Acidez
+        # Alignment
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        # Data rows
+        ("FONTSIZE", (0, 2), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("ROWBACKGROUNDS", (0, 2), (-1, -1), [colors.white, colors.HexColor("#FFF5F5")]),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+    ])
+
+    # Highlight campo name rows (bold the campo cell)
+    row_offset = 2
+    for campo_name in sorted(campo_groups.keys()):
+        n_varieties = len(campo_groups[campo_name])
+        if n_varieties > 1:
+            summary_style.add("SPAN", (0, row_offset), (0, row_offset + n_varieties - 1))
+        summary_style.add("FONTNAME", (0, row_offset), (0, row_offset + n_varieties - 1), "Helvetica-Bold")
+        summary_style.add("BACKGROUND", (0, row_offset), (0, row_offset + n_varieties - 1), colors.HexColor("#F5F0F0"))
+        row_offset += n_varieties
+
+    summary_table.setStyle(summary_style)
+    story.append(summary_table)
+    story.append(Spacer(1, 10))
+
+    # ── AI Analysis section ───────────────────────────────────────────────
+    if incluir_ia:
+        story.append(Spacer(1, 8))
+        story.append(Paragraph("Analisis Comparativo (AI)", h2_style))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=cherry, spaceAfter=8))
+
+        # Build context for AI
+        ai_parts = [
+            f"RESUMEN DE COSECHAS — {especie_title}",
+            f"Temporada: {temporada_label}",
+            "",
+        ]
+        for campo_name in sorted(campo_groups.keys()):
+            ai_parts.append(f"CAMPO: {campo_name}")
+            for rd in campo_groups[campo_name]:
+                stats = rd["stats"]
+                ai_parts.append(f"  Variedad: {rd['nombre']} ({rd['codigo']})")
+                ai_parts.append(f"    N={stats['n']}, Peso={_fmt(stats['peso_avg'])}g, "
+                                f"Calibre={_fmt(stats['calibre_avg'])}mm")
+                ai_parts.append(
+                    f"    Firmeza: Punta={_fmt(stats['firmeza_punta_avg'])}, "
+                    f"Quilla={_fmt(stats['firmeza_quilla_avg'])}, "
+                    f"Hombro={_fmt(stats['firmeza_hombro_avg'])}, "
+                    f"Mej1={_fmt(stats['firmeza_mejilla1_avg'])}, "
+                    f"Mej2={_fmt(stats['firmeza_mejilla2_avg'])}"
+                )
+                ai_parts.append(f"    Brix={_fmt(stats['brix_avg'])}%, "
+                                f"Acidez={_fmt(stats['acidez_avg'], 2)}%")
+                ai_parts.append(
+                    f"    Color cub: 0-30={_fmt(stats['color_0_30_avg'])}, "
+                    f"30-50={_fmt(stats['color_30_50_avg'])}, "
+                    f"50-75={_fmt(stats['color_50_75_avg'])}, "
+                    f"75-100={_fmt(stats['color_75_100_avg'])}"
+                )
+                ai_parts.append(
+                    f"    Color fondo: Verde={_fmt(stats['color_verde_avg'])}, "
+                    f"Ver-Am={_fmt(stats['color_crema_avg'])}, "
+                    f"Amarillo={_fmt(stats['color_amarillo_avg'])}, "
+                    f"Full={_fmt(stats['color_full_avg'])}"
+                )
+            ai_parts.append("")
+
+        ai_context = "\n".join(ai_parts)
+        ai_question = (
+            "Genera un analisis comparativo profesional de este resumen de cosechas. "
+            "Compara variedades entre si y entre campos. Identifica las mejores variedades, "
+            "destaca tendencias, y da recomendaciones concretas para la proxima temporada."
+        )
+
+        try:
+            ai_text = get_ai_analysis(ai_context, ai_question)
+        except Exception as e:
+            ai_text = f"Error al generar analisis AI: {str(e)[:200]}"
+
+        import re as re_mod
+        for line in ai_text.split("\n"):
+            line = line.strip()
+            if not line:
+                story.append(Spacer(1, 4))
+            elif line.startswith("## "):
+                story.append(Paragraph(line[3:], h3_style))
+            elif line.startswith("# "):
+                story.append(Paragraph(line[2:], h2_style))
+            elif line.startswith("**") and line.endswith("**"):
+                story.append(Paragraph(f"<b>{line.strip('*')}</b>", ai_style))
+            else:
+                safe_line = (
+                    line
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                )
+                safe_line = re_mod.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe_line)
+                safe_line = re_mod.sub(r"\*(.+?)\*", r"<i>\1</i>", safe_line)
+                story.append(Paragraph(safe_line, ai_style))
+
+    # Footer
+    story.append(Spacer(1, 20))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey, spaceAfter=6))
+    story.append(Paragraph(
+        "Departamento Desarrollo Varietal y Genetico — Garces Fruit",
+        footer_style,
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+
+    filename = f"resumen_cosechas_{especie_title}_{dt.now().strftime('%Y%m%d_%H%M')}.pdf"
+    filename = filename.replace(" ", "_").replace("/", "-")
     return StreamingResponse(
         buf,
         media_type="application/pdf",
