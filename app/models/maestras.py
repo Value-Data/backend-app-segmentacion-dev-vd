@@ -336,7 +336,7 @@ class EstadoPlanta(SQLModel, table=True):
 class Temporada(SQLModel, table=True):
     __tablename__ = "temporadas"
     id_temporada: Optional[int] = Field(default=None, primary_key=True)
-    codigo: str = Field(sa_column=Column(sa.String(20), unique=True, nullable=False))
+    codigo: str = Field(sa_column=Column(sa.NVARCHAR(20), unique=True, nullable=False))
     nombre: str = Field(sa_column=Column(sa.NVARCHAR(50), nullable=False))
     fecha_inicio: Optional[date] = Field(default=None)
     fecha_fin: Optional[date] = Field(default=None)
