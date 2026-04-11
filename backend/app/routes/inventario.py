@@ -173,8 +173,11 @@ def generate_qr_batch(
 
     c.save()
     buf.seek(0)
+
+    filename = "qr-labels.pdf"
+
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": "attachment; filename=qr-labels.pdf"
+        "Content-Disposition": f"attachment; filename={filename}"
     })
 
 

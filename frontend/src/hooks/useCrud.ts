@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { mantenedorService } from "@/services/mantenedores";
 
 export function useCrud(entidad: string, params?: Record<string, string | number | boolean | undefined | null>) {

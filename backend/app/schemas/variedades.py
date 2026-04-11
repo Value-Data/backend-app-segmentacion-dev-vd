@@ -12,23 +12,22 @@ class VariedadCreate(BaseModel):
     id_origen: Optional[int] = None
     codigo: str
     nombre: str
-    nombre_corto: Optional[str] = None
     nombre_comercial: Optional[str] = None
     tipo: Optional[str] = "plantada"
     origen: Optional[str] = None
     anio_introduccion: Optional[int] = None
     epoca_cosecha: Optional[str] = None
     epoca: Optional[str] = None
-    vigor: Optional[str] = None
     req_frio_horas: Optional[int] = None
     req_frio: Optional[str] = None
+    color: Optional[str] = None
     color_fruto: Optional[str] = None
     color_pulpa: Optional[str] = None
     id_color_fruto: Optional[int] = None
     id_color_pulpa: Optional[int] = None
     id_color_cubrimiento: Optional[int] = None
     calibre_esperado: Optional[str] = None
-    firmeza_esperada: Optional[str] = None
+    requerimiento_frio: Optional[str] = None
     susceptibilidad: Optional[str] = None
     estado: Optional[str] = "prospecto"
     fecha_ultima_visita: Optional[date] = None
@@ -36,6 +35,7 @@ class VariedadCreate(BaseModel):
     observaciones: Optional[str] = None
     alelos: Optional[str] = None
     auto_fertil: Optional[bool] = None
+    autofertil: Optional[bool] = None
 
 
 class VariedadUpdate(BaseModel):
@@ -44,23 +44,22 @@ class VariedadUpdate(BaseModel):
     id_origen: Optional[int] = None
     codigo: Optional[str] = None
     nombre: Optional[str] = None
-    nombre_corto: Optional[str] = None
     nombre_comercial: Optional[str] = None
     tipo: Optional[str] = None
     origen: Optional[str] = None
     anio_introduccion: Optional[int] = None
     epoca_cosecha: Optional[str] = None
     epoca: Optional[str] = None
-    vigor: Optional[str] = None
     req_frio_horas: Optional[int] = None
     req_frio: Optional[str] = None
+    color: Optional[str] = None
     color_fruto: Optional[str] = None
     color_pulpa: Optional[str] = None
     id_color_fruto: Optional[int] = None
     id_color_pulpa: Optional[int] = None
     id_color_cubrimiento: Optional[int] = None
     calibre_esperado: Optional[str] = None
-    firmeza_esperada: Optional[str] = None
+    requerimiento_frio: Optional[str] = None
     susceptibilidad: Optional[str] = None
     estado: Optional[str] = None
     fecha_ultima_visita: Optional[date] = None
@@ -68,6 +67,7 @@ class VariedadUpdate(BaseModel):
     observaciones: Optional[str] = None
     alelos: Optional[str] = None
     auto_fertil: Optional[bool] = None
+    autofertil: Optional[bool] = None
     activo: Optional[bool] = None
 
 

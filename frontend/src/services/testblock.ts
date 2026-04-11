@@ -1,4 +1,5 @@
 import { get, post, put, del, patch } from "./api";
+import type { MapaTestBlockData } from "@/types/testblock";
 import type {
   TestBlock,
   PosicionTestBlock,
@@ -60,4 +61,9 @@ export const testblockService = {
 
   updateObservaciones: (posicionId: number, observaciones: string | null) =>
     patch<{ ok: boolean; observaciones: string | null }>(`/posiciones/${posicionId}/observaciones`, { observaciones }),
+
+  getMapa: (id: number) =>
+    get<MapaTestBlockData>(`/testblocks/${id}/mapa`),
+  updateMapa: (id: number, data: Record<string, unknown>) =>
+    put<{ ok: boolean }>(`/testblocks/${id}/mapa`, data),
 };

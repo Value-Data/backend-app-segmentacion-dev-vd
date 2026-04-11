@@ -24,7 +24,7 @@ import {
   X as XIcon,
   ClipboardList,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -415,7 +415,7 @@ export function TomaDeMuestraTab() {
       if (resp.total_errores === 0) {
         toast.success(`${resp.total_creadas} mediciones guardadas`);
       } else {
-        toast(`${resp.total_creadas} guardadas, ${resp.total_errores} con error`, { icon: "!" });
+        toast.warning(`${resp.total_creadas} guardadas, ${resp.total_errores} con error`);
       }
     } catch {
       // toast shown by api.ts

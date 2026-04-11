@@ -86,7 +86,7 @@ def list_roles(
 # ── Audit Log ──────────────────────────────────────────────────────────────
 @router.get("/audit-log")
 def list_audit_log(
-    tabla: str | None = Query(None),
+    accion: str | None = Query(None, description="Filtrar por accion"),
     fecha_desde: str | None = Query(None),
     skip: int = 0,
     limit: int = 100,
@@ -94,8 +94,8 @@ def list_audit_log(
     user: Usuario = Depends(require_role("admin")),
 ):
     q = db.query(AuditLog)
-    if tabla:
-        q = q.filter(AuditLog.tabla == tabla)
+    if accion:
+        q = q.filter(AuditLog.accion == accion)
     if fecha_desde:
-        q = q.filter(AuditLog.fecha >= fecha_desde)
-    return q.order_by(AuditLog.fecha.desc()).offset(skip).limit(limit).all()
+        q = q.filter(AuditLog.created_at >= fecha_desde)
+    return q.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit).all()

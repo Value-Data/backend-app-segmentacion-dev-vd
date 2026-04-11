@@ -26,6 +26,7 @@ interface CrudFormProps {
 
 export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, isLoading, onFieldChange }: CrudFormProps) {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (initialData) {
@@ -38,10 +39,28 @@ export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, 
       });
       setFormData(defaults);
     }
+    setErrors({});
   }, [initialData, fields, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate required fields
+    const newErrors: Record<string, string> = {};
+    for (const f of fields) {
+      if (f.required && !f.readOnly && !f.hidden) {
+        const val = formData[f.key];
+        if (val == null || val === "" || (typeof val === "string" && val.trim() === "")) {
+          newErrors[f.key] = "Este campo es obligatorio";
+        }
+      }
+    }
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
+
     const cleaned: Record<string, unknown> = {};
     for (const f of fields) {
       if (f.readOnly && !initialData) continue;
@@ -93,10 +112,11 @@ export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, 
                     value={String(formData[field.key] ?? "")}
                     onValueChange={(v) => {
                       setFormData({ ...formData, [field.key]: v });
+                      setErrors((prev) => { const next = { ...prev }; delete next[field.key]; return next; });
                       onFieldChange?.(field.key, v);
                     }}
                   >
-                    <SelectTrigger className="mt-1">
+                    <SelectTrigger className={`mt-1 ${errors[field.key] ? "border-red-500" : ""}`}>
                       <SelectValue placeholder={field.placeholder || `Seleccionar ${field.label}`} />
                     </SelectTrigger>
                     <SelectContent>
@@ -114,9 +134,12 @@ export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, 
                 ) : field.type === "textarea" ? (
                   <textarea
                     id={field.key}
-                    className="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[80px]"
+                    className={`mt-1 w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[80px] ${errors[field.key] ? "border-red-500" : "border-input"}`}
                     value={String(formData[field.key] ?? "")}
-                    onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, [field.key]: e.target.value });
+                      setErrors((prev) => { const next = { ...prev }; delete next[field.key]; return next; });
+                    }}
                     placeholder={field.placeholder}
                     readOnly={field.readOnly}
                   />
@@ -132,18 +155,55 @@ export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, 
                       {field.placeholder || "Si"}
                     </label>
                   </div>
+                ) : field.type === "color" ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      id={field.key}
+                      type="text"
+                      className={`flex-1 ${errors[field.key] ? "border-red-500" : ""}`}
+                      value={String(formData[field.key] ?? "")}
+                      onChange={(e) => {
+                        setFormData({ ...formData, [field.key]: e.target.value });
+                        setErrors((prev) => { const next = { ...prev }; delete next[field.key]; return next; });
+                      }}
+                      placeholder={field.placeholder || "#FF0000"}
+                      readOnly={field.readOnly}
+                    />
+                    <input
+                      type="color"
+                      value={String(formData[field.key] || "#000000")}
+                      onChange={(e) => {
+                        setFormData({ ...formData, [field.key]: e.target.value });
+                        setErrors((prev) => { const next = { ...prev }; delete next[field.key]; return next; });
+                      }}
+                      className="h-9 w-9 rounded cursor-pointer border border-input p-0.5 shrink-0"
+                      disabled={field.readOnly}
+                    />
+                    {!!formData[field.key] && (
+                      <div
+                        className="h-9 w-9 rounded border border-input shrink-0"
+                        style={{ backgroundColor: String(formData[field.key]) }}
+                        title={String(formData[field.key])}
+                      />
+                    )}
+                  </div>
                 ) : (
                   <Input
                     id={field.key}
                     type={field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "password" ? "password" : "text"}
-                    className="mt-1"
+                    className={`mt-1 ${errors[field.key] ? "border-red-500" : ""}`}
                     value={String(formData[field.key] ?? "")}
-                    onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, [field.key]: e.target.value });
+                      setErrors((prev) => { const next = { ...prev }; delete next[field.key]; return next; });
+                    }}
                     placeholder={field.placeholder}
-                    required={field.required}
                     readOnly={field.readOnly}
                     step={field.type === "number" ? "any" : undefined}
                   />
+                )}
+                {errors[field.key] && (
+                  <p className="text-xs text-red-500 mt-1">{errors[field.key]}</p>
                 )}
               </div>
             ))}

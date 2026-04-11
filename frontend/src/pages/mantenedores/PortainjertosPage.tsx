@@ -33,8 +33,6 @@ const fields: FieldDef[] = [
   ]},
   { key: "origen", label: "Origen", type: "text" },
   { key: "cruce", label: "Cruce", type: "text" },
-  { key: "tipo", label: "Tipo", type: "text" },
-  { key: "patron", label: "Patron", type: "text" },
   { key: "propagacion", label: "Propagacion", type: "text" },
   { key: "obtentor", label: "Obtentor", type: "text" },
   { key: "ventajas", label: "Ventajas", type: "textarea" },
@@ -46,7 +44,7 @@ const columns = [
   col("nombre", "Nombre"),
   col("vigor", "Vigor"),
   col("origen", "Origen"),
-  col("tipo", "Tipo"),
+  col("cruce", "Cruce"),
 ];
 
 function PortainjertoEspeciesChips({ portainjertoId }: { portainjertoId: number }) {

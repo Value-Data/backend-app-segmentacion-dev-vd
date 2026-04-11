@@ -83,7 +83,7 @@ export function CrudTable({
     const cols = [...userColumns];
     if (onEdit || onDelete) {
       cols.push({
-        id: "actions",
+        id: "_crud_actions",
         header: "",
         size: 80,
         cell: ({ row }) => (
@@ -144,6 +144,7 @@ export function CrudTable({
               size="sm"
               onClick={() => exportToCsv(data, userColumns, exportFilename)}
               title="Exportar a CSV"
+              aria-label="Exportar a CSV"
             >
               <Download className="h-4 w-4" />
             </Button>

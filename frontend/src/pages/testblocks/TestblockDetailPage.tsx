@@ -6,8 +6,9 @@ import {
   Package, CheckCircle2, XCircle, ExternalLink, FlaskConical,
   AlertTriangle, Repeat2, MapPin, Settings2, PlusCircle, Rows3,
   Calendar, FileText, Pencil, Trash2, QrCode, X, Clock, Leaf,
+  ChevronDown, Shield, Hammer, Map as MapIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -15,16 +16,19 @@ import { KpiCard } from "@/components/shared/KpiCard";
 import { CrudForm } from "@/components/shared/CrudForm";
 type MapPinType = { id: number | string; lat: number; lng: number; label: string; detail?: string };
 import { useTestblock, useGrilla, useResumenHileras, useResumenVariedades, useTestblockMutations, useInventarioTestblock } from "@/hooks/useTestblock";
+import { useAuthStore } from "@/stores/authStore";
 import { useLookups } from "@/hooks/useLookups";
 import { testblockService } from "@/services/testblock";
 import { laboratorioService } from "@/services/laboratorio";
 import { laboresService } from "@/services/labores";
 import { inventarioService } from "@/services/inventario";
+import { post } from "@/services/api";
 import { formatNumber } from "@/lib/utils";
 import type { PosicionTestBlock, ColorMode, HistorialPosicion } from "@/types/testblock";
 import { parseQr } from "@/types/testblock";
 import type { FieldDef } from "@/types";
 import { PlantaMedicionesDialog } from "@/components/shared/PlantaMedicionesDialog";
+import { MapaTestBlock } from "./MapaTestBlock";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -60,18 +64,7 @@ function ClusterDot({ cluster }: { cluster?: number | null }) {
 
 type SelectionMode = "none" | "alta" | "baja" | "replante" | "eliminar" | "fenologia";
 
-const ESTADOS_FENOLOGICOS = [
-  "Inicio caida hoja",
-  "50% caida",
-  "100% caida",
-  "Yema dormante",
-  "Yema hinchada",
-  "Punta verde",
-  "Inicio floracion",
-  "Plena floracion",
-  "Cuaja",
-  "Pinta/Envero",
-];
+// Removed static ESTADOS_FENOLOGICOS — now fetched from API (estados_fenologicos table)
 
 /* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
@@ -120,6 +113,24 @@ export function TestblockDetailPage() {
   const [editTbOpen, setEditTbOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  /* --- Group action dialog states --- */
+  const [grupoLaboresOpen, setGrupoLaboresOpen] = useState(false);
+  const [grupoPolinizanteConfirm, setGrupoPolinizanteConfirm] = useState(false);
+
+  /* --- Fetch estados fenologicos from API for the fenologia dialog --- */
+  const { data: allEstadosFenol } = useQuery({
+    queryKey: ["estados-fenologicos"],
+    queryFn: () => laboresService.estadosFenologicos(),
+    staleTime: 5 * 60_000,
+  });
+
+  /* --- Fetch tipos de labor for group labores dialog --- */
+  const { data: allTiposLabor } = useQuery({
+    queryKey: ["tipos-labor"],
+    queryFn: () => laboresService.tiposLabor(),
+    staleTime: 5 * 60_000,
+  });
+
   /* --- Historial query for selected position --- */
   const { data: historialPos } = useQuery({
     queryKey: ["posiciones", selectedPos?.id_posicion, "historial"],
@@ -157,7 +168,7 @@ export function TestblockDetailPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
       if (res.count === 0) {
-        toast("Las posiciones ya estan generadas. Use \"Alta\" para plantar.", { icon: "ℹ️" });
+        toast.info("Las posiciones ya estan generadas. Use \"Alta\" para plantar.");
       } else {
         toast.success(`${res.count} posiciones nuevas generadas. Use "Alta" para plantar.`);
       }
@@ -315,19 +326,89 @@ export function TestblockDetailPage() {
     ];
   }, [grilla?.hileras]);
 
-  const fenologiaConfirmFields: FieldDef[] = useMemo(() => [
-    {
-      key: "estado_fenologico",
-      label: "Estado Fenologico",
-      type: "select",
-      required: true,
-      options: ESTADOS_FENOLOGICOS.map((e) => ({ value: e, label: e })),
-      placeholder: "Seleccionar estado",
-    },
-    { key: "porcentaje", label: "Porcentaje (%)", type: "number", required: false, placeholder: "0 - 100" },
-    { key: "fecha", label: "Fecha", type: "date", required: false, placeholder: new Date().toISOString().slice(0, 10) },
-    { key: "observaciones", label: "Observaciones", type: "textarea", required: false, placeholder: "Observaciones (opcional)" },
-  ], []);
+  const fenologiaConfirmFields: FieldDef[] = useMemo(() => {
+    const estadoOpts = ((allEstadosFenol || []) as { id_estado: number; nombre: string; codigo: string; id_especie: number; activo?: boolean }[])
+      .filter((e) => e.activo !== false)
+      .sort((a, b) => a.id_especie - b.id_especie || (a as any).orden - (b as any).orden)
+      .map((e) => ({ value: e.id_estado, label: e.nombre }));
+    return [
+      {
+        key: "estado_fenologico",
+        label: "Estado Fenologico",
+        type: "select" as const,
+        required: true,
+        options: estadoOpts,
+        placeholder: "Seleccionar estado",
+      },
+      { key: "porcentaje", label: "Porcentaje (%)", type: "number" as const, required: false, placeholder: "0 - 100" },
+      { key: "fecha", label: "Fecha", type: "date" as const, required: false, placeholder: new Date().toISOString().slice(0, 10) },
+      { key: "observaciones", label: "Observaciones", type: "textarea" as const, required: false, placeholder: "Observaciones (opcional)" },
+    ];
+  }, [allEstadosFenol]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Group selection toolbar dropdown options                          */
+  /* ---------------------------------------------------------------- */
+
+  /** Unique variedades present in grid */
+  const gridVariedadOptions = useMemo(() => {
+    if (!grilla?.posiciones) return [];
+    const map = new Map<number, string>();
+    for (const p of grilla.posiciones) {
+      const vid = p.planta_variedad ?? p.id_variedad;
+      if (vid && !map.has(vid)) {
+        map.set(vid, lk.variedad(vid));
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ value: id, label: name || `Variedad #${id}` }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [grilla?.posiciones, lk]);
+
+  /** Unique hileras present in grid */
+  const gridHileraOptions = useMemo(() => {
+    if (!grilla?.posiciones) return [];
+    const set = new Set<number>();
+    for (const p of grilla.posiciones) set.add(p.hilera);
+    return Array.from(set)
+      .sort((a, b) => a - b)
+      .map((h) => ({ value: h, label: `H${h}` }));
+  }, [grilla?.posiciones]);
+
+  /** Unique variedad + portainjerto combos present in grid */
+  const gridVarPiOptions = useMemo(() => {
+    if (!grilla?.posiciones) return [];
+    const map = new Map<string, { vid: number; pid: number; label: string }>();
+    for (const p of grilla.posiciones) {
+      const vid = p.planta_variedad ?? p.id_variedad;
+      const pid = p.planta_portainjerto ?? p.id_portainjerto;
+      if (vid && pid) {
+        const key = `${vid}-${pid}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            vid,
+            pid,
+            label: `${lk.variedad(vid)} / ${lk.portainjerto(pid)}`,
+          });
+        }
+      }
+    }
+    return Array.from(map.entries())
+      .map(([key, v]) => ({ value: key, label: v.label, vid: v.vid, pid: v.pid }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [grilla?.posiciones, lk]);
+
+  /** Group labores field definitions */
+  const grupoLaboresFields: FieldDef[] = useMemo(() => {
+    const laborOpts = ((allTiposLabor || []) as { id_labor: number; nombre: string; codigo: string; activo?: boolean }[])
+      .filter((t) => t.activo !== false)
+      .map((t) => ({ value: t.id_labor, label: t.nombre }));
+    return [
+      { key: "id_labor", label: "Tipo de Labor", type: "select" as const, required: true, options: laborOpts, placeholder: "Seleccionar labor" },
+      { key: "fecha_programada", label: "Fecha Programada", type: "date" as const, required: false, placeholder: new Date().toISOString().slice(0, 10) },
+      { key: "observaciones", label: "Observaciones", type: "textarea" as const, required: false, placeholder: "Observaciones (opcional)" },
+    ];
+  }, [allTiposLabor]);
 
   const editTbFields: FieldDef[] = useMemo(() => [
     { key: "nombre", label: "Nombre", type: "text", required: true },
@@ -402,6 +483,151 @@ export function TestblockDetailPage() {
 
     togglePosition(pos.id_posicion);
   }, [selectionMode, togglePosition]);
+
+  /* --- Group selection helpers (toolbar) --- */
+  const selectByVariedad = useCallback((vid: number) => {
+    if (!grilla?.posiciones) return;
+    const ids = grilla.posiciones
+      .filter((p) => (p.planta_variedad ?? p.id_variedad) === vid)
+      .map((p) => p.id_posicion);
+    setSelectedPositions((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [grilla?.posiciones]);
+
+  const selectByHilera = useCallback((hilera: number) => {
+    if (!grilla?.posiciones) return;
+    const ids = grilla.posiciones
+      .filter((p) => p.hilera === hilera)
+      .map((p) => p.id_posicion);
+    setSelectedPositions((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [grilla?.posiciones]);
+
+  const selectByVarPi = useCallback((vid: number, pid: number) => {
+    if (!grilla?.posiciones) return;
+    const ids = grilla.posiciones
+      .filter((p) =>
+        (p.planta_variedad ?? p.id_variedad) === vid &&
+        (p.planta_portainjerto ?? p.id_portainjerto) === pid
+      )
+      .map((p) => p.id_posicion);
+    setSelectedPositions((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [grilla?.posiciones]);
+
+  const selectAllAlta = useCallback(() => {
+    if (!grilla?.posiciones) return;
+    const ids = grilla.posiciones
+      .filter((p) => p.estado === "alta")
+      .map((p) => p.id_posicion);
+    setSelectedPositions(new Set(ids));
+  }, [grilla?.posiciones]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedPositions(new Set());
+  }, []);
+
+  /* --- Group action handlers --- */
+  const handleGrupoAlta = useCallback(() => {
+    if (selectedPositions.size === 0) return;
+    setSelectionMode("alta");
+    setAltaConfirmOpen(true);
+  }, [selectedPositions]);
+
+  const handleGrupoBaja = useCallback(() => {
+    if (selectedPositions.size === 0) return;
+    setSelectionMode("baja");
+    setBajaConfirmOpen(true);
+  }, [selectedPositions]);
+
+  const handleGrupoReplante = useCallback(() => {
+    if (selectedPositions.size === 0) return;
+    setSelectionMode("replante");
+    setReplanteConfirmOpen(true);
+  }, [selectedPositions]);
+
+  const handleGrupoFenologia = useCallback(() => {
+    if (selectedPositions.size === 0) return;
+    setSelectionMode("fenologia");
+    setFenologiaConfirmOpen(true);
+  }, [selectedPositions]);
+
+  const handleGrupoLaboresSubmit = useCallback(async (data: Record<string, unknown>) => {
+    const ids = Array.from(selectedPositions);
+    setIsProcessing(true);
+    try {
+      const res = await post<{ created: number }>(`/testblocks/${tbId}/grupo/labores`, {
+        posicion_ids: ids,
+        id_labor: Number(data.id_labor),
+        fecha_programada: data.fecha_programada || new Date().toISOString().slice(0, 10),
+        observaciones: data.observaciones || "",
+        temporada: tb?.temporada_inicio || "2025-2026",
+      });
+      toast.success(`Labor planificada para ${res.created} posiciones`);
+      queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+      queryClient.invalidateQueries({ queryKey: ["labores"] });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Error al planificar labor grupal: ${msg}`);
+    }
+    setIsProcessing(false);
+    setGrupoLaboresOpen(false);
+    setSelectedPositions(new Set());
+  }, [selectedPositions, tbId, tb?.temporada_inicio, queryClient]);
+
+  const handleGrupoPolinizante = useCallback(async () => {
+    const ids = Array.from(selectedPositions);
+    setIsProcessing(true);
+    try {
+      const res = await post<{ affected: number }>(`/testblocks/${tbId}/grupo/polinizante`, {
+        posicion_ids: ids,
+        es_polinizante: true,
+      });
+      toast.success(`${res.affected} posiciones marcadas como polinizante`);
+      queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Error al marcar polinizante: ${msg}`);
+    }
+    setIsProcessing(false);
+    setGrupoPolinizanteConfirm(false);
+    setSelectedPositions(new Set());
+  }, [selectedPositions, tbId, queryClient]);
+
+  const handleGrupoQr = useCallback(async () => {
+    const ids = Array.from(selectedPositions);
+    try {
+      toast.loading("Generando QR PDF...", { id: "grupo-qr" });
+      const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+      const token = useAuthStore.getState().token;
+      const res = await fetch(`${base}/testblocks/${tbId}/grupo/qr`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ posicion_ids: ids }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      toast.dismiss("grupo-qr");
+    } catch (err) {
+      toast.dismiss("grupo-qr");
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Error al generar QR: ${msg}`);
+    }
+  }, [selectedPositions, tbId]);
 
   const handleConfirmSelection = useCallback(() => {
     if (selectedPositions.size === 0) return;
@@ -518,7 +744,7 @@ export function TestblockDetailPage() {
       const payload = {
         testblock_id: tbId,
         posiciones_ids: ids,
-        estado_fenologico: data.estado_fenologico,
+        id_estado_fenol: Number(data.estado_fenologico),
         porcentaje: data.porcentaje ? Number(data.porcentaje) : null,
         fecha: data.fecha || new Date().toISOString().slice(0, 10),
         observaciones: data.observaciones || "",
@@ -677,7 +903,30 @@ export function TestblockDetailPage() {
 
             {selectionMode === "none" ? (
               <>
-                <Button size="sm" variant="outline" className="text-muted-foreground">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-muted-foreground"
+                  onClick={async () => {
+                    try {
+                      toast.loading("Generando PDF de etiquetas QR...", { id: "qr-pdf" });
+                      const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+                      const token = useAuthStore.getState().token;
+                      const res = await fetch(`${base}/testblocks/${tbId}/qr-pdf`, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                      });
+                      if (!res.ok) throw new Error(`Error ${res.status}`);
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, "_blank");
+                      toast.dismiss("qr-pdf");
+                    } catch (err) {
+                      toast.dismiss("qr-pdf");
+                      const msg = err instanceof Error ? err.message : String(err);
+                      toast.error(`Error al generar QR PDF: ${msg}`);
+                    }
+                  }}
+                >
                   <QrCode className="h-4 w-4" /> QR Etiquetas
                 </Button>
                 <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => enterSelectionMode("alta")}>
@@ -737,6 +986,136 @@ export function TestblockDetailPage() {
       </div>
 
       {/* ============================================================ */}
+      {/*  GROUP SELECTION TOOLBAR                                      */}
+      {/* ============================================================ */}
+      {selectionMode === "none" && grilla?.posiciones && grilla.posiciones.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap bg-white rounded-lg border px-3 py-2">
+          <span className="text-xs font-semibold text-muted-foreground mr-1">Seleccionar:</span>
+
+          {/* By Variedad */}
+          <div className="relative">
+            <select
+              className="appearance-none bg-muted/50 border rounded-md pl-2 pr-6 py-1 text-xs font-medium cursor-pointer hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring"
+              value=""
+              onChange={(e) => { if (e.target.value) selectByVariedad(Number(e.target.value)); e.target.value = ""; }}
+            >
+              <option value="">Variedad</option>
+              {gridVariedadOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          </div>
+
+          {/* By Hilera */}
+          <div className="relative">
+            <select
+              className="appearance-none bg-muted/50 border rounded-md pl-2 pr-6 py-1 text-xs font-medium cursor-pointer hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring"
+              value=""
+              onChange={(e) => { if (e.target.value) selectByHilera(Number(e.target.value)); e.target.value = ""; }}
+            >
+              <option value="">Hilera</option>
+              {gridHileraOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          </div>
+
+          {/* By Var+PI */}
+          <div className="relative">
+            <select
+              className="appearance-none bg-muted/50 border rounded-md pl-2 pr-6 py-1 text-xs font-medium cursor-pointer hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  const opt = gridVarPiOptions.find((o) => o.value === e.target.value);
+                  if (opt) selectByVarPi(opt.vid, opt.pid);
+                }
+                e.target.value = "";
+              }}
+            >
+              <option value="">Var+PI</option>
+              {gridVarPiOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          </div>
+
+          {/* Select all alta */}
+          <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={selectAllAlta}>
+            Todo (alta)
+          </Button>
+
+          {/* Clear selection */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs px-2"
+            onClick={clearSelection}
+            disabled={selectedPositions.size === 0}
+          >
+            Limpiar
+          </Button>
+
+          {/* Counter */}
+          {selectedPositions.size > 0 && (
+            <span className="text-xs font-semibold text-foreground ml-auto">
+              {selectedPositions.size} seleccionada{selectedPositions.size !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/*  GROUP ACTIONS BAR (shown when selection > 0, not in mode)    */}
+      {/* ============================================================ */}
+      {selectionMode === "none" && selectedPositions.size > 0 && (
+        <div className="flex items-center gap-2 flex-wrap bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-300 px-3 py-2">
+          <span className="text-xs font-bold text-foreground flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+            {selectedPositions.size} posicion{selectedPositions.size !== 1 ? "es" : ""}
+          </span>
+          <span className="border-l h-5 mx-1" />
+          <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={handleGrupoAlta} disabled={isProcessing}>
+            <Plus className="h-3 w-3" /> Alta
+          </Button>
+          <Button size="sm" className="h-7 text-xs" variant="destructive" onClick={handleGrupoBaja} disabled={isProcessing}>
+            <MinusCircle className="h-3 w-3" /> Baja
+          </Button>
+          <Button size="sm" className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white" onClick={handleGrupoReplante} disabled={isProcessing}>
+            <Repeat2 className="h-3 w-3" /> Replante
+          </Button>
+          <Button size="sm" className="h-7 text-xs bg-purple-600 hover:bg-purple-700 text-white" onClick={handleGrupoFenologia} disabled={isProcessing}>
+            <Leaf className="h-3 w-3" /> Fenologia
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setGrupoLaboresOpen(true)} disabled={isProcessing}>
+            <Hammer className="h-3 w-3" /> Labores
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+            onClick={() => {
+              if (confirm(`Marcar ${selectedPositions.size} posicion(es) como polinizante?`)) {
+                handleGrupoPolinizante();
+              }
+            }}
+            disabled={isProcessing}
+          >
+            <Shield className="h-3 w-3" /> Polinizante
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleGrupoQr} disabled={isProcessing}>
+            <QrCode className="h-3 w-3" /> QR
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs ml-auto" onClick={clearSelection}>
+            <X className="h-3 w-3" /> Limpiar
+          </Button>
+        </div>
+      )}
+
+      {/* ============================================================ */}
       {/*  TWO-COLUMN: Grid area + Detail panel                        */}
       {/* ============================================================ */}
       <div className="flex gap-4 items-start">
@@ -750,6 +1129,7 @@ export function TestblockDetailPage() {
                 <TabsTrigger value="variedades">Variedades</TabsTrigger>
                 <TabsTrigger value="mediciones">Mediciones</TabsTrigger>
                 <TabsTrigger value="inventario-tb">Inventario</TabsTrigger>
+                <TabsTrigger value="mapa"><MapIcon className="h-3.5 w-3.5 mr-1 inline-block" />Mapa</TabsTrigger>
                 <TabsTrigger value="historial">Historial</TabsTrigger>
               </TabsList>
 
@@ -854,13 +1234,14 @@ export function TestblockDetailPage() {
                             (selectionMode === "alta" && !pos)
                           );
                           const isSelected = pos ? selectedPositions.has(pos.id_posicion) : false;
-                          const isDetailSelected = selectionMode === "none" && selectedPos?.id_posicion === pos?.id_posicion;
+                          const isGroupSelected = !isInSelectionMode && isSelected;
+                          const isDetailSelected = selectionMode === "none" && !isGroupSelected && selectedPos?.id_posicion === pos?.id_posicion;
 
-                          // Determine cell color — distinguish "no record" from "vacia"
+                          // Determine cell color — distinguish "no record" (sin crear) from "vacia" (created, no plant)
                           const bgColor = !pos
-                            ? "bg-gray-100 border border-dashed border-gray-300"
+                            ? "bg-gray-50 border border-dashed border-gray-300"
                             : estado === "vacia"
-                            ? "bg-gray-200/60"
+                            ? "bg-white border border-solid border-gray-400"
                             : estado === "baja"
                               ? "bg-red-500"
                               : estado === "replante"
@@ -873,19 +1254,28 @@ export function TestblockDetailPage() {
                               className={`relative rounded-[3px] text-[8px] font-semibold py-[3px] transition-all ${bgColor} ${
                                 estado !== "vacia" ? "text-white" : "text-gray-400"
                               } ${
-                                isSelected
+                                isSelected && isInSelectionMode
                                   ? "ring-2 ring-yellow-400 animate-pulse scale-110 z-10"
-                                  : isDetailSelected
-                                    ? "ring-2 ring-black"
-                                    : isInSelectionMode && selectable
-                                      ? "hover:ring-2 hover:ring-yellow-400 cursor-pointer"
-                                      : isInSelectionMode
-                                        ? "opacity-30 cursor-not-allowed"
-                                        : "hover:ring-2 hover:ring-garces-cherry cursor-pointer"
+                                  : isGroupSelected
+                                    ? "ring-2 ring-blue-400 scale-105 z-10"
+                                    : isDetailSelected
+                                      ? "ring-2 ring-black"
+                                      : isInSelectionMode && selectable
+                                        ? "hover:ring-2 hover:ring-yellow-400 cursor-pointer"
+                                        : isInSelectionMode
+                                          ? "opacity-30 cursor-not-allowed"
+                                          : "hover:ring-2 hover:ring-garces-cherry cursor-pointer"
                               }`}
                               style={{ opacity: estado === "vacia" && !isInSelectionMode ? 0.4 : undefined }}
                               title={tip}
-                              onClick={() => handleGridCellClick(pos)}
+                              onClick={() => {
+                                if (!isInSelectionMode && selectedPositions.size > 0 && pos) {
+                                  // In group selection (toolbar) mode, toggle positions
+                                  togglePosition(pos.id_posicion);
+                                } else {
+                                  handleGridCellClick(pos);
+                                }
+                              }}
                               disabled={isInSelectionMode && !selectable && !pos}
                             >
                               {label}
@@ -1121,6 +1511,18 @@ export function TestblockDetailPage() {
               </div>
             </TabsContent>
 
+            {/* --- MAPA TAB --- */}
+            <TabsContent value="mapa">
+              <MapaTestBlock
+                testblockId={tbId}
+                variedadNames={
+                  Object.fromEntries(
+                    (lk.rawData.variedades || []).map((v: any) => [v.id_variedad, v.nombre])
+                  )
+                }
+              />
+            </TabsContent>
+
             {/* --- HISTORIAL TAB (testblock-level) --- */}
             <TabsContent value="historial">
               <div className="bg-white rounded-xl border p-6">
@@ -1197,11 +1599,15 @@ export function TestblockDetailPage() {
                 </div>
               )}
               <div>
-                <span className="text-muted-foreground">Estado:</span>{" "}
-                <StatusBadge
-                  status={estadoTB === "formacion" ? "Formacion" : "Produccion"}
-                  className={estadoTB === "formacion" ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}
-                />
+                <span className="text-muted-foreground">Estado posicion:</span>{" "}
+                {selectedPos.estado === "alta" || selectedPos.estado === "replante" ? (
+                  <StatusBadge
+                    status={estadoTB === "formacion" ? "Formacion" : "Produccion"}
+                    className={estadoTB === "formacion" ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}
+                  />
+                ) : (
+                  <StatusBadge status={selectedPos.estado === "vacia" ? "Vacia" : selectedPos.estado} />
+                )}
               </div>
               <div>
                 <span className="text-muted-foreground">Lote origen:</span>{" "}
@@ -1362,14 +1768,26 @@ export function TestblockDetailPage() {
                 </button>
               )}
               {selectedPos.id_posicion && (
-                <a
-                  href={`${import.meta.env.VITE_API_BASE_URL || "/api/v1"}/posiciones/${selectedPos.id_posicion}/qr`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={async () => {
+                    try {
+                      const token = useAuthStore.getState().token;
+                      const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+                      const res = await fetch(`${base}/posiciones/${selectedPos.id_posicion}/qr`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      if (!res.ok) throw new Error(`Error ${res.status}`);
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, "_blank");
+                    } catch (e: any) {
+                      toast.error("Error generando QR: " + (e?.message || ""));
+                    }
+                  }}
                   className="flex-1 py-1.5 rounded-md border border-border bg-white text-muted-foreground text-[11px] text-center hover:bg-muted/50 transition-colors"
                 >
                   QR
-                </a>
+                </button>
               )}
             </div>
           </div>
@@ -1541,6 +1959,16 @@ export function TestblockDetailPage() {
           longitud: tb?.longitud,
           notas: tb?.notas,
         }}
+      />
+
+      {/* Grupo Labores dialog */}
+      <CrudForm
+        open={grupoLaboresOpen}
+        onClose={() => setGrupoLaboresOpen(false)}
+        onSubmit={handleGrupoLaboresSubmit}
+        fields={grupoLaboresFields}
+        title={`Planificar Labor Grupal (${selectedPositions.size} posiciones)`}
+        isLoading={isProcessing}
       />
     </div>
   );

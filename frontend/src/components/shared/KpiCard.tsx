@@ -17,7 +17,7 @@ export function KpiCard({ title, value, icon: Icon, trend, className, iconBg, ic
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs text-muted-foreground uppercase tracking-wide">{title}</p>
-          <p className="text-2xl font-bold mt-1">{value}</p>
+          <p className="text-2xl font-bold mt-1 text-foreground">{value}</p>
           {trend && <p className="text-xs text-muted-foreground mt-1">{trend}</p>}
         </div>
         <div className={cn("h-10 w-10 rounded-full flex items-center justify-center", iconBg || "bg-garces-cherry-pale")}>

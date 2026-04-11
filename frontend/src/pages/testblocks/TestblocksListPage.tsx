@@ -16,6 +16,14 @@ function relativeDate(d: string | null | undefined): string {
   const date = new Date(d);
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  // Future dates (negative diff)
+  if (diffDays < 0) {
+    const absDays = Math.abs(diffDays);
+    if (absDays === 1) return "Manana";
+    if (absDays < 7) return `En ${absDays} dias`;
+    if (absDays < 30) return `En ${Math.floor(absDays / 7)} sem`;
+    return formatDate(d);
+  }
   if (diffDays === 0) return "Hoy";
   if (diffDays === 1) return "Ayer";
   if (diffDays < 7) return `Hace ${diffDays} dias`;

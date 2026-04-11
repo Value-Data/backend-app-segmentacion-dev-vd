@@ -64,13 +64,18 @@ ENTITY_REGISTRY = {
     "colores": (Color, ColorCreate, ColorUpdate),
     "susceptibilidades": (Susceptibilidad, SusceptibilidadCreate, SusceptibilidadUpdate),
     "estados-fenologicos": (EstadoFenologico, EstadoFenologicoCreate, EstadoFenologicoUpdate),
+    "estados_fenologicos": (EstadoFenologico, EstadoFenologicoCreate, EstadoFenologicoUpdate),
     "tipos-labor": (TipoLabor, TipoLaborCreate, TipoLaborUpdate),
+    "tipos_labor": (TipoLabor, TipoLaborCreate, TipoLaborUpdate),
     "estados-planta": (EstadoPlanta, EstadoPlantaCreate, EstadoPlantaUpdate),
+    "estados_planta": (EstadoPlanta, EstadoPlantaCreate, EstadoPlantaUpdate),
     "temporadas": (Temporada, TemporadaCreate, TemporadaUpdate),
     "bodegas": (Bodega, BodegaCreate, BodegaUpdate),
     "catalogos": (Catalogo, CatalogoCreate, CatalogoUpdate),
     "centros-costo": (CentroCosto, CentroCostoCreate, CentroCostoUpdate),
+    "centros_costo": (CentroCosto, CentroCostoCreate, CentroCostoUpdate),
     "marcos-plantacion": (MarcoPlantacion, MarcoPlantacionCreate, MarcoPlantacionUpdate),
+    "marcos_plantacion": (MarcoPlantacion, MarcoPlantacionCreate, MarcoPlantacionUpdate),
     "variedades": (Variedad, VariedadCreate, VariedadUpdate),
 }
 
@@ -160,7 +165,7 @@ def update_entity(
     id: int,
     data: dict,
     db: Session = Depends(get_db),
-    user: Usuario = Depends(require_role("admin")),
+    user: Usuario = Depends(get_current_user),
 ):
     model, _, update_schema = _resolve(entidad)
     # Coerce numeric values to string where the schema expects str
@@ -177,7 +182,42 @@ def update_entity(
             else:
                 coerced[k] = v
         validated = update_schema(**coerced)
-    return crud.update(db, model, id, validated, usuario=user.username)
+    # Capture old values for variedades_log before updating
+    old_values = {}
+    if entidad == "variedades":
+        obj_before = db.get(model, id)
+        if obj_before:
+            new_vals = validated.model_dump(exclude_unset=True)
+            for key, new_val in new_vals.items():
+                if hasattr(obj_before, key):
+                    old_val = getattr(obj_before, key)
+                    if old_val != new_val:
+                        old_values[key] = (str(old_val) if old_val is not None else None,
+                                           str(new_val) if new_val is not None else None)
+
+    result = crud.update(db, model, id, validated, usuario=user.username)
+
+    # Log changes to variedades_log for traceability
+    if entidad == "variedades" and old_values:
+        from app.models.variedades import VariedadLog
+        from app.core.utils import utcnow
+        for campo, (val_ant, val_new) in old_values.items():
+            log_entry = VariedadLog(
+                id_variedad=id,
+                accion="UPDATE",
+                campo_modificado=campo,
+                valor_anterior=val_ant,
+                valor_nuevo=val_new,
+                usuario=user.username,
+                fecha=utcnow(),
+            )
+            db.add(log_entry)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    return result
 
 
 # ── DELETE (soft) ───────────────────────────────────────────────────────────
@@ -345,3 +385,39 @@ def add_variedad_bitacora(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.put("/variedades/{id}/bitacora/{bid}")
+def update_variedad_bitacora(
+    id: int,
+    bid: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    entry = db.get(BitacoraVariedad, bid)
+    if not entry or entry.id_variedad != id:
+        raise HTTPException(status_code=404, detail="Entrada de bitacora no encontrada")
+    for field in ("tipo_entrada", "fecha", "titulo", "contenido", "resultado", "ubicacion"):
+        if field in data:
+            setattr(entry, field, data[field])
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+# ── SPECIAL: variedades log (change history) ─────────────────────────────
+@router.get("/variedades/{id}/log")
+def get_variedad_log(
+    id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    from app.models.variedades import VariedadLog
+    return (
+        db.query(VariedadLog)
+        .filter(VariedadLog.id_variedad == id)
+        .order_by(VariedadLog.fecha.desc())
+        .limit(100)
+        .all()
+    )

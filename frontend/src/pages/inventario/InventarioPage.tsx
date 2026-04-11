@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle, Eye, QrCode, Filter, X, CheckSquare, FileDown } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CrudTable } from "@/components/shared/CrudTable";
@@ -22,11 +22,24 @@ import type { FieldDef } from "@/types";
 import type { InventarioVivero, GuiaDespacho } from "@/types/inventario";
 
 const TIPO_PLANTA_LABELS: Record<string, string> = {
+  TERMINADA_RAIZ_DESNUDA: "Terminada raiz desnuda",
+  TERMINADA_MACETA_BOLSA: "Terminada maceta/bolsa",
+  INJERTACION_TERRENO: "Injertacion en terreno",
+  PLANTA_TERMINADA: "Planta terminada",
+  RAMILLAS: "Ramillas",
+  // Legacy values (backwards compat for display)
   "Raíz desnuda": "Raiz desnuda",
   "Bolsa primavera": "Bolsa primavera",
-  planta_terminada_raiz_desnuda: "Raiz desnuda",
-  planta_en_bolsa: "Bolsa",
-  planta_en_maceta: "Maceta",
+  "Planta en bolsa o maceta": "Terminada maceta/bolsa",
+  "Planta terminada raiz desnuda": "Terminada raiz desnuda",
+};
+
+const TIPO_INJERTACION_LABELS: Record<string, string> = {
+  INVIERNO_PUA: "Invierno (pua)",
+  VERANO_YEMA: "Verano (yema)",
+  OJO_VIVO: "Ojo vivo",
+  OJO_DORMIDO: "Ojo dormido",
+  EN_TERRENO: "En terreno",
 };
 
 type KpiFilter = "todos" | "activos" | "stock_bajo" | "agotados";
@@ -95,7 +108,6 @@ export function InventarioPage() {
     { key: "id_cuartel", label: "Cuartel Destino", type: "select", options: cuartelOpts, required: true },
     { key: "cantidad", label: "Cantidad", type: "number", required: true },
     { key: "responsable", label: "Responsable", type: "text", required: true },
-    { key: "motivo", label: "Motivo", type: "text" },
   ];
 
   const toggleSelect = (id: number) => {
@@ -159,7 +171,7 @@ export function InventarioPage() {
       header: "Injertacion",
       cell: ({ getValue }: any) => {
         const v = getValue() as string | null;
-        return v ? <span className="text-xs">{v}</span> : "-";
+        return v ? <span className="text-xs">{TIPO_INJERTACION_LABELS[v] || v}</span> : "-";
       },
     },
     {
@@ -293,7 +305,6 @@ export function InventarioPage() {
           },
         ],
         responsable: data.responsable,
-        motivo: data.motivo,
       };
       return inventarioService.despacho(payload);
     },
@@ -327,7 +338,7 @@ export function InventarioPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-garces-cherry">Inventario de Vivero</h2>
+        <h2 className="text-xl font-bold text-garces-cherry">Inventario Bodega</h2>
         <div className="flex gap-2 items-center">
           <BulkActions
             entity="inventario"

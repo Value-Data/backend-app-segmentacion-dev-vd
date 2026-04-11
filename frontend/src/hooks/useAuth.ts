@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { useAuthStore } from "@/stores/authStore";
 import { authService } from "@/services/auth";
 import type { LoginRequest } from "@/types/auth";

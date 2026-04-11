@@ -19,6 +19,8 @@ export function RegionesPage() {
   return (
     <GenericMantenedorPage
       title="Regiones"
+      singularTitle="Region"
+      titleGender="f"
       entidad="regiones"
       fields={fields}
       columns={columns}

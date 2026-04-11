@@ -27,7 +27,7 @@ import {
   Thermometer,
   Globe,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -441,10 +441,13 @@ export function LaboratorioPage() {
     return p;
   }, [appliedFilters]);
 
-  const { data: mediciones, isLoading } = useQuery({
+  const { data: medicionesResponse, isLoading, isFetching } = useQuery({
     queryKey: ["laboratorio", "mediciones", medicionesParams],
     queryFn: () => laboratorioService.mediciones(medicionesParams),
+    placeholderData: (prev) => prev,
   });
+  const mediciones = medicionesResponse?.data ?? [];
+  const medicionesTotal = medicionesResponse?.total ?? 0;
 
   const { data: kpis } = useQuery({
     queryKey: ["laboratorio", "kpis"],
@@ -507,7 +510,7 @@ export function LaboratorioPage() {
 
   // ── Client-side filtering for color (not in API) ──
   const filteredMediciones = useMemo(() => {
-    let data = mediciones || [];
+    let data = mediciones;
     // Color pulpa is client-side only (not a backend column filter)
     if (appliedFilters.color) {
       data = data.filter((m: any) => m.color_pulpa === appliedFilters.color);
@@ -517,7 +520,7 @@ export function LaboratorioPage() {
 
   // ── Poscosecha data: filter for periodo_almacenaje > 0 + range ──
   const poscosechaData = useMemo(() => {
-    let data = (mediciones || []).filter(
+    let data = mediciones.filter(
       (m: any) => m.periodo_almacenaje != null && m.periodo_almacenaje > 0
     );
     const minDias = diasMin ? parseInt(diasMin, 10) : null;
@@ -789,7 +792,7 @@ export function LaboratorioPage() {
           </div>
 
           {/* Table */}
-          <div className="bg-white rounded-xl border border-border overflow-hidden">
+          <div className={`bg-white rounded-xl border border-border overflow-hidden ${isFetching && !isLoading ? "opacity-60 transition-opacity" : ""}`}>
             <CrudTable
               data={filteredMediciones}
               columns={medicionColumns as any}
@@ -797,6 +800,11 @@ export function LaboratorioPage() {
               searchPlaceholder="Buscar medicion..."
               exportFilename="mediciones_laboratorio"
             />
+            {medicionesTotal > mediciones.length && (
+              <div className="px-4 py-2 text-xs text-muted-foreground border-t bg-muted/30">
+                Mostrando {mediciones.length.toLocaleString()} de {medicionesTotal.toLocaleString()} registros totales. Use los filtros para refinar la busqueda.
+              </div>
+            )}
           </div>
         </TabsContent>
 
@@ -889,7 +897,7 @@ export function LaboratorioPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-border overflow-hidden">
+          <div className={`bg-white rounded-xl border border-border overflow-hidden ${isFetching && !isLoading ? "opacity-60 transition-opacity" : ""}`}>
             <CrudTable
               data={poscosechaData}
               columns={poscosechaColumns as any}

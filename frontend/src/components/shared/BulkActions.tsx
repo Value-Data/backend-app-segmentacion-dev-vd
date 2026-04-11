@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { Download, Upload, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bulkService } from "@/services/bulk";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 interface BulkActionsProps {
   /** Entity name matching the backend (e.g. "variedades", "inventario"). */
@@ -50,7 +50,7 @@ export function BulkActions({ entity, onImportComplete }: BulkActionsProps) {
         toast.error(`${result.errors.length} filas con errores`);
       }
       if (result.created === 0 && result.errors.length === 0) {
-        toast("No se encontraron filas para importar", { icon: "i" });
+        toast.info("No se encontraron filas para importar");
       }
       onImportComplete?.();
     } catch {

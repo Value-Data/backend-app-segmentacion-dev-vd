@@ -32,6 +32,8 @@ export function ComunasPage() {
   return (
     <GenericMantenedorPage
       title="Comunas"
+      singularTitle="Comuna"
+      titleGender="f"
       entidad="comunas"
       fields={fields}
       columns={columns}

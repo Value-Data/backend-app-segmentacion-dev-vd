@@ -19,6 +19,8 @@ export function BodegasPage() {
   return (
     <GenericMantenedorPage
       title="Bodegas"
+      singularTitle="Bodega"
+      titleGender="f"
       entidad="bodegas"
       fields={fields}
       columns={columns}

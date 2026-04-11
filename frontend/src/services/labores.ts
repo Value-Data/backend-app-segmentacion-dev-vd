@@ -48,6 +48,8 @@ export interface EstadoFenologico {
   descripcion?: string | null;
   color_hex?: string | null;
   mes_orientativo?: string | null;
+  mes_inicio?: number | null;
+  mes_fin?: number | null;
   activo?: boolean;
 }
 
@@ -110,7 +112,35 @@ export const laboresService = {
   ejecutarMasivo: (ids: number[], fecha_ejecucion?: string, ejecutor?: string) =>
     post<{ updated: number }>("/labores/ejecutar-masivo", { ids, fecha_ejecucion, ejecutor }),
   registroFenologico: (data: Record<string, unknown>) =>
-    post<{ created: number; tipo_labor_id: number }>("/labores/registro-fenologico", data),
+    post<{ created: number; estado: string; id_estado_fenol: number }>("/labores/registro-fenologico", data),
   historialFenologico: (testblockId: number) =>
     get<RegistroFenologicoHistorial[]>(`/labores/historial-fenologico/${testblockId}`),
+  fenologiaComparativa: (params: Record<string, string | number>) =>
+    get<unknown>("/labores/fenologia-comparativa", params),
+  seedFenologiaDemo: () =>
+    post<{ message: string; created: number }>("/labores/fenologia/seed-demo", {}),
+  exportFenologiaComparativa: async (params: Record<string, string | number>) => {
+    const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+    const { useAuthStore } = await import("@/stores/authStore");
+    const token = useAuthStore.getState().token;
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null && value !== "") searchParams.append(key, String(value));
+    }
+    const qs = searchParams.toString();
+    const url = `${BASE_URL}/labores/fenologia-comparativa/export${qs ? `?${qs}` : ""}`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Error ${response.status}`);
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = "comparativa_fenologica.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+  },
 };

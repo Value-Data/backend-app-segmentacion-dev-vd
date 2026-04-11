@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2, Upload, Camera, History, X, Link2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CrudForm } from "@/components/shared/CrudForm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -11,9 +11,41 @@ import { useCrud } from "@/hooks/useCrud";
 import { useLookups } from "@/hooks/useLookups";
 import { mantenedorService, variedadBitacoraService } from "@/services/mantenedores";
 import type { BitacoraEntry } from "@/services/mantenedores";
+import { uploadFile, get, del, put, post } from "@/services/api";
 import { formatDate } from "@/lib/utils";
 import type { FieldDef } from "@/types";
-import type { Especie, Pmg, Origen } from "@/types/maestras";
+import type { Especie, Pmg } from "@/types/maestras";
+import { useAuthStore } from "@/stores/authStore";
+
+interface VariedadFoto {
+  id: number;
+  id_variedad: number;
+  filename: string;
+  filepath: string;
+  descripcion?: string | null;
+  fecha_creacion?: string;
+}
+
+interface VariedadLogEntry {
+  id_log: number;
+  id_variedad: number;
+  accion: string;
+  campo_modificado?: string | null;
+  valor_anterior?: string | null;
+  valor_nuevo?: string | null;
+  usuario?: string | null;
+  fecha?: string | null;
+  notas?: string | null;
+}
+
+interface VariedadPolinizanteEntry {
+  id: number;
+  id_variedad: number;
+  polinizante_variedad_id?: number | null;
+  polinizante_nombre?: string | null;
+  activo?: boolean;
+  fecha_creacion?: string;
+}
 
 const bitacoraFields: FieldDef[] = [
   { key: "tipo_entrada", label: "Tipo", type: "select", required: true, options: [
@@ -34,10 +66,17 @@ export function VariedadesPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, create, update, remove, isCreating, isUpdating } = useCrud("variedades");
   const lk = useLookups();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.rol === "admin";
   const [formOpen, setFormOpen] = useState(false);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [selectedVar, setSelectedVar] = useState<Record<string, unknown> | null>(null);
   const [bitacoraOpen, setBitacoraOpen] = useState(false);
+  const [editingBitacora, setEditingBitacora] = useState<BitacoraEntry | null>(null);
+  const [detailTab, setDetailTab] = useState<"info" | "fotos" | "polinizantes" | "bitacora" | "log">("info");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [polSearch, setPolSearch] = useState("");
+  const [polDropdownOpen, setPolDropdownOpen] = useState(false);
 
   const { data: especies } = useQuery({
     queryKey: ["especies"],
@@ -47,11 +86,6 @@ export function VariedadesPage() {
     queryKey: ["pmg"],
     queryFn: () => mantenedorService("pmg").list(),
   });
-  const { data: origenes } = useQuery({
-    queryKey: ["origenes"],
-    queryFn: () => mantenedorService("origenes").list(),
-  });
-
   const varId = selectedVar?.id_variedad as number | undefined;
   const { data: bitacoras } = useQuery({
     queryKey: ["bitacora", varId],
@@ -67,18 +101,98 @@ export function VariedadesPage() {
     },
   });
 
+  const updateBitacoraMut = useMutation({
+    mutationFn: (d: Record<string, unknown>) =>
+      put<BitacoraEntry>(`/mantenedores/variedades/${varId}/bitacora/${d.id_entrada}`, d),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bitacora", varId] });
+      toast.success("Bitacora actualizada");
+      setEditingBitacora(null);
+    },
+  });
+
+  // Photos query
+  const { data: fotos } = useQuery({
+    queryKey: ["variedadFotos", varId],
+    queryFn: () => get<VariedadFoto[]>(`/variedades/${varId}/fotos`),
+    enabled: !!varId,
+  });
+
+  const uploadFotoMut = useMutation({
+    mutationFn: (file: File) => uploadFile<VariedadFoto>(`/variedades/${varId}/fotos`, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["variedadFotos", varId] });
+      toast.success("Foto subida");
+    },
+  });
+
+  const deleteFotoMut = useMutation({
+    mutationFn: (fotoId: number) => del<unknown>(`/variedades/${varId}/fotos/${fotoId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["variedadFotos", varId] });
+      toast.success("Foto eliminada");
+    },
+  });
+
+  // Change log query
+  const { data: changeLog } = useQuery({
+    queryKey: ["variedadLog", varId],
+    queryFn: () => get<VariedadLogEntry[]>(`/mantenedores/variedades/${varId}/log`),
+    enabled: !!varId,
+  });
+
+  // Polinizantes
+  const { data: polinizantes } = useQuery({
+    queryKey: ["variedadPolinizantes", varId],
+    queryFn: () => get<VariedadPolinizanteEntry[]>(`/variedades/${varId}/polinizantes`),
+    enabled: !!varId,
+  });
+
+  const addPolinizanteMut = useMutation({
+    mutationFn: (polVariedadId: number) =>
+      post<VariedadPolinizanteEntry>(`/variedades/${varId}/polinizantes`, { polinizante_variedad_id: polVariedadId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["variedadPolinizantes", varId] });
+      toast.success("Polinizante agregado");
+      setPolSearch("");
+      setPolDropdownOpen(false);
+    },
+  });
+
+  const removePolinizanteMut = useMutation({
+    mutationFn: (pid: number) => del<unknown>(`/variedades/${varId}/polinizantes/${pid}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["variedadPolinizantes", varId] });
+      toast.success("Polinizante eliminado");
+    },
+  });
+
   const especieOpts = ((especies || []) as Especie[]).map((e) => ({ value: e.id_especie, label: e.nombre }));
   const pmgOpts = ((pmgs || []) as Pmg[]).map((p) => ({ value: p.id_pmg, label: p.nombre }));
-  const origenOpts = ((origenes || []) as Origen[]).map((o) => ({ value: o.id_origen, label: o.nombre }));
+  const origenOpts = [
+    { value: "Chile", label: "Chile" },
+    { value: "USA", label: "USA" },
+    { value: "España", label: "España" },
+    { value: "Italia", label: "Italia" },
+    { value: "Brasil", label: "Brasil" },
+    { value: "Francia", label: "Francia" },
+    { value: "Sudáfrica", label: "Sudáfrica" },
+    { value: "Australia", label: "Australia" },
+    { value: "Nueva Zelanda", label: "Nueva Zelanda" },
+    { value: "Rusia", label: "Rusia" },
+    { value: "China", label: "China" },
+    { value: "Japón", label: "Japón" },
+    { value: "Canadá", label: "Canadá" },
+    { value: "Argentina", label: "Argentina" },
+    { value: "Uruguay", label: "Uruguay" },
+  ];
 
   const fields: FieldDef[] = [
     { key: "codigo", label: "Codigo", type: "text", required: true },
     { key: "nombre", label: "Nombre", type: "text", required: true },
     { key: "id_especie", label: "Especie", type: "select", options: especieOpts },
     { key: "id_pmg", label: "PMG", type: "select", options: pmgOpts },
-    { key: "id_origen", label: "Origen", type: "select", options: origenOpts },
-    { key: "nombre_corto", label: "Nombre Corto", type: "text" },
-    { key: "nombre_comercial", label: "Nombre Comercial", type: "text" },
+    { key: "origen", label: "Pais de Origen", type: "select", options: origenOpts },
     { key: "tipo", label: "Tipo", type: "select", options: [
       { value: "plantada", label: "Plantada" },
       { value: "prospecto", label: "Prospecto" },
@@ -90,16 +204,26 @@ export function VariedadesPage() {
       { value: "aprobada", label: "Aprobada" },
       { value: "descartada", label: "Descartada" },
     ]},
-    { key: "epoca_cosecha", label: "Epoca Cosecha", type: "text" },
-    { key: "vigor", label: "Vigor", type: "select", options: [
-      { value: "bajo", label: "Bajo" },
-      { value: "medio", label: "Medio" },
-      { value: "alto", label: "Alto" },
+    { key: "color", label: "Color", type: "select", options: [
+      { value: "Roja", label: "Roja" },
+      { value: "Bicolor", label: "Bicolor" },
     ]},
-    { key: "req_frio_horas", label: "Req. Frio (horas)", type: "number" },
+    { key: "epoca_cosecha", label: "Epoca Cosecha", type: "select", options: [
+      { value: "MUY_TEMPRANA", label: "Muy temprana" },
+      { value: "TEMPRANA", label: "Temprana" },
+      { value: "MEDIA_ESTACION", label: "Media estación" },
+      { value: "TARDIA", label: "Tardía" },
+      { value: "MUY_TARDIA", label: "Muy tardía" },
+    ]},
+    { key: "requerimiento_frio", label: "Requerimiento de Frio", type: "select", options: [
+      { value: "MUY_BAJO", label: "Muy bajo (<150 horas frío)" },
+      { value: "BAJO", label: "Bajo (150-400 horas frío)" },
+      { value: "MEDIO", label: "Medio (>400 horas frío)" },
+      { value: "ALTO", label: "Alto (>600 horas frío)" },
+    ]},
     { key: "calibre_esperado", label: "Calibre Esperado", type: "text" },
-    { key: "firmeza_esperada", label: "Firmeza Esperada", type: "text" },
     { key: "auto_fertil", label: "Auto Fertil", type: "boolean" },
+    { key: "alelos", label: "Alelos", type: "textarea" },
     { key: "observaciones", label: "Observaciones", type: "textarea" },
   ];
 
@@ -175,7 +299,7 @@ export function VariedadesPage() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => setSelectedVar(null)}>
+          <Button variant="ghost" size="icon" onClick={() => { setSelectedVar(null); setDetailTab("info"); }}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h2 className="text-xl font-bold text-garces-cherry">{selectedVar.nombre as string}</h2>
@@ -195,51 +319,261 @@ export function VariedadesPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Image + basic info */}
-          <div className="bg-white rounded-lg border p-4 space-y-3">
-            {img ? (
-              <img src={`data:image/jpeg;base64,${img}`} alt={selectedVar.nombre as string} className="w-full rounded-lg object-cover max-h-64" />
+        {/* Tabs */}
+        <div className="flex gap-1 border-b">
+          {([
+            { key: "info" as const, label: "Info", icon: Leaf },
+            { key: "polinizantes" as const, label: `Polinizantes (${polinizantes?.length ?? 0})`, icon: Link2 },
+            { key: "fotos" as const, label: `Fotos (${fotos?.length ?? 0})`, icon: Camera },
+            { key: "bitacora" as const, label: `Bitacora (${bitacoras?.length ?? 0})`, icon: BookOpen },
+            { key: "log" as const, label: `Historial (${changeLog?.length ?? 0})`, icon: History },
+          ]).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setDetailTab(tab.key)}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                detailTab === tab.key
+                  ? "border-garces-cherry text-garces-cherry"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <tab.icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab: Info */}
+        {detailTab === "info" && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="bg-white rounded-lg border p-4 space-y-3">
+              {img ? (
+                <img src={`data:image/jpeg;base64,${img}`} alt={selectedVar.nombre as string} className="w-full rounded-lg object-cover max-h-64" />
+              ) : (
+                <div className="w-full h-40 bg-muted rounded-lg flex items-center justify-center">
+                  <ImageIcon className="h-10 w-10 text-muted-foreground" />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div><span className="text-muted-foreground">Codigo:</span> {selectedVar.codigo as string}</div>
+                <div><span className="text-muted-foreground">Tipo:</span> {selectedVar.tipo as string || "-"}</div>
+                <div><span className="text-muted-foreground">Color:</span> {selectedVar.color as string || "-"}</div>
+                <div><span className="text-muted-foreground">Epoca:</span> {selectedVar.epoca_cosecha as string || "-"}</div>
+                <div><span className="text-muted-foreground">Calibre:</span> {selectedVar.calibre_esperado != null ? `${selectedVar.calibre_esperado}` : "-"}</div>
+                <div><span className="text-muted-foreground">Req. Frio:</span> {selectedVar.requerimiento_frio as string || "-"}</div>
+                <div><span className="text-muted-foreground">Auto-fertil:</span> {selectedVar.auto_fertil ? "Si" : "No"}</div>
+                <div><span className="text-muted-foreground">Origen:</span> {selectedVar.origen as string || "-"}</div>
+              </div>
+              {selectedVar.alelos ? (
+                <div className="text-sm"><span className="text-muted-foreground">Alelos:</span> {String(selectedVar.alelos)}</div>
+              ) : null}
+              {selectedVar.observaciones ? (
+                <div className="text-sm"><span className="text-muted-foreground">Obs:</span> {String(selectedVar.observaciones)}</div>
+              ) : null}
+            </div>
+
+            <div className="lg:col-span-2 bg-white rounded-lg border p-4">
+              <h3 className="font-semibold text-sm mb-3">Resumen</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-muted-foreground">Especie:</span> {lk.especie(selectedVar.id_especie)}</div>
+                <div><span className="text-muted-foreground">PMG:</span> {lk.pmg(selectedVar.id_pmg)}</div>
+                <div><span className="text-muted-foreground">Estado:</span> {selectedVar.estado as string || "-"}</div>
+                <div><span className="text-muted-foreground">Polinizantes:</span> {polinizantes?.length ?? 0}</div>
+                <div><span className="text-muted-foreground">Fotos:</span> {fotos?.length ?? 0}</div>
+                <div><span className="text-muted-foreground">Entradas bitacora:</span> {bitacoras?.length ?? 0}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Polinizantes */}
+        {detailTab === "polinizantes" && (
+          <div className="bg-white rounded-lg border p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Link2 className="h-4 w-4" /> Polinizantes ({polinizantes?.length ?? 0})
+              </h3>
+            </div>
+
+            {/* Searchable variedad selector */}
+            <div className="relative mb-4 max-w-sm">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  className="w-full rounded-md border border-input bg-white pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder="Buscar variedad para agregar como polinizante..."
+                  value={polSearch}
+                  onChange={(e) => { setPolSearch(e.target.value); setPolDropdownOpen(true); }}
+                  onFocus={() => { if (polSearch) setPolDropdownOpen(true); }}
+                  onBlur={() => { setTimeout(() => setPolDropdownOpen(false), 200); }}
+                />
+              </div>
+              {polDropdownOpen && polSearch.length >= 1 && (
+                <div className="absolute z-20 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-auto">
+                  {((data || []) as Record<string, unknown>[])
+                    .filter((v) => {
+                      const q = polSearch.toLowerCase();
+                      const nombre = (v.nombre as string || "").toLowerCase();
+                      const codigo = (v.codigo as string || "").toLowerCase();
+                      const isCurrentVar = (v.id_variedad as number) === varId;
+                      const alreadyAdded = polinizantes?.some((p) => p.polinizante_variedad_id === (v.id_variedad as number));
+                      return !isCurrentVar && !alreadyAdded && (nombre.includes(q) || codigo.includes(q));
+                    })
+                    .slice(0, 15)
+                    .map((v) => (
+                      <button
+                        key={v.id_variedad as number}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors"
+                        onClick={() => addPolinizanteMut.mutate(v.id_variedad as number)}
+                      >
+                        <span className="font-medium">{v.nombre as string}</span>
+                        <span className="text-muted-foreground ml-2">({v.codigo as string})</span>
+                      </button>
+                    ))}
+                  {((data || []) as Record<string, unknown>[]).filter((v) => {
+                    const q = polSearch.toLowerCase();
+                    const nombre = (v.nombre as string || "").toLowerCase();
+                    const codigo = (v.codigo as string || "").toLowerCase();
+                    const isCurrentVar = (v.id_variedad as number) === varId;
+                    const alreadyAdded = polinizantes?.some((p) => p.polinizante_variedad_id === (v.id_variedad as number));
+                    return !isCurrentVar && !alreadyAdded && (nombre.includes(q) || codigo.includes(q));
+                  }).length === 0 && (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">Sin resultados</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {!polinizantes || polinizantes.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Sin polinizantes registrados. Busca una variedad arriba para agregarla.</p>
             ) : (
-              <div className="w-full h-40 bg-muted rounded-lg flex items-center justify-center">
-                <ImageIcon className="h-10 w-10 text-muted-foreground" />
+              <div className="space-y-2">
+                {polinizantes.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between border rounded-lg p-3">
+                    <div className="text-sm">
+                      <span className="font-medium">{p.polinizante_nombre || `Variedad #${p.polinizante_variedad_id}`}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      title="Eliminar polinizante"
+                      onClick={() => {
+                        if (confirm("Eliminar este polinizante?")) removePolinizanteMut.mutate(p.id);
+                      }}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div><span className="text-muted-foreground">Codigo:</span> {selectedVar.codigo as string}</div>
-              <div><span className="text-muted-foreground">Tipo:</span> {selectedVar.tipo as string || "-"}</div>
-              <div><span className="text-muted-foreground">Epoca:</span> {selectedVar.epoca_cosecha as string || "-"}</div>
-              <div><span className="text-muted-foreground">Vigor:</span> {selectedVar.vigor as string || "-"}</div>
-              <div><span className="text-muted-foreground">Calibre:</span> {selectedVar.calibre_esperado != null ? `${selectedVar.calibre_esperado} mm` : "-"}</div>
-              <div><span className="text-muted-foreground">Firmeza:</span> {selectedVar.firmeza_esperada != null ? String(selectedVar.firmeza_esperada) : "-"}</div>
-              <div><span className="text-muted-foreground">Frio:</span> {selectedVar.req_frio_horas != null ? `${selectedVar.req_frio_horas} hrs` : "-"}</div>
-              <div><span className="text-muted-foreground">Auto-fertil:</span> {selectedVar.auto_fertil ? "Si" : "No"}</div>
-            </div>
-            {selectedVar.observaciones ? (
-              <div className="text-sm"><span className="text-muted-foreground">Obs:</span> {String(selectedVar.observaciones)}</div>
-            ) : null}
           </div>
+        )}
 
-          {/* Bitacora */}
-          <div className="lg:col-span-2 bg-white rounded-lg border p-4">
+        {/* Tab: Fotos */}
+        {detailTab === "fotos" && (
+          <div className="bg-white rounded-lg border p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Camera className="h-4 w-4" /> Fotos
+              </h3>
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      uploadFotoMut.mutate(file);
+                      e.target.value = "";
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadFotoMut.isPending}
+                >
+                  <Upload className="h-4 w-4 mr-1" />
+                  {uploadFotoMut.isPending ? "Subiendo..." : "Subir Foto"}
+                </Button>
+              </div>
+            </div>
+
+            {!fotos || fotos.length === 0 ? (
+              <div className="text-center py-8">
+                <Camera className="h-10 w-10 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Sin fotos. Sube la primera foto de esta variedad.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {fotos.map((f) => (
+                  <div key={f.id} className="relative group border rounded-lg overflow-hidden">
+                    <div className="aspect-square bg-muted flex items-center justify-center">
+                      <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
+                    </div>
+                    <div className="p-2">
+                      <p className="text-xs font-medium truncate">{f.filename}</p>
+                      {f.descripcion && <p className="text-xs text-muted-foreground truncate">{f.descripcion}</p>}
+                      <p className="text-[10px] text-muted-foreground">{formatDate(f.fecha_creacion)}</p>
+                    </div>
+                    <button
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Eliminar foto"
+                      onClick={() => {
+                        if (confirm("Eliminar esta foto?")) deleteFotoMut.mutate(f.id);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Bitacora */}
+        {detailTab === "bitacora" && (
+          <div className="bg-white rounded-lg border p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold flex items-center gap-2">
                 <BookOpen className="h-4 w-4" /> Bitacora ({bitacoras?.length ?? 0})
               </h3>
               <Button size="sm" onClick={() => setBitacoraOpen(true)}>
-                <Plus className="h-4 w-4" /> Nueva Entrada
+                <Plus className="h-4 w-4 mr-1" /> Nueva Entrada
               </Button>
             </div>
 
             {!bitacoras || bitacoras.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">Sin entradas de bitacora</p>
             ) : (
-              <div className="space-y-3 max-h-[500px] overflow-auto">
+              <div className="space-y-3 max-h-[600px] overflow-auto">
                 {bitacoras.map((b: BitacoraEntry) => (
                   <div key={b.id_entrada} className="border rounded-lg p-3">
                     <div className="flex items-center justify-between mb-1">
                       <h4 className="font-medium text-sm">{b.titulo}</h4>
-                      <span className="text-xs text-muted-foreground">{formatDate(b.fecha)}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{formatDate(b.fecha)}</span>
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            title="Editar entrada"
+                            onClick={() => {
+                              setEditingBitacora(b);
+                              setBitacoraOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-2 mb-2">
                       <span className="text-xs bg-muted px-2 py-0.5 rounded">{b.tipo_entrada}</span>
@@ -255,15 +589,83 @@ export function VariedadesPage() {
               </div>
             )}
           </div>
-        </div>
+        )}
+
+        {/* Tab: Change Log */}
+        {detailTab === "log" && (
+          <div className="bg-white rounded-lg border p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold flex items-center gap-2">
+                <History className="h-4 w-4" /> Historial de Cambios
+              </h3>
+            </div>
+
+            {!changeLog || changeLog.length === 0 ? (
+              <div className="text-center py-8">
+                <History className="h-10 w-10 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Sin cambios registrados para esta variedad.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[600px] overflow-auto">
+                {changeLog.map((entry) => (
+                  <div key={entry.id_log} className="border rounded-lg p-3 text-sm">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          entry.accion === "CREATE" ? "bg-green-100 text-green-700" :
+                          entry.accion === "UPDATE" ? "bg-blue-100 text-blue-700" :
+                          entry.accion === "DELETE" ? "bg-red-100 text-red-700" :
+                          "bg-muted text-muted-foreground"
+                        }`}>
+                          {entry.accion}
+                        </span>
+                        {entry.campo_modificado && (
+                          <span className="text-muted-foreground font-mono text-xs">{entry.campo_modificado}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">{formatDate(entry.fecha)}</span>
+                    </div>
+                    {(entry.valor_anterior || entry.valor_nuevo) && (
+                      <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
+                        {entry.valor_anterior && (
+                          <div>
+                            <span className="text-muted-foreground">Anterior: </span>
+                            <span className="line-through text-red-600">{entry.valor_anterior}</span>
+                          </div>
+                        )}
+                        {entry.valor_nuevo && (
+                          <div>
+                            <span className="text-muted-foreground">Nuevo: </span>
+                            <span className="text-green-600">{entry.valor_nuevo}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                      {entry.usuario && <span>por {entry.usuario}</span>}
+                      {entry.notas && <span>{entry.notas}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <CrudForm
           open={bitacoraOpen}
-          onClose={() => setBitacoraOpen(false)}
-          onSubmit={async (d) => { await addBitacoraMut.mutateAsync(d); }}
+          onClose={() => { setBitacoraOpen(false); setEditingBitacora(null); }}
+          onSubmit={async (d) => {
+            if (editingBitacora) {
+              await updateBitacoraMut.mutateAsync({ ...d, id_entrada: editingBitacora.id_entrada });
+            } else {
+              await addBitacoraMut.mutateAsync(d);
+            }
+          }}
           fields={bitacoraFields}
-          title="Nueva Entrada de Bitacora"
-          isLoading={addBitacoraMut.isPending}
+          initialData={editingBitacora as Record<string, unknown> | null}
+          title={editingBitacora ? "Editar Entrada de Bitacora" : "Nueva Entrada de Bitacora"}
+          isLoading={addBitacoraMut.isPending || updateBitacoraMut.isPending}
         />
 
         {/* Edit form — must be inside the detail view return block */}
@@ -434,11 +836,8 @@ export function VariedadesPage() {
                     {v.calibre_esperado != null && (
                       <span className="bg-muted px-1.5 py-0.5 rounded">{String(v.calibre_esperado)}mm</span>
                     )}
-                    {v.firmeza_esperada != null && (
-                      <span className="bg-muted px-1.5 py-0.5 rounded">F:{String(v.firmeza_esperada)}</span>
-                    )}
-                    {v.vigor ? (
-                      <span className="bg-muted px-1.5 py-0.5 rounded">{String(v.vigor)}</span>
+                    {v.color ? (
+                      <span className="bg-muted px-1.5 py-0.5 rounded">{String(v.color)}</span>
                     ) : null}
                   </div>
 

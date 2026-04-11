@@ -4,26 +4,46 @@
 
 @layer base {
   :root {
+    /* Base — calido */
     --background: 0 20% 99%;
     --foreground: 0 15% 10%;
     --card: 0 0% 100%;
     --card-foreground: 0 15% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 15% 10%;
+
+    /* Primario — rojo cereza Garces */
     --primary: 0 67% 32%;
     --primary-foreground: 0 0% 98%;
+
+    /* Secundario — beige calido */
     --secondary: 0 15% 94%;
     --secondary-foreground: 0 30% 20%;
-    --muted: 0 8% 95%;
-    --muted-foreground: 0 8% 45%;
+
+    /* Acento — rojo claro para highlights */
     --accent: 0 15% 92%;
     --accent-foreground: 0 30% 20%;
+
+    /* Destructivo */
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
+
+    /* Muted */
+    --muted: 0 8% 95%;
+    --muted-foreground: 0 8% 45%;
+
+    /* Borders & inputs */
     --border: 0 8% 88%;
     --input: 0 8% 88%;
     --ring: 0 67% 32%;
-    --radius: 0.5rem;
+
+    /* Radius suave */
+    --radius: 0.75rem;
+
+    /* Sombras calidas */
+    --shadow-sm: 0 1px 2px rgba(92, 14, 14, 0.05);
+    --shadow-md: 0 4px 12px rgba(92, 14, 14, 0.08);
+    --shadow-lg: 0 12px 40px rgba(92, 14, 14, 0.12);
 
     /* Estados */
     --color-success: #22C55E;
@@ -37,6 +57,7 @@
     --color-carozo: #F97316;
     --color-nectarin: #FBBF24;
     --color-ciruela: #8B5CF6;
+    --color-durazno: #EC4899;
 
     /* Tipos de labor */
     --color-poda: #22C55E;
@@ -44,6 +65,32 @@
     --color-fitosanidad: #F97316;
     --color-riego: #06B6D4;
     --color-manejo: #8B5CF6;
+
+    /* Sidebar */
+    --sidebar-width: 260px;
+    --sidebar-collapsed: 68px;
+  }
+
+  .dark {
+    --background: 0 15% 8%;
+    --foreground: 0 5% 92%;
+    --card: 0 12% 11%;
+    --card-foreground: 0 5% 92%;
+    --popover: 0 12% 11%;
+    --popover-foreground: 0 5% 92%;
+    --primary: 0 60% 45%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 10% 15%;
+    --secondary-foreground: 0 5% 85%;
+    --accent: 0 15% 18%;
+    --accent-foreground: 0 5% 90%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --muted: 0 10% 15%;
+    --muted-foreground: 0 5% 55%;
+    --border: 0 10% 18%;
+    --input: 0 10% 18%;
+    --ring: 0 60% 45%;
   }
 }
 
@@ -51,7 +98,60 @@
   * {
     @apply border-border;
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
   }
+
+  h1, h2, .page-title {
+    font-family: 'DM Serif Display', Georgia, serif;
+  }
+}
+
+@layer utilities {
+  .shadow-warm-sm {
+    box-shadow: var(--shadow-sm);
+  }
+  .shadow-warm-md {
+    box-shadow: var(--shadow-md);
+  }
+  .shadow-warm-lg {
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Dark mode: force bg-white elements to use the card color */
+.dark .bg-white {
+  background-color: hsl(var(--card)) !important;
+}
+
+/* Better focus-visible outlines for accessibility */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Sonner toast overrides */
+[data-sonner-toaster] {
+  --normal-bg: hsl(var(--card));
+  --normal-text: hsl(var(--card-foreground));
+  --normal-border: hsl(var(--border));
+  font-family: 'DM Sans', system-ui, sans-serif;
 }

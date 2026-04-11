@@ -58,6 +58,13 @@ export interface MedicionLaboratorio {
   id_portainjerto?: number | null;
 }
 
+export interface PaginatedMediciones {
+  data: MedicionLaboratorio[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
 export interface MedicionCreateResponse {
   medicion: MedicionLaboratorio;
   clasificacion: ClasificacionResult | null;

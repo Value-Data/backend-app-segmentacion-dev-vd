@@ -401,15 +401,17 @@ def replante_planta(db: Session, tb_id: int, data: ReplantePlantaRequest, usuari
     if pos.estado == "vacia":
         raise HTTPException(status_code=400, detail="Posicion vacia — use Alta en vez de Replante")
 
-    # If active plant exists (estado=alta), do baja first (no stock return)
-    if pos.estado == "alta":
-        planta_vieja = db.query(Planta).filter(Planta.id_posicion == pos.id_posicion, Planta.activa == True).first()
-        if planta_vieja:
-            planta_vieja.activa = False
-            planta_vieja.fecha_baja = utcnow()
-            planta_vieja.motivo_baja = data.motivo or "Replante"
-            planta_vieja.usuario_modificacion = usuario
-    # estado=baja or estado=replante: old plant already inactive, proceed directly
+    # Deactivate old plant(s) and free unique codigo constraint
+    old_plantas = db.query(Planta).filter(Planta.id_posicion == pos.id_posicion).all()
+    for old_p in old_plantas:
+        if old_p.activa:
+            old_p.activa = False
+            old_p.fecha_baja = utcnow()
+            old_p.motivo_baja = data.motivo or "Replante"
+            old_p.usuario_modificacion = usuario
+        if old_p.codigo == pos.codigo_unico:
+            old_p.codigo = f"{pos.codigo_unico}_prev_{old_p.id_planta}"
+    db.flush()
 
     lote = db.query(InventarioVivero).filter(InventarioVivero.id_inventario == data.id_lote).first()
     if not lote:

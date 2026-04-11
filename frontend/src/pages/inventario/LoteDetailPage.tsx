@@ -2,7 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, ArrowDownRight, ArrowUpRight, ExternalLink, FileDown, QrCode } from "lucide-react";
 import { useState } from "react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CrudForm } from "@/components/shared/CrudForm";
@@ -28,8 +28,7 @@ const movFields: FieldDef[] = [
     { value: "DESPACHO", label: "Despacho" },
   ]},
   { key: "cantidad", label: "Cantidad", type: "number", required: true },
-  { key: "motivo", label: "Motivo", type: "text" },
-  { key: "referencia_destino", label: "Referencia Destino", type: "text" },
+  { key: "referencia_destino", label: "Campo Destino", type: "text" },
 ];
 
 /** Color badge for movimiento tipo */
@@ -374,7 +373,7 @@ export function LoteDetailPage() {
                     <th className="h-10 px-3 text-center font-medium text-muted-foreground">Saldo Anterior</th>
                     <th className="h-10 px-3 text-center font-medium text-muted-foreground"></th>
                     <th className="h-10 px-3 text-center font-medium text-muted-foreground">Saldo Nuevo</th>
-                    <th className="h-10 px-3 text-left font-medium text-muted-foreground">Motivo</th>
+                    <th className="h-10 px-3 text-left font-medium text-muted-foreground">Destino</th>
                     <th className="h-10 px-3 text-left font-medium text-muted-foreground">Usuario</th>
                   </tr>
                 </thead>
@@ -409,7 +408,7 @@ export function LoteDetailPage() {
                             {m.saldo_nuevo != null ? formatNumber(m.saldo_nuevo) : "-"}
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">
-                            {m.motivo || "-"}
+                            {m.referencia_destino || "-"}
                           </td>
                           <td className="px-3 py-2 text-muted-foreground text-xs">
                             {m.usuario || "-"}

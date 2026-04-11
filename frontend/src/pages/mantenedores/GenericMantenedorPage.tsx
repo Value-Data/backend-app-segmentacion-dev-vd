@@ -22,6 +22,10 @@ type ViewMode = "cards" | "table";
 
 interface GenericMantenedorPageProps {
   title: string;
+  /** Singular form used for "Nuevo/Nueva" modal title. Falls back to title without trailing "s". */
+  singularTitle?: string;
+  /** Grammatical gender for the title: "m" → Nuevo, "f" → Nueva. Default "m". */
+  titleGender?: "m" | "f";
   entidad: string;
   fields: FieldDef[];
   columns: ColumnDef<Record<string, unknown>, unknown>[];
@@ -31,12 +35,17 @@ interface GenericMantenedorPageProps {
 
 export function GenericMantenedorPage({
   title,
+  singularTitle,
+  titleGender = "m",
   entidad,
   fields,
   columns,
   idField,
   params,
 }: GenericMantenedorPageProps) {
+  // Derive singular form: explicit prop > strip trailing "s" from title
+  const singular = singularTitle ?? (title.endsWith("s") ? title.slice(0, -1) : title);
+  const formTitlePrefix = titleGender === "f" ? "Nueva" : "Nuevo";
   const navigate = useNavigate();
   const { data, isLoading, create, update, remove, isCreating, isUpdating } = useCrud(entidad, params);
   const [formOpen, setFormOpen] = useState(false);
@@ -94,7 +103,7 @@ export function GenericMantenedorPage({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/catalogos")}>
+          <Button variant="ghost" size="icon" aria-label="Volver a catalogos" onClick={() => navigate("/catalogos")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
@@ -137,7 +146,6 @@ export function GenericMantenedorPage({
           isLoading={isLoading}
           onEdit={handleEdit}
           onDelete={(row) => setDeleteTarget(row)}
-          onCreate={handleCreate}
         />
       ) : (
         <>
@@ -278,7 +286,7 @@ export function GenericMantenedorPage({
         onSubmit={handleSubmit}
         fields={fields}
         initialData={editRow}
-        title={editRow ? `Editar ${title}` : `Nuevo ${title}`}
+        title={editRow ? `Editar ${singular}` : `${formTitlePrefix} ${singular}`}
         isLoading={isCreating || isUpdating}
       />
     </div>

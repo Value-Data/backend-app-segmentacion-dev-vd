@@ -26,6 +26,8 @@ export function SusceptibilidadesPage() {
   return (
     <GenericMantenedorPage
       title="Susceptibilidades"
+      singularTitle="Susceptibilidad"
+      titleGender="f"
       entidad="susceptibilidades"
       fields={fields}
       columns={columns}

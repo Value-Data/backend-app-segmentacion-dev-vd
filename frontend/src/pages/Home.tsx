@@ -13,7 +13,7 @@ import { inventarioService } from "@/services/inventario";
 import { alertaService } from "@/services/sistema";
 import { laboresService } from "@/services/labores";
 import { formatNumber } from "@/lib/utils";
-import { PieChart, Pie, Cell, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 
 const PIE_COLORS = ["#4ade80", "#f87171", "#60a5fa", "#d1d5db"];
 
@@ -39,8 +39,8 @@ function PipelineStep({ icon: Icon, title, value, subtitle, color, bgColor, to, 
         <div className={`h-10 w-10 rounded-lg ${bgColor} flex items-center justify-center mb-3`}>
           <Icon className={`h-5 w-5 ${color}`} />
         </div>
-        <p className="text-2xl font-bold">{value}</p>
-        <p className="text-sm font-medium mt-0.5">{title}</p>
+        <p className="text-2xl font-bold text-foreground">{value}</p>
+        <p className="text-sm font-medium mt-0.5 text-foreground">{title}</p>
         <p className="text-xs text-muted-foreground">{subtitle}</p>
         <div className={`mt-2 flex items-center gap-1 text-xs ${color} opacity-0 group-hover:opacity-100 transition-opacity`}>
           Ver detalle <ChevronRight className="h-3 w-3" />
@@ -210,22 +210,33 @@ export function HomePage() {
               data={pieData}
               cx="50%"
               cy="50%"
-              innerRadius={50}
-              outerRadius={85}
+              innerRadius={45}
+              outerRadius={75}
               dataKey="value"
-              label={({ name, value }) => `${name}: ${formatNumber(value)}`}
+              label={false}
+              labelLine={false}
             >
               {pieData.map((_, i) => (
                 <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip formatter={(value: number) => formatNumber(value)} />
+            <Legend
+              verticalAlign="bottom"
+              height={36}
+              formatter={(value: string, entry: any) => {
+                const payload = entry?.payload;
+                const count = payload?.value ?? 0;
+                return `${value}: ${formatNumber(count)}`;
+              }}
+              wrapperStyle={{ fontSize: "12px" }}
+            />
           </PieChart>
         </ChartContainer>
 
         {/* Lab KPIs */}
         <div className="bg-white rounded-lg border p-4 space-y-3">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
+          <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
             <FlaskConical className="h-4 w-4 text-purple-600" /> Calidad Promedio
           </h3>
           <div className="space-y-2">
@@ -244,7 +255,7 @@ export function HomePage() {
                       style={{ width: `${Math.min(((value as number) || 0) / 30 * 100, 100)}%` }}
                     />
                   </div>
-                  <span className="text-sm font-medium w-16 text-right">
+                  <span className="text-sm font-medium w-16 text-right text-foreground">
                     {value != null ? `${formatNumber(value as number, 1)}${unit}` : "-"}
                   </span>
                 </div>
@@ -255,7 +266,7 @@ export function HomePage() {
 
         {/* Quick actions */}
         <div className="bg-white rounded-lg border p-4 space-y-3">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
+          <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
             <TrendingUp className="h-4 w-4 text-garces-cherry" /> Acciones Rapidas
           </h3>
           <div className="space-y-2">
@@ -275,7 +286,7 @@ export function HomePage() {
                   <Icon className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-sm font-medium text-foreground">{label}</p>
                   <p className="text-xs text-muted-foreground">{desc}</p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100" />

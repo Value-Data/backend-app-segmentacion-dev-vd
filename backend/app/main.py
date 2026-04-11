@@ -46,6 +46,8 @@ from app.routes.reportes import router as reportes_router
 from app.routes.seed import router as seed_router
 from app.routes.seed_geo import router as seed_geo_router
 from app.routes.relaciones import router as relaciones_router
+from app.routes.variedades_extra import router as variedades_extra_router
+from app.routes.testblock_grupo import router as testblock_grupo_router
 
 settings = get_settings()
 
@@ -106,6 +108,8 @@ app.include_router(reportes_router, prefix=API_PREFIX)
 app.include_router(seed_router, prefix=API_PREFIX)
 app.include_router(seed_geo_router, prefix=API_PREFIX)
 app.include_router(relaciones_router, prefix=API_PREFIX)
+app.include_router(variedades_extra_router, prefix=API_PREFIX)
+app.include_router(testblock_grupo_router, prefix=API_PREFIX)
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,8 @@
-"""TestBlock routes: CRUD, posiciones, grilla, alta/baja/replante, config, QR."""
+"""TestBlock routes: CRUD, posiciones, grilla, alta/baja/replante, config, QR, mapa."""
 
 import io
-from fastapi import APIRouter, Depends, Query
+import json
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -324,6 +325,67 @@ def api_inventario_testblock(
     return get_inventario_testblock(db, id)
 
 
+# ── Mapa satelital ─────────────────────────────────────────────────────────
+@router.get("/{id}/mapa")
+def get_mapa(
+    id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Get testblock map data: center coords, polygon, zoom, and position coords."""
+    tb = db.get(TestBlock, id)
+    if not tb:
+        raise HTTPException(status_code=404, detail="TestBlock no encontrado")
+
+    posiciones = (
+        db.query(PosicionTestBlock)
+        .filter(PosicionTestBlock.id_testblock == id)
+        .order_by(PosicionTestBlock.hilera, PosicionTestBlock.posicion)
+        .all()
+    )
+
+    return {
+        "latitud": tb.latitud,
+        "longitud": tb.longitud,
+        "poligono_coords": json.loads(tb.poligono_coords) if tb.poligono_coords else None,
+        "zoom_nivel": tb.zoom_nivel or 18,
+        "posiciones": [
+            {
+                "id_posicion": p.id_posicion,
+                "hilera": p.hilera,
+                "posicion": p.posicion,
+                "estado": p.estado,
+                "codigo_unico": p.codigo_unico,
+                "id_variedad": p.id_variedad,
+            }
+            for p in posiciones
+        ],
+    }
+
+
+@router.put("/{id}/mapa")
+def update_mapa(
+    id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Save testblock map configuration: polygon corners and zoom."""
+    tb = db.get(TestBlock, id)
+    if not tb:
+        raise HTTPException(status_code=404, detail="TestBlock no encontrado")
+    if "poligono_coords" in data:
+        tb.poligono_coords = json.dumps(data["poligono_coords"])
+    if "zoom_nivel" in data:
+        tb.zoom_nivel = data["zoom_nivel"]
+    if "latitud" in data:
+        tb.latitud = data["latitud"]
+    if "longitud" in data:
+        tb.longitud = data["longitud"]
+    db.commit()
+    return {"ok": True}
+
+
 # ── Historial ──────────────────────────────────────────────────────────────
 posiciones_router = APIRouter(prefix="/posiciones", tags=["TestBlock"])
 
@@ -416,7 +478,10 @@ def api_qr_pdf(
 
     c.save()
     buf.seek(0)
-    return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=qr_testblock_{id}.pdf"})
+
+    filename = f"qr_testblock_{id}.pdf"
+
+    return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
 @router.get("/{id}/qr-hilera/{hilera}")
@@ -464,4 +529,7 @@ def api_qr_hilera(
 
     c.save()
     buf.seek(0)
-    return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=qr_tb{id}_h{hilera}.pdf"})
+
+    filename = f"qr_tb{id}_h{hilera}.pdf"
+
+    return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename={filename}"})

@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Flower2, Calendar, ArrowRight, Leaf, Snowflake, Sun, Droplets, Cherry,
-  Camera, CircleDot, Grape, Apple, Settings2, Plus,
+  Camera, CircleDot, Grape, Apple, Settings2, Plus, GitCompare, TrendingUp, TrendingDown, Minus,
+  AlertTriangle, Download, Database, Clock,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -52,6 +53,27 @@ export function FenologiaPage() {
   const [regObs, setRegObs] = useState("");
   const [selectedHistTbId, setSelectedHistTbId] = useState<number | null>(null);
 
+  // Comparative view state
+  const [compTemporadaActual, setCompTemporadaActual] = useState("2025-2026");
+  const [compTemporadaAnterior, setCompTemporadaAnterior] = useState("2024-2025");
+  const [compVariedadId, setCompVariedadId] = useState<string>("");
+  const [compTbId, setCompTbId] = useState<string>("");
+
+  const { data: comparativa } = useQuery({
+    queryKey: ["fenologia-comparativa", compTemporadaActual, compTemporadaAnterior, selectedEspecieId, compVariedadId, compTbId],
+    queryFn: () => {
+      const params: Record<string, string | number> = {
+        temporada_actual: compTemporadaActual,
+        temporada_anterior: compTemporadaAnterior,
+      };
+      if (selectedEspecieId) params.id_especie = selectedEspecieId;
+      if (compVariedadId) params.id_variedad = Number(compVariedadId);
+      if (compTbId) params.id_testblock = Number(compTbId);
+      return laboresService.fenologiaComparativa(params);
+    },
+    enabled: !!compTemporadaActual && !!compTemporadaAnterior,
+  });
+
   // Fetch all estados fenologicos
   const { data: allEstados } = useQuery({
     queryKey: ["estados-fenologicos"],
@@ -92,28 +114,107 @@ export function FenologiaPage() {
     },
   });
 
+  // Seed demo data mutation
+  const seedDemoMut = useMutation({
+    mutationFn: () => laboresService.seedFenologiaDemo(),
+    onSuccess: (res) => {
+      toast.success(res.message || `Se crearon ${res.created} registros demo`);
+      queryClient.invalidateQueries({ queryKey: ["fenologia-comparativa"] });
+      queryClient.invalidateQueries({ queryKey: ["historial-fenologico"] });
+    },
+    onError: () => {
+      toast.error("Error al crear datos demo (requiere rol admin)");
+    },
+  });
+
+  // Export handler
+  const handleExportExcel = async () => {
+    try {
+      const params: Record<string, string | number> = {
+        temporada_actual: compTemporadaActual,
+        temporada_anterior: compTemporadaAnterior,
+      };
+      if (selectedEspecieId) params.id_especie = selectedEspecieId;
+      if (compVariedadId) params.id_variedad = Number(compVariedadId);
+      if (compTbId) params.id_testblock = Number(compTbId);
+      await laboresService.exportFenologiaComparativa(params);
+      toast.success("Excel descargado");
+    } catch {
+      toast.error("Error al exportar Excel");
+    }
+  };
+
+  // Compute upcoming estados predictions from comparativa data
+  const predicciones = useMemo(() => {
+    if (!comparativa || !(comparativa as any).variedades?.length) return [];
+    const today = new Date();
+    const preds: Array<{
+      variedad: string;
+      estado: string;
+      color_hex: string;
+      fecha_anterior: string;
+      dias_estimados: number;
+    }> = [];
+
+    for (const varData of (comparativa as any).variedades as any[]) {
+      for (const est of varData.estados as any[]) {
+        // Upcoming = has date in anterior season but NOT in actual season
+        if (!est.fecha_actual && est.fecha_anterior) {
+          const anteriorDate = new Date(est.fecha_anterior);
+          // Estimate: same date but +1 year (approximately)
+          const estimatedDate = new Date(anteriorDate);
+          estimatedDate.setFullYear(estimatedDate.getFullYear() + 1);
+          const diffMs = estimatedDate.getTime() - today.getTime();
+          const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+          // Only show future predictions (within next 180 days)
+          if (diffDays > 0 && diffDays <= 180) {
+            preds.push({
+              variedad: varData.variedad?.nombre || `#${varData.id_variedad}`,
+              estado: est.estado?.nombre || "-",
+              color_hex: est.estado?.color_hex || "#8B5CF6",
+              fecha_anterior: est.fecha_anterior,
+              dias_estimados: diffDays,
+            });
+          }
+        }
+      }
+    }
+    // Sort by soonest first
+    preds.sort((a, b) => a.dias_estimados - b.dias_estimados);
+    return preds;
+  }, [comparativa]);
+
   const handleRegister = async () => {
     if (!regEstadoId || !regTbId) return;
-    // Fetch positions for the selected testblock
-    const { get: apiGet } = await import("@/services/api");
-    const positions = await apiGet<{ id_posicion: number }[]>(
-      `/testblocks/${regTbId}/posiciones`
-    );
-    const posIds = (positions || [])
-      .filter((p: any) => p.estado === "alta")
-      .map((p: any) => p.id_posicion);
-    if (posIds.length === 0) {
-      toast.error("No hay posiciones activas en este testblock");
-      return;
+    try {
+      // Fetch positions for the selected testblock
+      const { get: apiGet } = await import("@/services/api");
+      const positions = await apiGet<{ id_posicion: number; estado?: string }[]>(
+        `/testblocks/${regTbId}/posiciones`
+      );
+      const posIds = (positions || [])
+        .filter((p: any) => p.estado === "alta")
+        .map((p: any) => p.id_posicion);
+      if (posIds.length === 0) {
+        toast.error("No hay posiciones activas en este testblock");
+        return;
+      }
+      // Compute temporada dynamically based on current date
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth(); // 0-indexed
+      const temporada = month >= 6 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+      registerMut.mutate({
+        id_estado_fenol: regEstadoId,
+        posiciones_ids: posIds,
+        porcentaje: regPorcentaje ? Number(regPorcentaje) : null,
+        fecha: now.toISOString().split("T")[0],
+        observaciones: regObs,
+        temporada,
+      });
+    } catch (err) {
+      toast.error("Error al registrar estado fenologico");
     }
-    registerMut.mutate({
-      id_estado_fenol: regEstadoId,
-      posiciones_ids: posIds,
-      porcentaje: regPorcentaje ? Number(regPorcentaje) : null,
-      fecha: new Date().toISOString().split("T")[0],
-      observaciones: regObs,
-      temporada: "2025-2026",
-    });
   };
 
   return (
@@ -237,13 +338,29 @@ export function FenologiaPage() {
       )}
 
       {selectedEspecieId && estadosEspecie.length === 0 && (
-        <div className="bg-white rounded-lg border p-8 text-center">
-          <Flower2 className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-sm font-semibold">Sin estados fenologicos para {selectedEspecieName}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            No hay estados fenologicos registrados para esta especie.
-            Un administrador puede poblarlos desde Mantenedores o ejecutando el seed.
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-8 text-center">
+          <AlertTriangle className="h-10 w-10 text-amber-400 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-amber-800">
+            Sin estados fenologicos configurados para {selectedEspecieName}
           </p>
+          <p className="text-xs text-muted-foreground mt-1 mb-4">
+            No hay estados fenologicos registrados para esta especie.
+            Un administrador puede configurarlos desde el Mantenedor o ejecutando el seed de datos demo.
+          </p>
+          <div className="flex gap-2 justify-center">
+            <Button size="sm" variant="outline" onClick={() => navigate("/catalogos/estados-fenologicos")}>
+              <Settings2 className="h-4 w-4 mr-1" /> Ir al Mantenedor
+            </Button>
+            <Button
+              size="sm"
+              variant="default"
+              disabled={seedDemoMut.isPending}
+              onClick={() => seedDemoMut.mutate()}
+            >
+              <Database className="h-4 w-4 mr-1" />
+              {seedDemoMut.isPending ? "Creando..." : "Ejecutar Seed"}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -310,6 +427,241 @@ export function FenologiaPage() {
           </div>
         )}
       </div>
+      {/* Comparativa por Temporada */}
+      <div className="bg-white border rounded-lg p-4 space-y-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <GitCompare className="h-5 w-5 text-purple-600" />
+            <h3 className="font-semibold">Comparativa por Temporada</h3>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={seedDemoMut.isPending}
+              onClick={() => seedDemoMut.mutate()}
+            >
+              <Database className="h-4 w-4 mr-1" />
+              {seedDemoMut.isPending ? "Creando..." : "Seed Demo"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExportExcel}
+              disabled={!comparativa || !(comparativa as any).variedades?.length}
+            >
+              <Download className="h-4 w-4 mr-1" /> Exportar Excel
+            </Button>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Compara las fechas reales de cada estado fenologico entre dos temporadas para anticipar labores.
+        </p>
+
+        <div className="flex gap-3 flex-wrap items-end">
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">Temporada actual</label>
+            <Select value={compTemporadaActual} onValueChange={setCompTemporadaActual}>
+              <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {["2025-2026", "2024-2025", "2023-2024"].map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">vs Temporada anterior</label>
+            <Select value={compTemporadaAnterior} onValueChange={setCompTemporadaAnterior}>
+              <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {["2024-2025", "2023-2024", "2022-2023"].map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">TestBlock</label>
+            <Select value={compTbId || "__all__"} onValueChange={(v) => setCompTbId(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todos</SelectItem>
+                {(testblocks || []).map((tb: any) => (
+                  <SelectItem key={tb.id_testblock} value={String(tb.id_testblock)}>{tb.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Proximos estados esperados — predictions */}
+        {predicciones.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock className="h-4 w-4 text-blue-600" />
+              <h4 className="text-sm font-semibold text-blue-800">Proximos estados esperados</h4>
+            </div>
+            <div className="space-y-1.5">
+              {predicciones.slice(0, 8).map((pred, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: pred.color_hex }}
+                  />
+                  <span className="font-medium text-blue-900">{pred.estado}</span>
+                  <span className="text-blue-600">({pred.variedad})</span>
+                  <span className="text-blue-700 ml-auto">
+                    esperado en ~{pred.dias_estimados} dias
+                  </span>
+                  <span className="text-blue-400 text-[10px]">
+                    (ant: {formatDate(pred.fecha_anterior)})
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {comparativa && (comparativa as any).variedades?.length > 0 ? (
+          <div className="space-y-4">
+            {((comparativa as any).variedades as any[]).map((varData: any) => {
+              // Compute timeline date range for this variedad (Jul year_start to Jun year_end)
+              const yearStart = parseInt(compTemporadaAnterior.split("-")[0]);
+              const seasonStart = new Date(yearStart, 6, 1); // Jul 1
+              const seasonEnd = new Date(yearStart + 2, 5, 30); // Jun 30 (+2 years to cover both seasons)
+              const totalDays = (seasonEnd.getTime() - seasonStart.getTime()) / (1000 * 60 * 60 * 24);
+
+              const getBarPos = (dateStr: string | null) => {
+                if (!dateStr) return null;
+                const d = new Date(dateStr);
+                const offset = (d.getTime() - seasonStart.getTime()) / (1000 * 60 * 60 * 24);
+                return Math.max(0, Math.min(100, (offset / totalDays) * 100));
+              };
+
+              return (
+                <div key={varData.id_variedad} className="border rounded-lg p-3">
+                  <h4 className="text-sm font-semibold mb-2">
+                    {varData.variedad?.nombre}{" "}
+                    <span className="text-muted-foreground font-mono text-xs">
+                      ({varData.variedad?.codigo})
+                    </span>
+                  </h4>
+
+                  {/* Visual timeline bars */}
+                  <div className="mb-3 space-y-1">
+                    {/* Month labels */}
+                    <div className="flex text-[9px] text-muted-foreground ml-[80px]">
+                      {MESES.concat(MESES).map((m, i) => (
+                        <div key={`${m}-${i}`} className="flex-1 text-center">
+                          {i % 3 === 0 ? m : ""}
+                        </div>
+                      ))}
+                    </div>
+                    {/* Actual season bar */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground w-[80px] text-right truncate">
+                        {compTemporadaActual}
+                      </span>
+                      <div className="flex-1 h-5 bg-gray-100 rounded relative">
+                        {(varData.estados as any[]).map((est: any, i: number) => {
+                          const pos = getBarPos(est.fecha_actual);
+                          if (pos === null) return null;
+                          return (
+                            <div
+                              key={`act-${i}`}
+                              className="absolute top-0 h-full rounded"
+                              style={{
+                                left: `${pos}%`,
+                                width: "8px",
+                                backgroundColor: est.estado?.color_hex || "#8B5CF6",
+                                opacity: 0.9,
+                              }}
+                              title={`${est.estado?.nombre}: ${est.fecha_actual}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {/* Anterior season bar */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground w-[80px] text-right truncate">
+                        {compTemporadaAnterior}
+                      </span>
+                      <div className="flex-1 h-5 bg-gray-100 rounded relative">
+                        {(varData.estados as any[]).map((est: any, i: number) => {
+                          const pos = getBarPos(est.fecha_anterior);
+                          if (pos === null) return null;
+                          return (
+                            <div
+                              key={`ant-${i}`}
+                              className="absolute top-0 h-full rounded"
+                              style={{
+                                left: `${pos}%`,
+                                width: "8px",
+                                backgroundColor: est.estado?.color_hex || "#8B5CF6",
+                                opacity: 0.5,
+                              }}
+                              title={`${est.estado?.nombre}: ${est.fecha_anterior}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Data table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-1.5 pr-3 font-medium text-muted-foreground">Estado</th>
+                          <th className="text-left py-1.5 pr-3 font-medium text-muted-foreground">{compTemporadaActual}</th>
+                          <th className="text-left py-1.5 pr-3 font-medium text-muted-foreground">{compTemporadaAnterior}</th>
+                          <th className="text-left py-1.5 font-medium text-muted-foreground">Diferencia</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(varData.estados as any[]).map((est: any, i: number) => (
+                          <tr key={i} className="border-b border-border/30">
+                            <td className="py-1.5 pr-3">
+                              <div className="flex items-center gap-1.5">
+                                {est.estado?.color_hex && (
+                                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: est.estado.color_hex }} />
+                                )}
+                                <span>{est.estado?.nombre || "-"}</span>
+                              </div>
+                            </td>
+                            <td className="py-1.5 pr-3 font-medium">{est.fecha_actual || "-"}</td>
+                            <td className="py-1.5 pr-3 text-muted-foreground">{est.fecha_anterior || "-"}</td>
+                            <td className="py-1.5">
+                              {est.diferencia_dias != null ? (
+                                <span className={`inline-flex items-center gap-1 font-medium ${est.diferencia_dias < 0 ? "text-green-600" : est.diferencia_dias > 0 ? "text-orange-600" : "text-muted-foreground"}`}>
+                                  {est.diferencia_dias < 0 ? <TrendingUp className="h-3 w-3" /> : est.diferencia_dias > 0 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                                  {est.diferencia_dias > 0 ? "+" : ""}{est.diferencia_dias} dias
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            {selectedEspecieId
+              ? "No hay registros fenologicos para comparar en estas temporadas. Registre estados desde los TestBlocks."
+              : "Seleccione una especie arriba para ver la comparativa."}
+          </div>
+        )}
+      </div>
+
       {/* Registration dialog */}
       <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
         <DialogContent className="max-w-md">

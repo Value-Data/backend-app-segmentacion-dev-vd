@@ -626,7 +626,12 @@ class TestLaboratorioEndpoints:
     def test_list_mediciones_empty(self, client, test_user, auth_headers):
         r = client.get(f"{API}/laboratorio/mediciones", headers=auth_headers)
         assert r.status_code == 200
-        assert r.json() == []
+        body = r.json()
+        assert isinstance(body, dict)
+        assert "data" in body
+        assert "total" in body
+        assert isinstance(body["data"], list)
+        assert body["total"] >= 0
 
     def test_mediciones_with_filters(self, client, test_user, auth_headers):
         r = client.get(f"{API}/laboratorio/mediciones?especie=1&temporada=2025-2026&variedad=1&pmg=1", headers=auth_headers)

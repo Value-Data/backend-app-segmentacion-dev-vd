@@ -1,5 +1,5 @@
 import { useAuthStore } from "@/stores/authStore";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 const MAX_RETRIES = 1;
@@ -50,7 +50,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   } catch (networkError) {
     // Network error (server unreachable, DB sleep) — retry once
     if (_retryCount < MAX_RETRIES) {
-      toast("Conectando con el servidor... un momento", { icon: "...", id: "retry-connect" });
+      toast.loading("Conectando con el servidor... un momento", { id: "retry-connect" });
       await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       return request<T>(path, { ...options, _retryCount: _retryCount + 1 });
     }
@@ -61,7 +61,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   // 503 = server/DB waking up — retry once
   if (response.status === 503 && _retryCount < MAX_RETRIES) {
-    toast("Conectando con el servidor... un momento", { icon: "...", id: "retry-connect" });
+    toast.loading("Conectando con el servidor... un momento", { id: "retry-connect" });
     await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
     return request<T>(path, { ...options, _retryCount: _retryCount + 1 });
   }

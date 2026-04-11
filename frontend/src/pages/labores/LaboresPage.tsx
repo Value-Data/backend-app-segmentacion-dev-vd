@@ -5,7 +5,7 @@ import {
   TrendingUp, QrCode, Camera, FileText, Download, X, Image as ImageIcon,
   Calendar, MoreHorizontal, Leaf, Scissors, ChevronDown, ChevronRight, ListChecks,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
   ResponsiveContainer, CartesianGrid, Legend,

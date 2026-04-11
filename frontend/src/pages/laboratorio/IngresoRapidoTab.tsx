@@ -12,7 +12,7 @@ import { useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Zap, Download, Save, RotateCcw, Loader2, Leaf, BarChart3, X as XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -379,7 +379,7 @@ export function IngresoRapidoTab() {
       if (resp.total_errores === 0) {
         toast.success(`${resp.total_creadas} mediciones guardadas`);
       } else {
-        toast(`${resp.total_creadas} guardadas, ${resp.total_errores} con error`, { icon: "⚠️" });
+        toast.warning(`${resp.total_creadas} guardadas, ${resp.total_errores} con error`);
       }
     } catch {
       // toast shown by api.ts

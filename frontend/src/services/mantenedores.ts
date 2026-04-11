@@ -37,4 +37,6 @@ export const variedadBitacoraService = {
     get<BitacoraEntry[]>(`/mantenedores/variedades/${variedadId}/bitacora`),
   add: (variedadId: number, data: Record<string, unknown>) =>
     post<BitacoraEntry>(`/mantenedores/variedades/${variedadId}/bitacora`, data),
+  update: (variedadId: number, entryId: number, data: Record<string, unknown>) =>
+    put<BitacoraEntry>(`/mantenedores/variedades/${variedadId}/bitacora/${entryId}`, data),
 };

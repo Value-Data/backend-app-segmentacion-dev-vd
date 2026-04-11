@@ -1,6 +1,7 @@
 import { get, post, uploadFile } from "./api";
 import type {
   MedicionLaboratorio,
+  PaginatedMediciones,
   MedicionCreateResponse,
   LabKpis,
   Planta,
@@ -18,8 +19,9 @@ export const laboratorioService = {
     testblock?: number; temporada?: string; especie?: number; campo?: number;
     variedad?: number; pmg?: number;
     fecha_cosecha_desde?: string; fecha_cosecha_hasta?: string;
+    skip?: number; limit?: number;
   }) =>
-    get<MedicionLaboratorio[]>("/laboratorio/mediciones", params),
+    get<PaginatedMediciones>("/laboratorio/mediciones", params),
   medicionesByPlanta: (idPlanta: number) =>
     get<(MedicionLaboratorio & { cluster?: number | null; cluster_label?: string | null })[]>(
       `/laboratorio/planta/${idPlanta}/mediciones`

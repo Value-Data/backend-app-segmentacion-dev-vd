@@ -1423,7 +1423,7 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
         await reportesService.downloadResumenCosechas(params);
       }
     } catch (e: any) {
-      const { default: toast } = await import("react-hot-toast");
+      const { toast } = await import("sonner");
       toast.error("Error generando reporte: " + (e?.message || "desconocido"));
     } finally {
       setGenerating(false);

@@ -115,5 +115,22 @@ export interface HistorialPosicion {
   fecha: string;
 }
 
+export interface MapaPosicion {
+  id_posicion: number;
+  hilera: number;
+  posicion: number;
+  estado: string;
+  codigo_unico: string;
+  id_variedad?: number | null;
+}
+
+export interface MapaTestBlockData {
+  latitud: number | null;
+  longitud: number | null;
+  poligono_coords: [number, number][] | null;
+  zoom_nivel: number;
+  posiciones: MapaPosicion[];
+}
+
 export type ColorMode = "estado" | "variedad";
 export type DisplayMode = "variedad+id" | "variedad+pi" | "variedad" | "id" | "codigo";

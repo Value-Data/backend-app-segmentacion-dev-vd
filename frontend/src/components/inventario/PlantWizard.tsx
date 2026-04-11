@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Sprout, Package, ClipboardCheck, Leaf } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -540,9 +540,11 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
                     <SelectValue placeholder="Seleccionar tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Planta terminada raiz desnuda">Planta terminada raiz desnuda</SelectItem>
-                    <SelectItem value="Planta en bolsa o maceta">Planta en bolsa o maceta</SelectItem>
-                    <SelectItem value="Ramillas">Ramillas</SelectItem>
+                    <SelectItem value="TERMINADA_RAIZ_DESNUDA">Terminada raiz desnuda</SelectItem>
+                    <SelectItem value="TERMINADA_MACETA_BOLSA">Terminada maceta/bolsa</SelectItem>
+                    <SelectItem value="INJERTACION_TERRENO">Injertacion en terreno</SelectItem>
+                    <SelectItem value="PLANTA_TERMINADA">Planta terminada</SelectItem>
+                    <SelectItem value="RAMILLAS">Ramillas</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -555,9 +557,11 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
                     <SelectValue placeholder="Seleccionar tipo injerto" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Ojo vivo">Ojo vivo</SelectItem>
-                    <SelectItem value="Ojo dormido">Ojo dormido</SelectItem>
-                    <SelectItem value="Invierno (pua)">Invierno (pua)</SelectItem>
+                    <SelectItem value="OJO_VIVO">Ojo vivo</SelectItem>
+                    <SelectItem value="OJO_DORMIDO">Ojo dormido</SelectItem>
+                    <SelectItem value="INVIERNO_PUA">Invierno (pua)</SelectItem>
+                    <SelectItem value="VERANO_YEMA">Verano (yema)</SelectItem>
+                    <SelectItem value="EN_TERRENO">En terreno</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -587,11 +591,17 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
                     <SelectValue placeholder="Seleccionar bodega" />
                   </SelectTrigger>
                   <SelectContent>
-                    {bodegaOpts.map((o) => (
-                      <SelectItem key={o.value} value={String(o.value)}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
+                    {bodegaOpts.length === 0 ? (
+                      <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                        Sin bodegas disponibles. Cree una bodega primero.
+                      </div>
+                    ) : (
+                      bodegaOpts.map((o) => (
+                        <SelectItem key={o.value} value={String(o.value)}>
+                          {o.label}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>

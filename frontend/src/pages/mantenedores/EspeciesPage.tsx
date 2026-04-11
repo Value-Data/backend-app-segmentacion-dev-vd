@@ -21,6 +21,8 @@ export function EspeciesPage() {
   return (
     <GenericMantenedorPage
       title="Especies"
+      singularTitle="Especie"
+      titleGender="f"
       entidad="especies"
       fields={fields}
       columns={columns}

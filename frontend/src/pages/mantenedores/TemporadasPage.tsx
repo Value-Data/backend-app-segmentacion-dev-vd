@@ -26,6 +26,8 @@ export function TemporadasPage() {
   return (
     <GenericMantenedorPage
       title="Temporadas"
+      singularTitle="Temporada"
+      titleGender="f"
       entidad="temporadas"
       fields={fields}
       columns={columns}
