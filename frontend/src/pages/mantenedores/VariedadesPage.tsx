@@ -323,7 +323,7 @@ export function VariedadesPage() {
         <div className="flex gap-1 border-b">
           {([
             { key: "info" as const, label: "Info", icon: Leaf },
-            { key: "polinizantes" as const, label: `Polinizantes (${polinizantes?.length ?? 0})`, icon: Link2 },
+            ...(!selectedVar.auto_fertil ? [{ key: "polinizantes" as const, label: `Polinizantes (${polinizantes?.length ?? 0})`, icon: Link2 }] : []),
             { key: "fotos" as const, label: `Fotos (${fotos?.length ?? 0})`, icon: Camera },
             { key: "bitacora" as const, label: `Bitacora (${bitacoras?.length ?? 0})`, icon: BookOpen },
             { key: "log" as const, label: `Historial (${changeLog?.length ?? 0})`, icon: History },
@@ -361,7 +361,12 @@ export function VariedadesPage() {
                 <div><span className="text-muted-foreground">Epoca:</span> {selectedVar.epoca_cosecha as string || "-"}</div>
                 <div><span className="text-muted-foreground">Calibre:</span> {selectedVar.calibre_esperado != null ? `${selectedVar.calibre_esperado}` : "-"}</div>
                 <div><span className="text-muted-foreground">Req. Frio:</span> {selectedVar.requerimiento_frio as string || "-"}</div>
-                <div><span className="text-muted-foreground">Auto-fertil:</span> {selectedVar.auto_fertil ? "Si" : "No"}</div>
+                <div>
+                  <span className="text-muted-foreground">Auto-fertil:</span>{" "}
+                  {selectedVar.auto_fertil
+                    ? <span className="text-green-600 font-medium">Si</span>
+                    : <span className="text-orange-600 font-medium">No — requiere polinizantes</span>}
+                </div>
                 <div><span className="text-muted-foreground">Origen:</span> {selectedVar.origen as string || "-"}</div>
               </div>
               {selectedVar.alelos ? (
@@ -386,8 +391,8 @@ export function VariedadesPage() {
           </div>
         )}
 
-        {/* Tab: Polinizantes */}
-        {detailTab === "polinizantes" && (
+        {/* Tab: Polinizantes — solo visible si auto_fertil = false */}
+        {detailTab === "polinizantes" && !selectedVar.auto_fertil && (
           <div className="bg-white rounded-lg border p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold flex items-center gap-2">
@@ -793,7 +798,7 @@ export function VariedadesPage() {
               <div
                 key={v.id_variedad as number}
                 className="bg-white rounded-lg border hover:shadow-md transition-shadow cursor-pointer overflow-hidden relative group"
-                onClick={() => setSelectedVar(v)}
+                onClick={() => { setSelectedVar(v); if (v.auto_fertil && detailTab === "polinizantes") setDetailTab("info"); }}
               >
                 {/* Edit button on hover */}
                 <button
