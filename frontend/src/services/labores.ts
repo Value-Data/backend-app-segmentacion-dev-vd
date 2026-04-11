@@ -76,7 +76,15 @@ export interface DetalleLabor {
   activo?: boolean;
 }
 
+export interface LaboresCount {
+  total: number;
+  pendientes: number;
+  atrasadas: number;
+}
+
 export const laboresService = {
+  count: () =>
+    get<LaboresCount>("/labores/count"),
   // Detalles labor
   detallesLabor: (idLabor: number, especie?: string) =>
     get<DetalleLabor[]>(`/labores/tipos-labor/${idLabor}/detalles`, especie ? { especie } : undefined),

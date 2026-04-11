@@ -10,6 +10,7 @@ export function useCrud(entidad: string, params?: Record<string, string | number
   const query = useQuery({
     queryKey,
     queryFn: () => svc.list(params),
+    staleTime: 5 * 60_000,
   });
 
   const createMutation = useMutation({

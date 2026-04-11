@@ -18,6 +18,7 @@ from app.models.maestras import (
     Pais, Region, Comuna, Campo, Cuartel, Especie, Portainjerto, Pmg, Origen, Vivero,
     Color, Susceptibilidad, TipoLabor, EstadoPlanta, Temporada, Bodega,
     Catalogo, CentroCosto, MarcoPlantacion, EstadoFenologico, PmgEspecie,
+    PortainjertoEspecie,
 )
 from app.models.variedades import Variedad, VariedadSusceptibilidad
 from app.models.bitacora import BitacoraVariedad
@@ -236,7 +237,9 @@ def delete_entity(
 
 # FK map: entity → list of (Model, fk_field) that reference this entity
 from app.models.inventario import InventarioVivero
-from app.models.testblock import TestBlock, Planta
+from app.models.testblock import TestBlock, TestBlockHilera, PosicionTestBlock, Planta
+from app.models.laboratorio import MedicionLaboratorio, UmbralCalidad
+from app.models.variedades_extra import BitacoraPortainjerto
 
 _MERGE_FK_MAP = {
     "viveros": [
@@ -252,12 +255,36 @@ _MERGE_FK_MAP = {
         (PmgEspecie, "id_pmg"),
         (Planta, "id_pmg"),
     ],
+    "portainjertos": [
+        (InventarioVivero, "id_portainjerto"),
+        (TestBlockHilera, "portainjerto_default_id"),
+        (PosicionTestBlock, "id_portainjerto"),
+        (Planta, "id_portainjerto"),
+        (MedicionLaboratorio, "id_portainjerto"),
+        (PortainjertoEspecie, "id_portainjerto"),
+        (BitacoraPortainjerto, "id_portainjerto"),
+    ],
+    "origenes": [
+        (Variedad, "id_origen"),
+    ],
+    "especies": [
+        (Variedad, "id_especie"),
+        (InventarioVivero, "id_especie"),
+        (MedicionLaboratorio, "id_especie"),
+        (PmgEspecie, "id_especie"),
+        (PortainjertoEspecie, "id_especie"),
+        (EstadoFenologico, "id_especie"),
+        (UmbralCalidad, "id_especie"),
+    ],
 }
 
 _MERGE_MODELS = {
     "viveros": (Vivero, "id_vivero"),
     "campos": (Campo, "id_campo"),
     "pmg": (Pmg, "id_pmg"),
+    "portainjertos": (Portainjerto, "id_portainjerto"),
+    "origenes": (Origen, "id_origen"),
+    "especies": (Especie, "id_especie"),
 }
 
 

@@ -18,17 +18,13 @@ import type { MovimientoInventario } from "@/types/inventario";
 const TIPO_ENTRADA = new Set(["INGRESO", "DEVOLUCION"]);
 const TIPO_SALIDA = new Set(["RETIRO", "DESPACHO", "PLANTACION", "AJUSTE"]);
 
-const movFields: FieldDef[] = [
-  { key: "tipo", label: "Tipo", type: "select", required: true, options: [
-    { value: "INGRESO", label: "Ingreso" },
-    { value: "RETIRO", label: "Retiro" },
-    { value: "AJUSTE", label: "Ajuste" },
-    { value: "PLANTACION", label: "Plantacion" },
-    { value: "DEVOLUCION", label: "Devolucion" },
-    { value: "DESPACHO", label: "Despacho" },
-  ]},
-  { key: "cantidad", label: "Cantidad", type: "number", required: true },
-  { key: "referencia_destino", label: "Campo Destino", type: "text" },
+const MOV_TIPOS = [
+  { value: "INGRESO", label: "Ingreso" },
+  { value: "RETIRO", label: "Retiro" },
+  { value: "AJUSTE", label: "Ajuste" },
+  { value: "PLANTACION", label: "Plantacion" },
+  { value: "DEVOLUCION", label: "Devolucion" },
+  { value: "DESPACHO", label: "Despacho" },
 ];
 
 /** Color badge for movimiento tipo */
@@ -141,6 +137,26 @@ export function LoteDetailPage() {
   const loteId = Number(id);
   const lk = useLookups();
 
+  // Campos and testblocks for cascade selects in movimiento form
+  const camposOpts = (lk.rawData.campos || []).map((c: any) => ({
+    value: String(c.id_campo), label: c.nombre || c.codigo,
+  }));
+  const { data: testblocksList } = useQuery({
+    queryKey: ["testblocks"],
+    queryFn: () => import("@/services/api").then(m => m.get<any[]>("/testblocks")),
+    staleTime: 5 * 60_000,
+  });
+  const tbOpts = (testblocksList || []).map((tb: any) => ({
+    value: String(tb.id_testblock), label: tb.nombre || tb.codigo,
+  }));
+
+  const movFields: FieldDef[] = [
+    { key: "tipo", label: "Tipo", type: "select", required: true, options: MOV_TIPOS },
+    { key: "cantidad", label: "Cantidad", type: "number", required: true },
+    { key: "id_campo_destino", label: "Campo Destino", type: "select", options: camposOpts },
+    { key: "id_testblock_destino", label: "TestBlock Destino", type: "select", options: tbOpts },
+  ];
+
   const { data: lote, isLoading: loteLoading, isError: loteError } = useQuery({
     queryKey: ["inventario", loteId],
     queryFn: () => inventarioService.getById(loteId),
@@ -166,7 +182,24 @@ export function LoteDetailPage() {
   });
 
   const movMut = useMutation({
-    mutationFn: (data: Record<string, unknown>) => inventarioService.crearMovimiento(loteId, data),
+    mutationFn: (data: Record<string, unknown>) => {
+      // Build referencia_destino from cascade selects
+      const parts: string[] = [];
+      if (data.id_campo_destino) {
+        const campo = camposOpts.find((c: any) => c.value === String(data.id_campo_destino));
+        if (campo) parts.push(campo.label);
+      }
+      if (data.id_testblock_destino) {
+        const tb = tbOpts.find((t: any) => t.value === String(data.id_testblock_destino));
+        if (tb) parts.push(tb.label);
+      }
+      const payload = {
+        tipo: data.tipo,
+        cantidad: Number(data.cantidad),
+        referencia_destino: parts.join(" → ") || undefined,
+      };
+      return inventarioService.crearMovimiento(loteId, payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventario"] });
       toast.success("Movimiento registrado");

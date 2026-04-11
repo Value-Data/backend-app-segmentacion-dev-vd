@@ -1,5 +1,7 @@
 """Analisis routes: dashboard, paquetes tecnologicos, clusters."""
 
+import time
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -13,6 +15,10 @@ from app.services.laboratorio_service import get_kpis
 
 router = APIRouter(prefix="/analisis", tags=["Analisis"])
 
+# In-memory cache for the heavy dashboard query (TTL 5 min)
+_dashboard_cache: dict[str, dict] = {}
+_DASHBOARD_TTL = 300  # seconds
+
 
 @router.get("/dashboard")
 def dashboard(
@@ -20,6 +26,12 @@ def dashboard(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
+    cache_key = f"dashboard:{temporada or '__all__'}"
+    now = time.time()
+    cached = _dashboard_cache.get(cache_key)
+    if cached and now < cached["expires"]:
+        return cached["data"]
+
     kpis = get_kpis(db, temporada=temporada)
     total_plantas = db.query(Planta).filter(Planta.activa == True).count()
     total_testblocks = db.query(TestBlock).filter(TestBlock.activo == True).count()
@@ -38,13 +50,16 @@ def dashboard(
         cl = c.cluster or 0
         cluster_dist[cl] = cluster_dist.get(cl, 0) + 1
 
-    return {
+    result = {
         "kpis": kpis,
         "total_plantas_activas": total_plantas,
         "total_testblocks": total_testblocks,
         "total_posiciones": total_posiciones,
         "cluster_distribution": cluster_dist,
     }
+
+    _dashboard_cache[cache_key] = {"data": result, "expires": now + _DASHBOARD_TTL}
+    return result
 
 
 @router.get("/paquetes")

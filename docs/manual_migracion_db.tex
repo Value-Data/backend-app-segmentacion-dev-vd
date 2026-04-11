@@ -1,0 +1,2371 @@
+% =============================================================================
+% Manual de Migracion de Base de Datos — Garces Fruit
+% Sistema de Segmentacion de Nuevas Especies
+% SQL Server Azure (Origen) → SQL Server (Destino)
+% Fecha: 2026-04-10
+% =============================================================================
+\documentclass[12pt,a4paper,twoside]{report}
+
+% ── Paquetes ────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\geometry{margin=2.5cm, top=3cm, bottom=3cm}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{float}
+\usepackage{pdfpages}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{parskip}
+\usepackage{amsmath}
+
+% ── Colores corporativos ───────────────────────────────────────────────────
+\definecolor{garcesgreen}{RGB}{34,120,74}
+\definecolor{garcesdark}{RGB}{20,60,40}
+\definecolor{garcesgold}{RGB}{180,150,50}
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{warnbg}{RGB}{255,243,205}
+\definecolor{dangerbg}{RGB}{255,220,220}
+\definecolor{infobg}{RGB}{220,235,255}
+\definecolor{sqlblue}{RGB}{0,80,160}
+\definecolor{pyorange}{RGB}{200,100,0}
+
+% ── Hyperlinks ─────────────────────────────────────────────────────────────
+\hypersetup{
+    colorlinks=true,
+    linkcolor=garcesdark,
+    urlcolor=sqlblue,
+    citecolor=garcesgreen,
+    pdftitle={Manual de Migracion DB - Garces Fruit},
+    pdfauthor={Garces Fruit - Equipo Tecnico},
+    pdfsubject={Migracion SQL Server a SQL Server}
+}
+
+% ── Listings (SQL y Python) ────────────────────────────────────────────────
+\lstdefinestyle{sqlstyle}{
+    language=SQL,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{sqlblue}\bfseries,
+    stringstyle=\color{garcesgreen},
+    commentstyle=\color{gray}\itshape,
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{gray!30},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b,
+    morekeywords={IDENTITY,NVARCHAR,VARBINARY,BIT,GETDATE,NEWID,TOP,NOLOCK,
+                  SET,IDENTITY_INSERT,GO,EXEC,sp_rename,PRINT,RAISERROR,
+                  TRY,CATCH,BEGIN,END,TRANSACTION,COMMIT,ROLLBACK,THROW}
+}
+
+\lstdefinestyle{pythonstyle}{
+    language=Python,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{pyorange}\bfseries,
+    stringstyle=\color{garcesgreen},
+    commentstyle=\color{gray}\itshape,
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{gray!30},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b,
+    morekeywords={self,True,False,None,as,with,async,await,f}
+}
+
+\lstdefinestyle{bashstyle}{
+    language=bash,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{garcesdark}\bfseries,
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{gray!30},
+    numbers=none,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b
+}
+
+% ── Cajas de alerta ────────────────────────────────────────────────────────
+\newtcolorbox{warningbox}{
+    colback=warnbg, colframe=garcesgold,
+    fonttitle=\bfseries, title={Advertencia},
+    boxrule=1pt, arc=3pt
+}
+\newtcolorbox{dangerbox}{
+    colback=dangerbg, colframe=red!60!black,
+    fonttitle=\bfseries, title={Peligro},
+    boxrule=1pt, arc=3pt
+}
+\newtcolorbox{infobox}{
+    colback=infobg, colframe=sqlblue,
+    fonttitle=\bfseries, title={Informacion},
+    boxrule=1pt, arc=3pt
+}
+\newtcolorbox{successbox}{
+    colback=green!5!white, colframe=garcesgreen,
+    fonttitle=\bfseries, title={Verificacion},
+    boxrule=1pt, arc=3pt
+}
+
+% ── Headers y footers ─────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE,RO]{\thepage}
+\fancyhead[LO]{\nouppercase{\leftmark}}
+\fancyhead[RE]{Manual de Migracion DB}
+\fancyfoot[C]{\small Garces Fruit --- Confidencial}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.2pt}
+
+% ── Titulos ────────────────────────────────────────────────────────────────
+\titleformat{\chapter}[display]
+    {\normalfont\huge\bfseries\color{garcesdark}}
+    {\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titleformat{\section}
+    {\normalfont\Large\bfseries\color{garcesgreen}}
+    {\thesection}{1em}{}
+\titleformat{\subsection}
+    {\normalfont\large\bfseries\color{garcesdark}}
+    {\thesubsection}{1em}{}
+
+% =============================================================================
+\begin{document}
+
+% ── Portada ────────────────────────────────────────────────────────────────
+\begin{titlepage}
+\centering
+\vspace*{2cm}
+
+{\Huge\bfseries\color{garcesdark} Manual de Migraci\'on\\[0.3cm] de Base de Datos\par}
+\vspace{1cm}
+{\LARGE\color{garcesgreen} Sistema de Segmentaci\'on\\de Nuevas Especies\par}
+\vspace{0.5cm}
+{\large\color{gray} SQL Server Azure (valuedata) $\rightarrow$ SQL Server Azure (adinf)\par}
+
+\vspace{2cm}
+
+\begin{tcolorbox}[colback=codebg, colframe=garcesgreen, width=12cm, arc=5pt]
+\centering
+\begin{tabular}{ll}
+\textbf{Empresa:} & Garc\'es Fruit \\
+\textbf{Proyecto:} & Segmentaci\'on de Nuevas Especies \\
+\textbf{Motor origen:} & SQL Server Azure \\
+\textbf{Motor destino:} & SQL Server Azure (\texttt{adinf.database.windows.net}) \\
+\textbf{Total tablas:} & 52 tablas \\
+\textbf{Estrategia:} & Python + pyodbc + T-SQL versionado \\
+\textbf{Versi\'on doc:} & 1.0 \\
+\textbf{Fecha:} & 10 de abril de 2026 \\
+\end{tabular}
+\end{tcolorbox}
+
+\vfill
+{\small\color{gray} Documento confidencial --- Uso interno Garc\'es Fruit\par}
+\end{titlepage}
+
+% ── Tabla de contenidos ───────────────────────────────────────────────────
+\tableofcontents
+\newpage
+\listoftables
+\lstlistoflistings
+\newpage
+
+% =============================================================================
+\chapter{Introducci\'on}
+% =============================================================================
+
+\section{Prop\'osito del documento}
+
+Este manual describe el procedimiento completo, paso a paso, para migrar la base de datos del \textbf{Sistema de Segmentaci\'on de Nuevas Especies} de Garc\'es Fruit desde la instancia actual en \textbf{SQL Server Azure} a una nueva instancia de \textbf{SQL Server} (destino).
+
+El documento cubre:
+\begin{itemize}[noitemsep]
+    \item Inventario completo de las 52 tablas del sistema
+    \item Scripts DDL para crear la estructura en el destino
+    \item Scripts de extracci\'on y carga de datos (Python + pyodbc)
+    \item Orden de ejecuci\'on respetando dependencias de FK
+    \item Procedimiento de validaci\'on post-migraci\'on
+    \item Plan de rollback ante errores
+\end{itemize}
+
+\section{Alcance}
+
+\begin{table}[H]
+\centering
+\caption{Alcance de la migraci\'on}
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Aspecto} & \textbf{Detalle} \\
+\midrule
+Origen & SQL Server Azure, servidor \texttt{tcp:valuedata.database.windows.net,1433} \\
+Destino & SQL Server Azure, servidor \texttt{tcp:adinf.database.windows.net,1433}, BD \texttt{adinf} \\
+Esquema & 52 tablas distribuidas en 6 dominios \\
+Datos & Migraci\'on completa incluyendo IDENTITY values \\
+Binarios & Columnas \texttt{VARBINARY(MAX)} (im\'agenes de variedades y portainjertos) \\
+Usuarios & Tabla \texttt{usuarios} con hashes bcrypt --- se migran tal cual \\
+Audit log & Se migra hist\'orico completo de \texttt{audit\_log} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Audiencia}
+
+\begin{itemize}[noitemsep]
+    \item \textbf{DBA / Administrador de BD}: Ejecutar scripts DDL y validar integridad
+    \item \textbf{DevOps}: Configurar conexiones, ejecutar pipeline de migraci\'on
+    \item \textbf{Desarrollador Backend}: Verificar compatibilidad de modelos SQLModel
+    \item \textbf{L\'ider T\'ecnico}: Aprobar ventana de migraci\'on y plan de rollback
+\end{itemize}
+
+\section{Prerrequisitos}
+
+\begin{enumerate}[noitemsep]
+    \item Python 3.11+ instalado con acceso a \texttt{pip}
+    \item \texttt{pyodbc} instalado (\texttt{pip install pyodbc})
+    \item ODBC Driver 18 for SQL Server instalado en la m\'aquina que ejecuta la migraci\'on
+    \item Credenciales de lectura en la BD origen (SQL Server Azure)
+    \item Credenciales de escritura (con permisos \texttt{db\_owner}) en la BD destino
+    \item Conectividad de red entre la m\'aquina de migraci\'on y ambos servidores
+    \item Ventana de mantenimiento acordada (sistema en modo solo lectura o detenido)
+\end{enumerate}
+
+\begin{warningbox}
+La migraci\'on debe ejecutarse con el sistema \textbf{detenido o en modo solo lectura} para garantizar consistencia. Cualquier escritura durante la migraci\'on puede causar p\'erdida de datos o inconsistencias en foreign keys.
+\end{warningbox}
+
+% =============================================================================
+\chapter{Inventario de Tablas}
+% =============================================================================
+
+El sistema contiene \textbf{52 tablas} organizadas en 6 dominios funcionales. Cada tabla usa \texttt{INT IDENTITY} como primary key (no UUID).
+
+\section{Resumen por dominio}
+
+\begin{table}[H]
+\centering
+\caption{Distribuci\'on de tablas por dominio}
+\begin{tabular}{llc}
+\toprule
+\textbf{Dominio} & \textbf{Descripci\'on} & \textbf{Tablas} \\
+\midrule
+Maestras / Lookup     & Tablas de referencia y configuraci\'on & 24 \\
+TestBlock             & Infraestructura experimental         & 5  \\
+Inventario            & Stock de vivero y plantas             & 7  \\
+Laboratorio / Calidad & Mediciones y clasificaci\'on           & 7  \\
+An\'alisis / Alertas   & Paquetes tecnol\'ogicos y alertas      & 3  \\
+Sistema               & Usuarios, roles, auditor\'ia           & 6  \\
+\midrule
+\textbf{Total}        &                                       & \textbf{52} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Cat\'alogo completo de tablas}
+
+\begin{longtable}{clllc}
+\caption{Cat\'alogo completo de tablas del sistema} \\
+\toprule
+\textbf{\#} & \textbf{Tabla} & \textbf{PK} & \textbf{Dominio} & \textbf{FKs} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{\#} & \textbf{Tabla} & \textbf{PK} & \textbf{Dominio} & \textbf{FKs} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r}{\textit{Contin\'ua en la siguiente p\'agina}} \\
+\bottomrule
+\endfoot
+\bottomrule
+\endlastfoot
+% Maestras
+1  & paises                     & id\_pais          & Maestras  & 0 \\
+2  & regiones                   & id\_region        & Maestras  & 0 \\
+3  & comunas                    & id\_comuna        & Maestras  & 1 \\
+4  & campos                     & id\_campo         & Maestras  & 0 \\
+5  & cuarteles                  & id\_cuartel       & Maestras  & 1 \\
+6  & especies                   & id\_especie       & Maestras  & 0 \\
+7  & portainjertos              & id\_portainjerto  & Maestras  & 0 \\
+8  & pmg                        & id\_pmg           & Maestras  & 0 \\
+9  & pmg\_especies              & id\_pmg\_especie  & Maestras  & 2 \\
+10 & portainjerto\_especies     & id\_pe            & Maestras  & 2 \\
+11 & origenes                   & id\_origen        & Maestras  & 0 \\
+12 & viveros                    & id\_vivero        & Maestras  & 1 \\
+13 & vivero\_pmg                & id\_vp            & Maestras  & 2 \\
+14 & colores                    & id\_color         & Maestras  & 0 \\
+15 & susceptibilidades          & id\_suscept       & Maestras  & 0 \\
+16 & variedades                 & id\_variedad      & Maestras  & 6 \\
+17 & variedad\_susceptibilidades & id\_vs           & Maestras  & 2 \\
+18 & tipos\_labor               & id\_labor         & Maestras  & 0 \\
+19 & estados\_fenologicos       & id\_estado        & Maestras  & 1 \\
+20 & estados\_planta            & id\_estado        & Maestras  & 0 \\
+21 & temporadas                 & id\_temporada     & Maestras  & 0 \\
+22 & bodegas                    & id\_bodega        & Maestras  & 0 \\
+23 & catalogos                  & id               & Maestras  & 0 \\
+24 & correlativos               & id               & Maestras  & 0 \\
+% TestBlock
+25 & centros\_costo             & id               & TestBlock & 1 \\
+26 & marcos\_plantacion         & id               & TestBlock & 0 \\
+27 & testblocks                 & id\_testblock     & TestBlock & 4 \\
+28 & testblock\_hileras         & id\_hilera        & TestBlock & 2 \\
+29 & posiciones\_testblock      & id\_posicion      & TestBlock & 6 \\
+% Inventario
+30 & inventario\_vivero         & id\_inventario    & Inventario & 5 \\
+31 & movimientos\_inventario    & id\_movimiento    & Inventario & 2 \\
+32 & plantas                    & id\_planta        & Inventario & 6 \\
+33 & inventario\_testblock      & id\_inventario\_tb & Inventario & 2 \\
+34 & guias\_despacho            & id\_guia          & Inventario & 2 \\
+35 & historial\_posicion        & id\_historial     & Inventario & 2 \\
+36 & asignaciones\_testblock    & id\_asignacion    & Inventario & 2 \\
+% Laboratorio
+37 & mediciones\_laboratorio    & id\_medicion      & Laboratorio & 6 \\
+38 & clasificacion\_cluster     & id\_clasificacion & Laboratorio & 1 \\
+39 & umbrales\_calidad          & id\_umbral        & Laboratorio & 1 \\
+40 & registros\_fenologicos     & id\_registro      & Laboratorio & 3 \\
+41 & ejecucion\_labores         & id\_ejecucion     & Laboratorio & 3 \\
+42 & detalles\_labor            & id\_detalle       & Laboratorio & 1 \\
+43 & evidencia\_labores         & id\_evidencia     & Laboratorio & 1 \\
+% Analisis
+44 & paquete\_tecnologico       & id\_paquete       & An\'alisis & 1 \\
+45 & alertas                    & id\_alerta        & An\'alisis & 1 \\
+46 & reglas\_alerta             & id\_regla         & An\'alisis & 0 \\
+% Sistema
+47 & usuarios                   & id\_usuario       & Sistema   & 0 \\
+48 & roles                      & id\_rol           & Sistema   & 0 \\
+49 & audit\_log                 & id\_log           & Sistema   & 0 \\
+50 & variedades\_log            & id\_log           & Sistema   & 1 \\
+51 & bitacora\_variedades       & id\_entrada       & Sistema   & 2 \\
+52 & defectos                   & id               & Sistema   & 0 \\
+   & defectos\_variedades       & id               & Sistema   & 2 \\
+\end{longtable}
+
+% =============================================================================
+\chapter{Diagrama de Dependencias}
+% =============================================================================
+
+\section{Grafo de foreign keys}
+
+Las tablas deben crearse y cargarse en orden topol\'ogico para respetar las restricciones de foreign key. El grafo de dependencias define 5 niveles:
+
+\begin{table}[H]
+\centering
+\caption{Orden topol\'ogico de creaci\'on y carga}
+\begin{tabularx}{\textwidth}{cX}
+\toprule
+\textbf{Nivel} & \textbf{Tablas (sin dependencias pendientes)} \\
+\midrule
+0 & paises, regiones, campos, especies, portainjertos, pmg, origenes, colores, susceptibilidades, tipos\_labor, estados\_planta, temporadas, bodegas, catalogos, correlativos, marcos\_plantacion, reglas\_alerta, roles, defectos \\
+\addlinespace
+1 & comunas, cuarteles, pmg\_especies, portainjerto\_especies, viveros, estados\_fenologicos, centros\_costo, usuarios, variedades \\
+\addlinespace
+2 & vivero\_pmg, variedad\_susceptibilidades, testblocks, inventario\_vivero, detalles\_labor, variedades\_log, defectos\_variedades \\
+\addlinespace
+3 & testblock\_hileras, posiciones\_testblock, plantas, inventario\_testblock, guias\_despacho, paquete\_tecnologico, bitacora\_variedades, asignaciones\_testblock \\
+\addlinespace
+4 & movimientos\_inventario, historial\_posicion, mediciones\_laboratorio, ejecucion\_labores, registros\_fenologicos, alertas \\
+\addlinespace
+5 & clasificacion\_cluster, evidencia\_labores, audit\_log \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{infobox}
+El nivel 0 contiene tablas sin foreign keys --- pueden crearse y cargarse en cualquier orden entre ellas. Cada nivel posterior depende exclusivamente de los niveles anteriores.
+\end{infobox}
+
+\section{Diagrama ER simplificado}
+
+\begin{verbatim}
+campos ─────────── 1:N ──── cuarteles
+  │                              │
+  └── 1:N ── testblocks ─── 1:1 ┘
+                │
+                ├── 1:N ── posiciones_testblock
+                │              │
+                │              ├── 1:1 ── plantas
+                │              │            ├── 1:N ── mediciones_laboratorio
+                │              │            ├── 1:N ── registros_fenologicos
+                │              │            ├── 1:N ── ejecucion_labores
+                │              │            └── 1:N ── historial_posicion
+                │              │
+                │              └── N:1 ── variedades ── N:1 ── especies
+                │                            │
+                │                            ├── N:1 ── pmg
+                │                            └── N:1 ── origenes
+                │
+                └── N:1 ── marcos_plantacion
+
+inventario_vivero ── 1:N ── movimientos_inventario
+                  └── 1:N ── inventario_testblock
+
+mediciones_laboratorio ── 1:1 ── clasificacion_cluster
+
+ejecucion_labores ── 1:N ── evidencia_labores
+\end{verbatim}
+
+% =============================================================================
+\chapter{Arquitectura de la Migraci\'on}
+% =============================================================================
+
+\section{Estrategia general}
+
+Se utiliza \textbf{Python + pyodbc} como motor de migraci\'on, con scripts T-SQL versionados para la creaci\'on de estructura. La raz\'on de esta elecci\'on sobre Flyway:
+
+\begin{table}[H]
+\centering
+\caption{Comparaci\'on Flyway vs Python}
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Criterio} & \textbf{Flyway} & \textbf{Python + pyodbc} \\
+\midrule
+Dependencia extra & Java Runtime & Ya en el stack (FastAPI) \\
+Transformaci\'on de datos & Limitada (solo SQL) & Total (pandas, validaciones) \\
+Manejo de IDENTITY & Manual & Automatizado \\
+Manejo de VARBINARY & Complejo & Nativo (bytes) \\
+Integraci\'on CI/CD & Plugin adicional & Script en GitHub Actions \\
+Scripts existentes & No & S\'i (\texttt{load\_data.py}, etc.) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Componentes del sistema de migraci\'on}
+
+\begin{lstlisting}[style=bashstyle, caption={Estructura de archivos de migraci\'on}]
+backend/scripts/migration/
+  config.py              # Conexiones origen/destino
+  migrate.py             # Orquestador principal
+  001_create_tables.sql  # DDL completo (52 tablas)
+  002_create_indexes.sql # Indices y constraints
+  003_seed_data.sql      # Datos maestros (opcional)
+  export_data.py         # Extrae datos del origen
+  import_data.py         # Carga datos al destino
+  validate.py            # Validacion post-migracion
+\end{lstlisting}
+
+\section{Flujo de ejecuci\'on}
+
+\begin{enumerate}
+    \item \textbf{Preparaci\'on}: Configurar \texttt{config.py} con connection strings
+    \item \textbf{Crear estructura}: Ejecutar \texttt{001\_create\_tables.sql} en destino
+    \item \textbf{Crear \'indices}: Ejecutar \texttt{002\_create\_indexes.sql} en destino
+    \item \textbf{Exportar datos}: Ejecutar \texttt{export\_data.py} (genera archivos intermedios o migra directo)
+    \item \textbf{Importar datos}: Ejecutar \texttt{import\_data.py} (respetando orden topol\'ogico)
+    \item \textbf{Validar}: Ejecutar \texttt{validate.py} (conteos, checksums, integridad FK)
+    \item \textbf{Aceptar o Rollback}: Seg\'un resultados de validaci\'on
+\end{enumerate}
+
+% =============================================================================
+\chapter{Script DDL --- Creaci\'on de Tablas}
+% =============================================================================
+
+A continuaci\'on se presenta el DDL completo para crear las 52 tablas en la base de datos destino. Las tablas est\'an ordenadas por nivel de dependencia (nivel 0 primero).
+
+\begin{dangerbox}
+Ejecutar este script en una base de datos \textbf{vac\'ia}. Si la BD destino ya tiene tablas con estos nombres, el script fallar\'a. Use \texttt{DROP TABLE IF EXISTS} solo si est\'a seguro de que no hay datos valiosos.
+\end{dangerbox}
+
+\section{Nivel 0 --- Tablas sin dependencias}
+
+\begin{lstlisting}[style=sqlstyle, caption={paises}]
+CREATE TABLE paises (
+    id_pais          INT IDENTITY(1,1) PRIMARY KEY,
+    codigo           VARCHAR(10) NOT NULL,
+    nombre           NVARCHAR(100) NOT NULL,
+    nombre_en        NVARCHAR(100) NULL,
+    orden            INT DEFAULT 0,
+    activo           BIT DEFAULT 1,
+    fecha_creacion   DATETIME DEFAULT GETDATE(),
+    CONSTRAINT UQ_paises_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={regiones}]
+CREATE TABLE regiones (
+    id_region        INT IDENTITY(1,1) PRIMARY KEY,
+    codigo           VARCHAR(5) NOT NULL,
+    nombre           NVARCHAR(100) NOT NULL,
+    numero           INT NULL,
+    orden            INT NULL,
+    activo           BIT DEFAULT 1,
+    fecha_creacion   DATETIME DEFAULT GETDATE(),
+    CONSTRAINT UQ_regiones_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={campos}]
+CREATE TABLE campos (
+    id_campo              INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    ubicacion             NVARCHAR(200) NULL,
+    comuna                NVARCHAR(100) NULL,
+    region                NVARCHAR(100) NULL,
+    direccion             NVARCHAR(200) NULL,
+    responsable           NVARCHAR(100) NULL,
+    hectareas             DECIMAL(10,2) NULL,
+    latitud               DECIMAL(10,7) NULL,
+    longitud              DECIMAL(10,7) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    fecha_modificacion    DATETIME NULL,
+    usuario_creacion      NVARCHAR(100) NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_campos_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={especies}]
+CREATE TABLE especies (
+    id_especie            INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(10) NOT NULL,
+    nombre                NVARCHAR(50) NOT NULL,
+    nombre_cientifico     NVARCHAR(100) NULL,
+    emoji                 NVARCHAR(10) NULL,
+    color_hex             VARCHAR(7) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_especies_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={portainjertos}]
+CREATE TABLE portainjertos (
+    id_portainjerto       INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(50) NOT NULL,
+    vigor                 VARCHAR(20) NULL,
+    compatibilidad        NVARCHAR(MAX) NULL,
+    origen                NVARCHAR(100) NULL,
+    caracteristicas       NVARCHAR(MAX) NULL,
+    cruce                 NVARCHAR(200) NULL,
+    especie               NVARCHAR(50) NULL,
+    tipo                  NVARCHAR(50) NULL,
+    patron                NVARCHAR(100) NULL,
+    propagacion           NVARCHAR(100) NULL,
+    obtentor              NVARCHAR(100) NULL,
+    sensibilidad          NVARCHAR(200) NULL,
+    susceptibilidades     NVARCHAR(500) NULL,
+    ventajas              NVARCHAR(500) NULL,
+    notas                 NVARCHAR(MAX) NULL,
+    imagen                VARBINARY(MAX) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_portainjertos_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={pmg}]
+CREATE TABLE pmg (
+    id_pmg                INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    licenciante           NVARCHAR(100) NULL,
+    pais_origen           VARCHAR(50) NULL,
+    pais                  VARCHAR(50) NULL,
+    ciudad                NVARCHAR(100) NULL,
+    email                 NVARCHAR(100) NULL,
+    telefono              VARCHAR(30) NULL,
+    direccion             NVARCHAR(200) NULL,
+    contacto              NVARCHAR(200) NULL,
+    notas                 NVARCHAR(MAX) NULL,
+    contacto_nombre       NVARCHAR(200) NULL,
+    contacto_email        NVARCHAR(100) NULL,
+    contacto_telefono     NVARCHAR(50) NULL,
+    viveros_chile         NVARCHAR(500) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    CONSTRAINT UQ_pmg_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={origenes}]
+CREATE TABLE origenes (
+    id_origen             INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    pais                  VARCHAR(50) NULL,
+    tipo                  VARCHAR(30) NULL,
+    contacto              NVARCHAR(200) NULL,
+    notas                 NVARCHAR(MAX) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_origenes_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={colores}]
+CREATE TABLE colores (
+    id_color              INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(50) NOT NULL,
+    tipo                  VARCHAR(20) NOT NULL,
+    aplica_especie        NVARCHAR(100) NULL,
+    color_hex             VARCHAR(7) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={susceptibilidades}]
+CREATE TABLE susceptibilidades (
+    id_suscept            INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    nombre_en             NVARCHAR(100) NULL,
+    descripcion           NVARCHAR(200) NULL,
+    categoria             NVARCHAR(50) NULL,
+    severidad             VARCHAR(20) DEFAULT 'media',
+    orden                 INT DEFAULT 0,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_suscept_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={tipos\_labor}]
+CREATE TABLE tipos_labor (
+    id_labor              INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    categoria             VARCHAR(50) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    descripcion           NVARCHAR(MAX) NULL,
+    aplica_especies       NVARCHAR(200) NULL,
+    aplica_a              NVARCHAR(100) NULL,
+    frecuencia            NVARCHAR(50) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_tipos_labor_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={estados\_planta}]
+CREATE TABLE estados_planta (
+    id_estado             INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(50) NOT NULL,
+    descripcion           NVARCHAR(200) NULL,
+    color_hex             VARCHAR(7) NOT NULL,
+    icono                 VARCHAR(50) NULL,
+    requiere_foto         BIT DEFAULT 0,
+    es_final              BIT DEFAULT 0,
+    orden                 INT DEFAULT 0,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_estados_planta_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={temporadas}]
+CREATE TABLE temporadas (
+    id_temporada          INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                NVARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(50) NOT NULL,
+    fecha_inicio          DATE NULL,
+    fecha_fin             DATE NULL,
+    estado                NVARCHAR(20) DEFAULT 'activa',
+    notas                 NVARCHAR(MAX) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    CONSTRAINT UQ_temporadas_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={bodegas}]
+CREATE TABLE bodegas (
+    id_bodega             INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                NVARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    ubicacion             NVARCHAR(200) NULL,
+    responsable           NVARCHAR(100) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={catalogos}]
+CREATE TABLE catalogos (
+    id                    INT IDENTITY(1,1) PRIMARY KEY,
+    tipo                  NVARCHAR(100) NOT NULL,
+    valor                 NVARCHAR(200) NOT NULL,
+    descripcion           NVARCHAR(500) NULL,
+    orden                 INT DEFAULT 0,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={correlativos}]
+CREATE TABLE correlativos (
+    id                    INT IDENTITY(1,1) PRIMARY KEY,
+    tipo                  VARCHAR(30) NOT NULL,
+    prefijo               VARCHAR(10) NOT NULL,
+    ultimo_numero         INT DEFAULT 0,
+    formato               VARCHAR(50) NULL,
+    fecha_modificacion    DATETIME NULL,
+    CONSTRAINT UQ_correlativos_tipo UNIQUE (tipo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={marcos\_plantacion}]
+CREATE TABLE marcos_plantacion (
+    id                    INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                NVARCHAR(50) NOT NULL,
+    nombre                NVARCHAR(200) NOT NULL,
+    distancia_hilera      DECIMAL(5,2) NULL,
+    distancia_planta      DECIMAL(5,2) NULL,
+    sistema_conduccion    NVARCHAR(100) NULL,
+    descripcion           NVARCHAR(500) NULL,
+    dist_entre_hileras    DECIMAL(10,2) NULL,
+    dist_entre_plantas    DECIMAL(10,2) NULL,
+    plantas_hectarea      INT NULL,
+    conduccion            NVARCHAR(100) NULL,
+    especie_recomendada   NVARCHAR(100) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    id_marco              INT NULL,
+    predeterminado        BIT NULL,
+    notas                 NVARCHAR(MAX) NULL,
+    CONSTRAINT UQ_marcos_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={reglas\_alerta}]
+CREATE TABLE reglas_alerta (
+    id_regla              INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(100) NULL,
+    descripcion           NVARCHAR(MAX) NULL,
+    tipo                  VARCHAR(50) NULL,
+    condicion             NVARCHAR(MAX) NULL,
+    prioridad_resultado   VARCHAR(20) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    CONSTRAINT UQ_reglas_alerta_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={roles}]
+CREATE TABLE roles (
+    id_rol                INT IDENTITY(1,1) PRIMARY KEY,
+    nombre                VARCHAR(50) NOT NULL,
+    descripcion           NVARCHAR(200) NULL,
+    permisos              NVARCHAR(MAX) NULL,
+    activo                BIT DEFAULT 1,
+    CONSTRAINT UQ_roles_nombre UNIQUE (nombre)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={defectos}]
+CREATE TABLE defectos (
+    id                    INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NULL,
+    nombre                VARCHAR(100) NOT NULL,
+    nombre_en             VARCHAR(100) NULL,
+    categoria             VARCHAR(50) NULL,
+    activo                BIT DEFAULT 1,
+    orden                 INT NULL,
+    created_at            DATETIME NULL,
+    updated_at            DATETIME NULL,
+    imagen_url            NVARCHAR(500) NULL,
+    imagen                VARBINARY(MAX) NULL
+);
+\end{lstlisting}
+
+\section{Nivel 1 --- Tablas con dependencias de nivel 0}
+
+\begin{lstlisting}[style=sqlstyle, caption={comunas}]
+CREATE TABLE comunas (
+    id_comuna             INT IDENTITY(1,1) PRIMARY KEY,
+    nombre                NVARCHAR(100) NOT NULL,
+    id_region             INT NOT NULL
+        CONSTRAINT FK_comunas_region FOREIGN KEY
+        REFERENCES regiones(id_region),
+    codigo_postal         VARCHAR(10) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={cuarteles}]
+CREATE TABLE cuarteles (
+    id_cuartel            INT IDENTITY(1,1) PRIMARY KEY,
+    id_campo              INT NOT NULL
+        CONSTRAINT FK_cuarteles_campo FOREIGN KEY
+        REFERENCES campos(id_campo),
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    num_hileras           INT NULL,
+    pos_por_hilera        INT NULL,
+    es_testblock          BIT NULL,
+    centro_costo          VARCHAR(50) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    hileras               INT NULL,
+    posiciones_por_hilera INT NULL,
+    sistema               NVARCHAR(100) NULL,
+    notas                 NVARCHAR(MAX) NULL,
+    id_centro_costo       INT NULL,
+    id_marco              INT NULL,
+    latitud               DECIMAL(10,6) NULL,
+    longitud              DECIMAL(10,6) NULL,
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    superficie            DECIMAL(10,2) NULL,
+    id_especie            INT NULL,
+    especies_ids          NVARCHAR(MAX) NULL,
+    layout_configurado    BIT NULL
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={usuarios}]
+CREATE TABLE usuarios (
+    id_usuario            INT IDENTITY(1,1) PRIMARY KEY,
+    username              VARCHAR(50) NOT NULL,
+    nombre_completo       NVARCHAR(100) NOT NULL,
+    email                 NVARCHAR(100) NULL,
+    password_hash         VARCHAR(64) NULL,
+    rol                   VARCHAR(30) NOT NULL,
+    campos_asignados      NVARCHAR(MAX) NULL,
+    activo                BIT DEFAULT 1,
+    ultimo_acceso         DATETIME NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    CONSTRAINT UQ_usuarios_username UNIQUE (username)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={estados\_fenologicos}]
+CREATE TABLE estados_fenologicos (
+    id_estado             INT IDENTITY(1,1) PRIMARY KEY,
+    id_especie            INT NOT NULL
+        CONSTRAINT FK_estadosfenol_especie FOREIGN KEY
+        REFERENCES especies(id_especie),
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(50) NOT NULL,
+    orden                 INT DEFAULT 0,
+    descripcion           NVARCHAR(200) NULL,
+    color_hex             VARCHAR(7) NULL,
+    mes_orientativo       NVARCHAR(20) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={centros\_costo}]
+CREATE TABLE centros_costo (
+    id                    INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                NVARCHAR(50) NOT NULL,
+    nombre                NVARCHAR(200) NOT NULL,
+    descripcion           NVARCHAR(500) NULL,
+    id_campo              INT NULL
+        CONSTRAINT FK_centroscosto_campo FOREIGN KEY
+        REFERENCES campos(id_campo),
+    responsable           NVARCHAR(200) NULL,
+    presupuesto           DECIMAL(18,2) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_centros_costo_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={variedades}]
+CREATE TABLE variedades (
+    id_variedad           INT IDENTITY(1,1) PRIMARY KEY,
+    id_especie            INT NOT NULL
+        CONSTRAINT FK_variedades_especie FOREIGN KEY
+        REFERENCES especies(id_especie),
+    id_pmg                INT NULL
+        CONSTRAINT FK_variedades_pmg FOREIGN KEY
+        REFERENCES pmg(id_pmg),
+    id_origen             INT NULL
+        CONSTRAINT FK_variedades_origen FOREIGN KEY
+        REFERENCES origenes(id_origen),
+    codigo                VARCHAR(30) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    nombre_corto          VARCHAR(10) NULL,
+    nombre_comercial      NVARCHAR(100) NULL,
+    tipo                  VARCHAR(20) NULL,
+    origen                NVARCHAR(100) NULL,
+    anio_introduccion     INT NULL,
+    epoca_cosecha         VARCHAR(20) NULL,
+    epoca                 VARCHAR(20) NULL,
+    vigor                 VARCHAR(20) NULL,
+    req_frio_horas        INT NULL,
+    req_frio              NVARCHAR(50) NULL,
+    color_fruto           NVARCHAR(50) NULL,
+    color_pulpa           NVARCHAR(50) NULL,
+    id_color_fruto        INT NULL
+        CONSTRAINT FK_variedades_colorfruto FOREIGN KEY
+        REFERENCES colores(id_color),
+    id_color_pulpa        INT NULL
+        CONSTRAINT FK_variedades_colorpulpa FOREIGN KEY
+        REFERENCES colores(id_color),
+    id_color_cubrimiento  INT NULL
+        CONSTRAINT FK_variedades_colorcubr FOREIGN KEY
+        REFERENCES colores(id_color),
+    calibre_esperado      VARCHAR(20) NULL,
+    firmeza_esperada      VARCHAR(20) NULL,
+    susceptibilidad       NVARCHAR(200) NULL,
+    estado                VARCHAR(20) NULL,
+    fecha_ultima_visita   DATE NULL,
+    proxima_accion        NVARCHAR(200) NULL,
+    observaciones         NVARCHAR(MAX) NULL,
+    imagen                VARBINARY(MAX) NULL,
+    color                 NVARCHAR(50) NULL,
+    fertilidad            NVARCHAR(50) NULL,
+    alelos                NVARCHAR(200) NULL,
+    polinizantes          NVARCHAR(MAX) NULL,
+    portainjertos_recomendados NVARCHAR(MAX) NULL,
+    familia_genetica      NVARCHAR(100) NULL,
+    recomendaciones       NVARCHAR(MAX) NULL,
+    fecha_cosecha_ref     NVARCHAR(50) NULL,
+    auto_fertil           BIT NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    fecha_modificacion    DATETIME NULL,
+    usuario_creacion      NVARCHAR(100) NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_variedades_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={pmg\_especies}]
+CREATE TABLE pmg_especies (
+    id_pmg_especie        INT IDENTITY(1,1) PRIMARY KEY,
+    id_pmg                INT NULL
+        CONSTRAINT FK_pmgespecies_pmg FOREIGN KEY
+        REFERENCES pmg(id_pmg),
+    id_especie            INT NULL
+        CONSTRAINT FK_pmgespecies_especie FOREIGN KEY
+        REFERENCES especies(id_especie),
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    CONSTRAINT UQ_pmg_especies UNIQUE (id_pmg, id_especie)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={portainjerto\_especies}]
+CREATE TABLE portainjerto_especies (
+    id_pe                 INT IDENTITY(1,1) PRIMARY KEY,
+    id_portainjerto       INT NOT NULL
+        CONSTRAINT FK_portesp_portainjerto FOREIGN KEY
+        REFERENCES portainjertos(id_portainjerto),
+    id_especie            INT NOT NULL
+        CONSTRAINT FK_portesp_especie FOREIGN KEY
+        REFERENCES especies(id_especie),
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={viveros}]
+CREATE TABLE viveros (
+    id_vivero             INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    id_pmg                INT NULL
+        CONSTRAINT FK_viveros_pmg FOREIGN KEY
+        REFERENCES pmg(id_pmg),
+    representante         NVARCHAR(100) NULL,
+    telefono              VARCHAR(30) NULL,
+    email                 NVARCHAR(100) NULL,
+    direccion             NVARCHAR(200) NULL,
+    comuna                NVARCHAR(100) NULL,
+    region                NVARCHAR(100) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL,
+    CONSTRAINT UQ_viveros_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\section{Nivel 2 --- Tablas con dependencias de nivel 0--1}
+
+\begin{lstlisting}[style=sqlstyle, caption={vivero\_pmg}]
+CREATE TABLE vivero_pmg (
+    id_vp                 INT IDENTITY(1,1) PRIMARY KEY,
+    id_vivero             INT NOT NULL
+        CONSTRAINT FK_viveropmg_vivero FOREIGN KEY
+        REFERENCES viveros(id_vivero),
+    id_pmg                INT NOT NULL
+        CONSTRAINT FK_viveropmg_pmg FOREIGN KEY
+        REFERENCES pmg(id_pmg),
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={variedad\_susceptibilidades}]
+CREATE TABLE variedad_susceptibilidades (
+    id_vs                 INT IDENTITY(1,1) PRIMARY KEY,
+    id_variedad           INT NOT NULL
+        CONSTRAINT FK_varsuscept_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    id_suscept            INT NOT NULL
+        CONSTRAINT FK_varsuscept_suscept FOREIGN KEY
+        REFERENCES susceptibilidades(id_suscept),
+    nivel                 VARCHAR(20) NULL,
+    notas                 NVARCHAR(200) NULL,
+    CONSTRAINT UQ_variedad_suscept UNIQUE (id_variedad, id_suscept)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={testblocks}]
+CREATE TABLE testblocks (
+    id_testblock          INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(20) NOT NULL,
+    nombre                NVARCHAR(100) NOT NULL,
+    id_campo              INT NOT NULL
+        CONSTRAINT FK_testblocks_campo FOREIGN KEY
+        REFERENCES campos(id_campo),
+    id_centro_costo       INT NULL
+        CONSTRAINT FK_testblocks_centrocosto FOREIGN KEY
+        REFERENCES centros_costo(id),
+    id_cuartel            INT NULL
+        CONSTRAINT FK_testblocks_cuartel FOREIGN KEY
+        REFERENCES cuarteles(id_cuartel),
+    id_marco              INT NULL
+        CONSTRAINT FK_testblocks_marco FOREIGN KEY
+        REFERENCES marcos_plantacion(id),
+    num_hileras           INT NULL,
+    posiciones_por_hilera INT NULL,
+    total_posiciones      INT NULL,
+    latitud               DECIMAL(10,7) NULL,
+    longitud              DECIMAL(10,7) NULL,
+    estado                VARCHAR(20) DEFAULT 'activo',
+    fecha_creacion_tb     DATETIME NULL,
+    temporada_inicio      VARCHAR(10) NULL,
+    notas                 NVARCHAR(MAX) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    fecha_modificacion    DATETIME NULL,
+    CONSTRAINT UQ_testblocks_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={inventario\_vivero}]
+CREATE TABLE inventario_vivero (
+    id_inventario          INT IDENTITY(1,1) PRIMARY KEY,
+    codigo_lote            VARCHAR(50) NOT NULL,
+    id_variedad            INT NULL
+        CONSTRAINT FK_invvivero_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    id_portainjerto        INT NULL
+        CONSTRAINT FK_invvivero_portainjerto FOREIGN KEY
+        REFERENCES portainjertos(id_portainjerto),
+    id_vivero              INT NULL
+        CONSTRAINT FK_invvivero_vivero FOREIGN KEY
+        REFERENCES viveros(id_vivero),
+    id_especie             INT NULL
+        CONSTRAINT FK_invvivero_especie FOREIGN KEY
+        REFERENCES especies(id_especie),
+    id_pmg                 INT NULL
+        CONSTRAINT FK_invvivero_pmg FOREIGN KEY
+        REFERENCES pmg(id_pmg),
+    id_bodega              INT NULL
+        CONSTRAINT FK_invvivero_bodega FOREIGN KEY
+        REFERENCES bodegas(id_bodega),
+    tipo_planta            NVARCHAR(50) NULL,
+    tipo_injertacion       NVARCHAR(50) NULL,
+    tipo_patron            NVARCHAR(50) NULL,
+    ubicacion              NVARCHAR(200) NULL,
+    cantidad_inicial       INT NOT NULL,
+    cantidad_actual        INT NOT NULL,
+    cantidad_minima        INT DEFAULT 0,
+    cantidad_comprometida  INT DEFAULT 0,
+    fecha_ingreso          DATE NOT NULL,
+    ano_plantacion         INT NULL,
+    origen                 NVARCHAR(100) NULL,
+    estado                 VARCHAR(20) DEFAULT 'disponible',
+    observaciones          NVARCHAR(MAX) NULL,
+    fecha_creacion         DATETIME DEFAULT GETDATE(),
+    fecha_modificacion     DATETIME NULL,
+    CONSTRAINT UQ_invvivero_lote UNIQUE (codigo_lote)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={detalles\_labor}]
+CREATE TABLE detalles_labor (
+    id_detalle            INT IDENTITY(1,1) PRIMARY KEY,
+    id_labor              INT NOT NULL
+        CONSTRAINT FK_detalleslabor_labor FOREIGN KEY
+        REFERENCES tipos_labor(id_labor),
+    descripcion           NVARCHAR(500) NOT NULL,
+    aplica_especie        NVARCHAR(100) NULL,
+    orden                 INT DEFAULT 0,
+    es_checklist          BIT DEFAULT 1,
+    activo                BIT DEFAULT 1,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    usuario_creacion      NVARCHAR(100) NULL,
+    fecha_modificacion    DATETIME NULL,
+    usuario_modificacion  NVARCHAR(100) NULL
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={variedades\_log}]
+CREATE TABLE variedades_log (
+    id_log                INT IDENTITY(1,1) PRIMARY KEY,
+    id_variedad           INT NOT NULL
+        CONSTRAINT FK_varlog_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    accion                VARCHAR(50) NOT NULL,
+    campo_modificado      VARCHAR(100) NULL,
+    valor_anterior        NVARCHAR(500) NULL,
+    valor_nuevo           NVARCHAR(500) NULL,
+    usuario               VARCHAR(50) NULL,
+    fecha                 DATETIME NULL,
+    notas                 NVARCHAR(500) NULL
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={defectos\_variedades}]
+CREATE TABLE defectos_variedades (
+    id                    INT IDENTITY(1,1) PRIMARY KEY,
+    id_variedad           INT NOT NULL
+        CONSTRAINT FK_defvar_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    id_defecto            INT NOT NULL
+        CONSTRAINT FK_defvar_defecto FOREIGN KEY
+        REFERENCES defectos(id),
+    created_at            DATETIME NULL
+);
+\end{lstlisting}
+
+\section{Nivel 3 --- Tablas con dependencias de nivel 0--2}
+
+\begin{lstlisting}[style=sqlstyle, caption={testblock\_hileras}]
+CREATE TABLE testblock_hileras (
+    id_hilera                INT IDENTITY(1,1) PRIMARY KEY,
+    id_cuartel               INT NOT NULL
+        CONSTRAINT FK_tbhileras_cuartel FOREIGN KEY
+        REFERENCES cuarteles(id_cuartel),
+    numero_hilera            INT NOT NULL,
+    total_posiciones         INT NOT NULL,
+    portainjerto_default_id  INT NULL
+        CONSTRAINT FK_tbhileras_portainjerto FOREIGN KEY
+        REFERENCES portainjertos(id_portainjerto),
+    conduccion               NVARCHAR(50) NULL,
+    marco_plantacion         VARCHAR(20) NULL,
+    activo                   BIT DEFAULT 1,
+    fecha_creacion           DATETIME DEFAULT GETDATE(),
+    usuario_creacion         NVARCHAR(50) NULL
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={posiciones\_testblock}]
+CREATE TABLE posiciones_testblock (
+    id_posicion           INT IDENTITY(1,1) PRIMARY KEY,
+    codigo_unico          VARCHAR(30) NOT NULL,
+    id_cuartel            INT NULL
+        CONSTRAINT FK_postb_cuartel FOREIGN KEY
+        REFERENCES cuarteles(id_cuartel),
+    id_testblock          INT NULL
+        CONSTRAINT FK_postb_testblock FOREIGN KEY
+        REFERENCES testblocks(id_testblock),
+    id_variedad           INT NULL
+        CONSTRAINT FK_postb_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    id_portainjerto       INT NULL
+        CONSTRAINT FK_postb_portainjerto FOREIGN KEY
+        REFERENCES portainjertos(id_portainjerto),
+    id_pmg                INT NULL
+        CONSTRAINT FK_postb_pmg FOREIGN KEY
+        REFERENCES pmg(id_pmg),
+    id_lote               INT NULL
+        CONSTRAINT FK_postb_lote FOREIGN KEY
+        REFERENCES inventario_vivero(id_inventario),
+    hilera                INT NOT NULL,
+    posicion              INT NOT NULL,
+    fecha_plantacion      DATE NULL,
+    fecha_alta            DATE NULL,
+    fecha_baja            DATE NULL,
+    estado                VARCHAR(20) DEFAULT 'vacia',
+    cluster_actual        INT NULL,
+    motivo_baja           NVARCHAR(200) NULL,
+    observaciones         NVARCHAR(MAX) NULL,
+    codigo_qr             NVARCHAR(MAX) NULL,
+    usuario_alta          NVARCHAR(50) NULL,
+    usuario_baja          NVARCHAR(50) NULL,
+    protegida             BIT DEFAULT 0,
+    conduccion            NVARCHAR(50) NULL,
+    marco_plantacion      VARCHAR(20) NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    fecha_modificacion    DATETIME NULL,
+    CONSTRAINT UQ_postb_codigo UNIQUE (codigo_unico),
+    CONSTRAINT UQ_postb_cuartel_hilera_pos
+        UNIQUE (id_cuartel, hilera, posicion)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={plantas}]
+CREATE TABLE plantas (
+    id_planta             INT IDENTITY(1,1) PRIMARY KEY,
+    codigo                VARCHAR(50) NULL,
+    id_posicion           INT NULL
+        CONSTRAINT FK_plantas_posicion FOREIGN KEY
+        REFERENCES posiciones_testblock(id_posicion),
+    id_variedad           INT NULL
+        CONSTRAINT FK_plantas_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    id_portainjerto       INT NULL
+        CONSTRAINT FK_plantas_portainjerto FOREIGN KEY
+        REFERENCES portainjertos(id_portainjerto),
+    id_especie            INT NULL
+        CONSTRAINT FK_plantas_especie FOREIGN KEY
+        REFERENCES especies(id_especie),
+    id_pmg                INT NULL
+        CONSTRAINT FK_plantas_pmg FOREIGN KEY
+        REFERENCES pmg(id_pmg),
+    id_lote_origen        INT NULL
+        CONSTRAINT FK_plantas_lote FOREIGN KEY
+        REFERENCES inventario_vivero(id_inventario),
+    condicion             VARCHAR(30) DEFAULT 'EN_EVALUACION',
+    activa                BIT DEFAULT 1,
+    ano_plantacion        INT NULL,
+    ano_injertacion       INT NULL,
+    metodo_injertacion    NVARCHAR(50) NULL,
+    tipo_patron           NVARCHAR(50) NULL,
+    conduccion            NVARCHAR(50) NULL,
+    marco_plantacion      VARCHAR(20) NULL,
+    color_cubrimiento     NVARCHAR(50) NULL,
+    color_pulpa           NVARCHAR(50) NULL,
+    fecha_alta            DATE NULL,
+    fecha_baja            DATE NULL,
+    motivo_baja           NVARCHAR(200) NULL,
+    observaciones         NVARCHAR(MAX) NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    fecha_modificacion    DATETIME NULL,
+    usuario_creacion      NVARCHAR(50) NULL,
+    usuario_modificacion  NVARCHAR(50) NULL,
+    CONSTRAINT UQ_plantas_codigo UNIQUE (codigo)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={inventario\_testblock}]
+CREATE TABLE inventario_testblock (
+    id_inventario_tb      INT IDENTITY(1,1) PRIMARY KEY,
+    id_inventario         INT NULL
+        CONSTRAINT FK_invtb_inventario FOREIGN KEY
+        REFERENCES inventario_vivero(id_inventario),
+    id_cuartel            INT NULL
+        CONSTRAINT FK_invtb_cuartel FOREIGN KEY
+        REFERENCES cuarteles(id_cuartel),
+    cantidad_asignada     INT NULL,
+    cantidad_plantada     INT DEFAULT 0,
+    estado                VARCHAR(20) DEFAULT 'pendiente',
+    fecha_despacho        DATE NULL,
+    fecha_completado      DATE NULL,
+    observaciones         NVARCHAR(MAX) NULL,
+    usuario_creacion      NVARCHAR(50) NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={guias\_despacho}]
+CREATE TABLE guias_despacho (
+    id_guia               INT IDENTITY(1,1) PRIMARY KEY,
+    numero_guia           VARCHAR(20) NOT NULL,
+    id_bodega_origen      INT NOT NULL
+        CONSTRAINT FK_guias_bodega FOREIGN KEY
+        REFERENCES bodegas(id_bodega),
+    id_testblock_destino  INT NOT NULL
+        CONSTRAINT FK_guias_testblock FOREIGN KEY
+        REFERENCES testblocks(id_testblock),
+    estado                VARCHAR(20) DEFAULT 'pendiente',
+    total_plantas         INT NOT NULL,
+    responsable           NVARCHAR(100) NULL,
+    motivo                NVARCHAR(500) NULL,
+    usuario               NVARCHAR(50) NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE(),
+    fecha_despacho        DATETIME NULL,
+    fecha_recepcion       DATETIME NULL,
+    notas                 NVARCHAR(MAX) NULL,
+    activo                BIT DEFAULT 1
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={paquete\_tecnologico}]
+CREATE TABLE paquete_tecnologico (
+    id_paquete            INT IDENTITY(1,1) PRIMARY KEY,
+    id_variedad           INT NOT NULL
+        CONSTRAINT FK_paqtec_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    temporada             VARCHAR(50) NOT NULL,
+    total_posiciones      INT NULL,
+    posiciones_evaluadas  INT NULL,
+    cluster_predominante  INT NULL,
+    brix_promedio         DECIMAL(5,2) NULL,
+    brix_min              DECIMAL(5,2) NULL,
+    brix_max              DECIMAL(5,2) NULL,
+    firmeza_promedio      DECIMAL(5,2) NULL,
+    acidez_promedio       DECIMAL(5,3) NULL,
+    calibre_promedio      DECIMAL(5,2) NULL,
+    score_promedio        DECIMAL(5,2) NULL,
+    recomendacion         NVARCHAR(MAX) NULL,
+    decision              VARCHAR(20) NULL,
+    fecha_generacion      DATETIME NULL,
+    CONSTRAINT UQ_paqtec_variedad_temp
+        UNIQUE (id_variedad, temporada)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={bitacora\_variedades}]
+CREATE TABLE bitacora_variedades (
+    id_entrada            INT IDENTITY(1,1) PRIMARY KEY,
+    id_variedad           INT NOT NULL
+        CONSTRAINT FK_bitacora_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    tipo_entrada          VARCHAR(50) NULL,
+    fecha                 DATE NULL,
+    titulo                NVARCHAR(200) NULL,
+    contenido             NVARCHAR(MAX) NULL,
+    resultado             VARCHAR(50) NULL,
+    id_testblock          INT NULL
+        CONSTRAINT FK_bitacora_testblock FOREIGN KEY
+        REFERENCES testblocks(id_testblock),
+    ubicacion             NVARCHAR(200) NULL,
+    usuario               NVARCHAR(50) NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={asignaciones\_testblock}]
+CREATE TABLE asignaciones_testblock (
+    id_asignacion         INT IDENTITY(1,1) PRIMARY KEY,
+    id_variedad           INT NOT NULL
+        CONSTRAINT FK_asigntb_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    id_cuartel            INT NOT NULL
+        CONSTRAINT FK_asigntb_cuartel FOREIGN KEY
+        REFERENCES cuarteles(id_cuartel),
+    cantidad_posiciones   INT NULL,
+    fecha_asignacion      DATE NULL,
+    estado                VARCHAR(20) NULL,
+    observaciones         NVARCHAR(MAX) NULL,
+    fecha_creacion        DATETIME NULL
+);
+\end{lstlisting}
+
+\section{Nivel 4 --- Tablas con dependencias de nivel 0--3}
+
+\begin{lstlisting}[style=sqlstyle, caption={movimientos\_inventario}]
+CREATE TABLE movimientos_inventario (
+    id_movimiento         INT IDENTITY(1,1) PRIMARY KEY,
+    id_inventario         INT NULL
+        CONSTRAINT FK_movinv_inventario FOREIGN KEY
+        REFERENCES inventario_vivero(id_inventario),
+    id_planta             INT NULL
+        CONSTRAINT FK_movinv_planta FOREIGN KEY
+        REFERENCES plantas(id_planta),
+    tipo                  VARCHAR(30) NOT NULL,
+    cantidad              INT NOT NULL,
+    saldo_anterior        INT NULL,
+    saldo_nuevo           INT NULL,
+    motivo                NVARCHAR(200) NULL,
+    referencia_destino    VARCHAR(50) NULL,
+    usuario               NVARCHAR(50) NULL,
+    fecha_movimiento      DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={historial\_posicion}]
+CREATE TABLE historial_posicion (
+    id_historial          INT IDENTITY(1,1) PRIMARY KEY,
+    id_posicion           INT NOT NULL
+        CONSTRAINT FK_histpos_posicion FOREIGN KEY
+        REFERENCES posiciones_testblock(id_posicion),
+    id_planta             INT NULL
+        CONSTRAINT FK_histpos_planta FOREIGN KEY
+        REFERENCES plantas(id_planta),
+    id_planta_anterior    INT NULL
+        CONSTRAINT FK_histpos_planta_ant FOREIGN KEY
+        REFERENCES plantas(id_planta),
+    accion                VARCHAR(20) NOT NULL,
+    estado_anterior       VARCHAR(20) NULL,
+    estado_nuevo          VARCHAR(20) NULL,
+    motivo                NVARCHAR(200) NULL,
+    usuario               NVARCHAR(50) NULL,
+    fecha                 DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={mediciones\_laboratorio}]
+CREATE TABLE mediciones_laboratorio (
+    id_medicion             INT IDENTITY(1,1) PRIMARY KEY,
+    id_posicion             INT NULL
+        CONSTRAINT FK_medlab_posicion FOREIGN KEY
+        REFERENCES posiciones_testblock(id_posicion),
+    id_planta               INT NULL
+        CONSTRAINT FK_medlab_planta FOREIGN KEY
+        REFERENCES plantas(id_planta),
+    temporada               VARCHAR(50) NULL,
+    fecha_medicion          DATE NOT NULL,
+    fecha_cosecha           DATE NULL,
+    brix                    DECIMAL(5,2) NULL,
+    acidez                  DECIMAL(5,3) NULL,
+    firmeza                 DECIMAL(5,1) NULL,
+    calibre                 DECIMAL(5,2) NULL,
+    peso                    DECIMAL(6,2) NULL,
+    color_pct               INT NULL,
+    cracking_pct            INT NULL,
+    observaciones           NVARCHAR(MAX) NULL,
+    usuario_registro        NVARCHAR(50) NULL,
+    fecha_creacion          DATETIME DEFAULT GETDATE(),
+    -- Firmeza detallada
+    firmeza_punta           DECIMAL(8,2) NULL,
+    firmeza_quilla          DECIMAL(8,2) NULL,
+    firmeza_hombro          DECIMAL(8,2) NULL,
+    firmeza_mejilla_1       DECIMAL(8,2) NULL,
+    firmeza_mejilla_2       DECIMAL(8,2) NULL,
+    -- Muestra y postcosecha
+    n_muestra               INT NULL,
+    periodo_almacenaje      INT NULL,
+    perimetro               DECIMAL(8,2) NULL,
+    pardeamiento            DECIMAL(5,2) NULL,
+    traslucidez             DECIMAL(5,2) NULL,
+    gelificacion            DECIMAL(5,2) NULL,
+    harinosidad             DECIMAL(5,2) NULL,
+    color_pulpa             NVARCHAR(50) NULL,
+    -- Agronomia
+    raleo_frutos            INT NULL,
+    rendimiento             DECIMAL(10,2) NULL,
+    repeticion              INT NULL,
+    -- Color cubrimiento
+    color_0_30              INT NULL,
+    color_30_50             INT NULL,
+    color_50_75             INT NULL,
+    color_75_100            INT NULL,
+    color_total             INT NULL,
+    -- Distribucion color
+    color_verde             INT NULL,
+    color_crema             INT NULL,
+    color_amarillo          INT NULL,
+    color_full              INT NULL,
+    color_dist_total        INT NULL,
+    -- Totales frutos postcosecha
+    total_frutos_pardeamiento  INT NULL,
+    total_frutos_traslucidez   INT NULL,
+    total_frutos_gelificacion  INT NULL,
+    total_frutos_harinosidad   INT NULL,
+    -- FKs de contexto
+    id_campo                INT NULL
+        CONSTRAINT FK_medlab_campo FOREIGN KEY
+        REFERENCES campos(id_campo),
+    id_variedad             INT NULL
+        CONSTRAINT FK_medlab_variedad FOREIGN KEY
+        REFERENCES variedades(id_variedad),
+    id_especie              INT NULL
+        CONSTRAINT FK_medlab_especie FOREIGN KEY
+        REFERENCES especies(id_especie),
+    id_portainjerto         INT NULL
+        CONSTRAINT FK_medlab_portainjerto FOREIGN KEY
+        REFERENCES portainjertos(id_portainjerto)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={ejecucion\_labores}]
+CREATE TABLE ejecucion_labores (
+    id_ejecucion          INT IDENTITY(1,1) PRIMARY KEY,
+    id_posicion           INT NULL
+        CONSTRAINT FK_ejeclabor_posicion FOREIGN KEY
+        REFERENCES posiciones_testblock(id_posicion),
+    id_planta             INT NULL
+        CONSTRAINT FK_ejeclabor_planta FOREIGN KEY
+        REFERENCES plantas(id_planta),
+    id_labor              INT NULL
+        CONSTRAINT FK_ejeclabor_labor FOREIGN KEY
+        REFERENCES tipos_labor(id_labor),
+    temporada             VARCHAR(20) NULL,
+    fecha_programada      DATE NULL,
+    fecha_ejecucion       DATE NULL,
+    estado                VARCHAR(20) DEFAULT 'ejecutada',
+    ejecutor              NVARCHAR(100) NULL,
+    duracion_min          INT NULL,
+    observaciones         NVARCHAR(MAX) NULL,
+    usuario_registro      NVARCHAR(50) NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={registros\_fenologicos}]
+CREATE TABLE registros_fenologicos (
+    id_registro           INT IDENTITY(1,1) PRIMARY KEY,
+    id_posicion           INT NULL
+        CONSTRAINT FK_regfenol_posicion FOREIGN KEY
+        REFERENCES posiciones_testblock(id_posicion),
+    id_planta             INT NULL
+        CONSTRAINT FK_regfenol_planta FOREIGN KEY
+        REFERENCES plantas(id_planta),
+    id_estado_fenol       INT NULL
+        CONSTRAINT FK_regfenol_estado FOREIGN KEY
+        REFERENCES estados_fenologicos(id_estado),
+    temporada             VARCHAR(20) NULL,
+    fecha_registro        DATE NOT NULL,
+    porcentaje            INT NULL,
+    observaciones         NVARCHAR(MAX) NULL,
+    foto_url              NVARCHAR(500) NULL,
+    usuario_registro      NVARCHAR(50) NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={alertas}]
+CREATE TABLE alertas (
+    id_alerta             INT IDENTITY(1,1) PRIMARY KEY,
+    id_posicion           INT NULL
+        CONSTRAINT FK_alertas_posicion FOREIGN KEY
+        REFERENCES posiciones_testblock(id_posicion),
+    tipo_alerta           VARCHAR(50) NULL,
+    prioridad             VARCHAR(20) NULL,
+    titulo                NVARCHAR(200) NULL,
+    descripcion           NVARCHAR(MAX) NULL,
+    valor_detectado       NVARCHAR(50) NULL,
+    umbral_violado        NVARCHAR(50) NULL,
+    estado                VARCHAR(20) DEFAULT 'activa',
+    usuario_resolucion    NVARCHAR(50) NULL,
+    fecha_resolucion      DATETIME NULL,
+    notas_resolucion      NVARCHAR(MAX) NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\section{Nivel 5 --- Tablas finales}
+
+\begin{lstlisting}[style=sqlstyle, caption={clasificacion\_cluster}]
+CREATE TABLE clasificacion_cluster (
+    id_clasificacion      INT IDENTITY(1,1) PRIMARY KEY,
+    id_medicion           INT NULL
+        CONSTRAINT FK_clascluster_medicion FOREIGN KEY
+        REFERENCES mediciones_laboratorio(id_medicion),
+    cluster               INT NULL,
+    banda_brix            INT NULL,
+    banda_firmeza         INT NULL,
+    banda_acidez          INT NULL,
+    banda_calibre         INT NULL,
+    score_total           DECIMAL(5,2) NULL,
+    metodo                VARCHAR(20) NULL,
+    fecha_calculo         DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={umbrales\_calidad}]
+CREATE TABLE umbrales_calidad (
+    id_umbral             INT IDENTITY(1,1) PRIMARY KEY,
+    id_especie            INT NOT NULL
+        CONSTRAINT FK_umbrales_especie FOREIGN KEY
+        REFERENCES especies(id_especie),
+    metrica               VARCHAR(30) NOT NULL,
+    banda                 INT NOT NULL,
+    valor_min             DECIMAL(10,3) NULL,
+    valor_max             DECIMAL(10,3) NULL,
+    peso_ponderacion      DECIMAL(5,2) NULL,
+    activo                BIT DEFAULT 1,
+    fecha_modificacion    DATETIME NULL,
+    CONSTRAINT UQ_umbrales UNIQUE (id_especie, metrica, banda)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={evidencia\_labores}]
+CREATE TABLE evidencia_labores (
+    id_evidencia          INT IDENTITY(1,1) PRIMARY KEY,
+    id_ejecucion          INT NOT NULL
+        CONSTRAINT FK_evidencia_ejecucion FOREIGN KEY
+        REFERENCES ejecucion_labores(id_ejecucion),
+    tipo                  VARCHAR(20) DEFAULT 'foto',
+    descripcion           NVARCHAR(200) NULL,
+    imagen_base64         NVARCHAR(MAX) NULL,
+    url                   NVARCHAR(500) NULL,
+    lat                   FLOAT NULL,
+    lng                   FLOAT NULL,
+    usuario               NVARCHAR(50) NULL,
+    fecha_creacion        DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption={audit\_log}]
+CREATE TABLE audit_log (
+    id_log                INT IDENTITY(1,1) PRIMARY KEY,
+    tabla                 NVARCHAR(100) NULL,
+    registro_id           INT NULL,
+    accion                VARCHAR(20) NULL,
+    datos_anteriores      NVARCHAR(MAX) NULL,
+    datos_nuevos          NVARCHAR(MAX) NULL,
+    usuario               NVARCHAR(50) NULL,
+    ip_address            NVARCHAR(50) NULL,
+    fecha                 DATETIME DEFAULT GETDATE()
+);
+\end{lstlisting}
+
+% =============================================================================
+\chapter{Script Python --- Migraci\'on de Datos}
+% =============================================================================
+
+\section{Configuraci\'on (\texttt{config.py})}
+
+\begin{lstlisting}[style=pythonstyle, caption={config.py --- Connection strings}]
+"""Configuracion de conexiones origen y destino."""
+import os
+
+# ORIGEN: SQL Server Azure (produccion actual)
+SOURCE_CONN = (
+    "DRIVER={ODBC Driver 18 for SQL Server};"
+    "SERVER=tcp:valuedata.database.windows.net,1433;"
+    "DATABASE=valuedatadev_2026-01-29T01-40Z;"
+    f"UID={os.environ['DB_SOURCE_USER']};"
+    f"PWD={os.environ['DB_SOURCE_PASS']};"
+    "Encrypt=yes;TrustServerCertificate=no;"
+    "Connection Timeout=30;"
+)
+
+# DESTINO: SQL Server Azure (adinf)
+DEST_CONN = (
+    "DRIVER={ODBC Driver 18 for SQL Server};"
+    "SERVER=tcp:adinf.database.windows.net,1433;"
+    "DATABASE=adinf;"
+    "UID=administrador;"
+    f"PWD={os.environ['DB_DEST_PASS']};"
+    "Encrypt=yes;TrustServerCertificate=no;"
+    "Connection Timeout=30;"
+)
+
+BATCH_SIZE = 500  # Filas por INSERT batch
+\end{lstlisting}
+
+\begin{dangerbox}
+\textbf{Nunca} hardcodear credenciales en el script. Use variables de entorno o Azure Key Vault. El archivo \texttt{config.py} solo referencia \texttt{os.environ}.
+\end{dangerbox}
+
+\section{Orden de tablas para carga}
+
+\begin{lstlisting}[style=pythonstyle, caption={Orden topol\'ogico de carga}]
+# Orden de carga respetando foreign keys
+MIGRATION_ORDER = [
+    # Nivel 0 - Sin dependencias
+    "paises", "regiones", "campos", "especies",
+    "portainjertos", "pmg", "origenes", "colores",
+    "susceptibilidades", "tipos_labor", "estados_planta",
+    "temporadas", "bodegas", "catalogos", "correlativos",
+    "marcos_plantacion", "reglas_alerta", "roles", "defectos",
+    # Nivel 1 - Dependen de nivel 0
+    "comunas", "cuarteles", "pmg_especies",
+    "portainjerto_especies", "viveros",
+    "estados_fenologicos", "centros_costo",
+    "usuarios", "variedades",
+    # Nivel 2 - Dependen de nivel 0-1
+    "vivero_pmg", "variedad_susceptibilidades",
+    "testblocks", "inventario_vivero",
+    "detalles_labor", "variedades_log",
+    "defectos_variedades",
+    # Nivel 3 - Dependen de nivel 0-2
+    "testblock_hileras", "posiciones_testblock",
+    "plantas", "inventario_testblock",
+    "guias_despacho", "paquete_tecnologico",
+    "bitacora_variedades", "asignaciones_testblock",
+    # Nivel 4 - Dependen de nivel 0-3
+    "movimientos_inventario", "historial_posicion",
+    "mediciones_laboratorio", "ejecucion_labores",
+    "registros_fenologicos", "alertas",
+    # Nivel 5 - Dependen de nivel 0-4
+    "clasificacion_cluster", "umbrales_calidad",
+    "evidencia_labores", "audit_log",
+]
+\end{lstlisting}
+
+\section{Script de migraci\'on (\texttt{migrate.py})}
+
+\begin{lstlisting}[style=pythonstyle, caption={migrate.py --- Orquestador principal}]
+"""Orquestador de migracion SQL Server -> SQL Server."""
+import pyodbc
+import sys
+import time
+from config import SOURCE_CONN, DEST_CONN, BATCH_SIZE
+from config import MIGRATION_ORDER
+
+# Mapa tabla -> PK para IDENTITY_INSERT
+TABLE_PK = {
+    "paises": "id_pais", "regiones": "id_region",
+    "comunas": "id_comuna", "campos": "id_campo",
+    "cuarteles": "id_cuartel", "especies": "id_especie",
+    "portainjertos": "id_portainjerto", "pmg": "id_pmg",
+    "pmg_especies": "id_pmg_especie",
+    "portainjerto_especies": "id_pe",
+    "vivero_pmg": "id_vp", "origenes": "id_origen",
+    "viveros": "id_vivero", "colores": "id_color",
+    "susceptibilidades": "id_suscept",
+    "variedades": "id_variedad",
+    "variedad_susceptibilidades": "id_vs",
+    "tipos_labor": "id_labor",
+    "estados_fenologicos": "id_estado",
+    "estados_planta": "id_estado",
+    "temporadas": "id_temporada",
+    "bodegas": "id_bodega",
+    "catalogos": "id", "correlativos": "id",
+    "centros_costo": "id", "marcos_plantacion": "id",
+    "testblocks": "id_testblock",
+    "testblock_hileras": "id_hilera",
+    "inventario_vivero": "id_inventario",
+    "movimientos_inventario": "id_movimiento",
+    "posiciones_testblock": "id_posicion",
+    "plantas": "id_planta",
+    "inventario_testblock": "id_inventario_tb",
+    "guias_despacho": "id_guia",
+    "historial_posicion": "id_historial",
+    "mediciones_laboratorio": "id_medicion",
+    "clasificacion_cluster": "id_clasificacion",
+    "umbrales_calidad": "id_umbral",
+    "registros_fenologicos": "id_registro",
+    "detalles_labor": "id_detalle",
+    "ejecucion_labores": "id_ejecucion",
+    "paquete_tecnologico": "id_paquete",
+    "alertas": "id_alerta",
+    "reglas_alerta": "id_regla",
+    "bitacora_variedades": "id_entrada",
+    "usuarios": "id_usuario",
+    "roles": "id_rol",
+    "audit_log": "id_log",
+    "evidencia_labores": "id_evidencia",
+    "variedades_log": "id_log",
+    "defectos": "id", "defectos_variedades": "id",
+    "asignaciones_testblock": "id_asignacion",
+}
+
+
+def get_columns(cursor, table_name):
+    """Obtiene lista de columnas de una tabla."""
+    cursor.execute(f"""
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = ?
+        ORDER BY ORDINAL_POSITION
+    """, table_name)
+    return [row.COLUMN_NAME for row in cursor.fetchall()]
+
+
+def migrate_table(src_conn, dst_conn, table):
+    """Migra una tabla completa con IDENTITY_INSERT."""
+    src_cur = src_conn.cursor()
+    dst_cur = dst_conn.cursor()
+
+    # Obtener columnas del origen
+    columns = get_columns(src_cur, table)
+    col_list = ", ".join(f"[{c}]" for c in columns)
+    placeholders = ", ".join("?" for _ in columns)
+
+    # Contar registros en origen
+    src_cur.execute(f"SELECT COUNT(*) FROM [{table}]")
+    total = src_cur.fetchone()[0]
+
+    if total == 0:
+        print(f"  [{table}] 0 registros - saltando")
+        return 0
+
+    # Activar IDENTITY_INSERT en destino
+    dst_cur.execute(
+        f"SET IDENTITY_INSERT [{table}] ON"
+    )
+
+    # Leer y escribir en batches
+    src_cur.execute(
+        f"SELECT {col_list} FROM [{table}]"
+    )
+    migrated = 0
+    batch = []
+
+    for row in src_cur:
+        batch.append(tuple(row))
+        if len(batch) >= BATCH_SIZE:
+            dst_cur.executemany(
+                f"INSERT INTO [{table}] ({col_list}) "
+                f"VALUES ({placeholders})",
+                batch
+            )
+            migrated += len(batch)
+            batch = []
+            print(f"  [{table}] {migrated}/{total}", end="\r")
+
+    # Ultimo batch
+    if batch:
+        dst_cur.executemany(
+            f"INSERT INTO [{table}] ({col_list}) "
+            f"VALUES ({placeholders})",
+            batch
+        )
+        migrated += len(batch)
+
+    # Desactivar IDENTITY_INSERT
+    dst_cur.execute(
+        f"SET IDENTITY_INSERT [{table}] OFF"
+    )
+    dst_conn.commit()
+
+    print(f"  [{table}] {migrated}/{total} OK")
+    return migrated
+
+
+def main():
+    print("=" * 60)
+    print("MIGRACION SQL Server -> SQL Server")
+    print("Garces Fruit - Segmentacion Nuevas Especies")
+    print("=" * 60)
+
+    src = pyodbc.connect(SOURCE_CONN)
+    dst = pyodbc.connect(DEST_CONN)
+    dst.autocommit = False
+
+    results = {}
+    errors = []
+    t0 = time.time()
+
+    for table in MIGRATION_ORDER:
+        try:
+            count = migrate_table(src, dst, table)
+            results[table] = count
+        except Exception as e:
+            print(f"  [ERROR] {table}: {e}")
+            errors.append((table, str(e)))
+            dst.rollback()
+
+    elapsed = time.time() - t0
+
+    # Resumen
+    print("\n" + "=" * 60)
+    print("RESUMEN DE MIGRACION")
+    print("=" * 60)
+    total_rows = sum(results.values())
+    print(f"Tablas migradas: {len(results)}/{len(MIGRATION_ORDER)}")
+    print(f"Total registros: {total_rows:,}")
+    print(f"Tiempo: {elapsed:.1f}s")
+
+    if errors:
+        print(f"\nERRORES ({len(errors)}):")
+        for t, e in errors:
+            print(f"  - {t}: {e}")
+        sys.exit(1)
+
+    src.close()
+    dst.close()
+    print("\nMigracion completada exitosamente.")
+
+
+if __name__ == "__main__":
+    main()
+\end{lstlisting}
+
+\section{Script de validaci\'on (\texttt{validate.py})}
+
+\begin{lstlisting}[style=pythonstyle, caption={validate.py --- Validaci\'on post-migraci\'on}]
+"""Validacion post-migracion: conteos y checksums."""
+import pyodbc
+from config import SOURCE_CONN, DEST_CONN, MIGRATION_ORDER
+
+def validate():
+    src = pyodbc.connect(SOURCE_CONN)
+    dst = pyodbc.connect(DEST_CONN)
+    src_cur = src.cursor()
+    dst_cur = dst.cursor()
+
+    print(f"{'Tabla':<35} {'Origen':>8} {'Destino':>8} {'Estado'}")
+    print("-" * 65)
+
+    all_ok = True
+    for table in MIGRATION_ORDER:
+        src_cur.execute(f"SELECT COUNT(*) FROM [{table}]")
+        src_count = src_cur.fetchone()[0]
+
+        dst_cur.execute(f"SELECT COUNT(*) FROM [{table}]")
+        dst_count = dst_cur.fetchone()[0]
+
+        ok = src_count == dst_count
+        status = "OK" if ok else "FALLO"
+        if not ok:
+            all_ok = False
+
+        print(f"{table:<35} {src_count:>8} {dst_count:>8} {status}")
+
+    print("-" * 65)
+    if all_ok:
+        print("VALIDACION EXITOSA - Todos los conteos coinciden")
+    else:
+        print("VALIDACION FALLIDA - Revisar tablas con diferencias")
+
+    src.close()
+    dst.close()
+    return all_ok
+
+if __name__ == "__main__":
+    validate()
+\end{lstlisting}
+
+% =============================================================================
+\chapter{Procedimiento Paso a Paso}
+% =============================================================================
+
+\section{Fase 1 --- Preparaci\'on (D\'ia -1)}
+
+\begin{enumerate}
+    \item \textbf{Confirmar ventana de mantenimiento} con el equipo de operaciones
+    \item \textbf{Crear la base de datos destino} (vac\'ia) en el nuevo servidor:
+\begin{lstlisting}[style=sqlstyle]
+-- BD 'adinf' ya existe en adinf.database.windows.net
+-- Verificar que este vacia antes de ejecutar DDL
+SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE = 'BASE TABLE';
+\end{lstlisting}
+    \item \textbf{Instalar dependencias} en la m\'aquina de migraci\'on:
+\begin{lstlisting}[style=bashstyle]
+pip install pyodbc
+\end{lstlisting}
+    \item \textbf{Configurar variables de entorno}:
+\begin{lstlisting}[style=bashstyle]
+export DB_SOURCE_USER="usuario_origen"
+export DB_SOURCE_PASS="clave_origen"
+# Destino ya configurado en config.py (adinf.database.windows.net)
+# Solo se necesita la password como variable de entorno
+export DB_DEST_PASS="clave_administrador_adinf"
+\end{lstlisting}
+    \item \textbf{Verificar conectividad} a ambos servidores:
+\begin{lstlisting}[style=pythonstyle]
+import pyodbc
+from config import SOURCE_CONN, DEST_CONN
+
+# Test origen
+src = pyodbc.connect(SOURCE_CONN)
+print("Origen OK:", src.getinfo(pyodbc.SQL_SERVER_NAME))
+src.close()
+
+# Test destino
+dst = pyodbc.connect(DEST_CONN)
+print("Destino OK:", dst.getinfo(pyodbc.SQL_SERVER_NAME))
+dst.close()
+\end{lstlisting}
+    \item \textbf{Tomar backup} del origen (por seguridad):
+\begin{lstlisting}[style=sqlstyle]
+-- En Azure: Export via Azure Portal o
+-- BACPAC export desde SSMS
+\end{lstlisting}
+\end{enumerate}
+
+\section{Fase 2 --- Crear estructura (D\'ia 0, hora 0)}
+
+\begin{enumerate}
+    \item \textbf{Detener la aplicaci\'on} (frontend y backend) o ponerla en modo solo lectura
+    \item \textbf{Ejecutar DDL} en la BD destino:
+\begin{lstlisting}[style=bashstyle]
+# Opcion A: via sqlcmd
+sqlcmd -S tcp:adinf.database.windows.net,1433 \
+    -d adinf -U administrador -P $DB_DEST_PASS \
+    -i 001_create_tables.sql
+
+# Opcion B: via SSMS
+# Abrir 001_create_tables.sql y ejecutar (F5)
+\end{lstlisting}
+    \item \textbf{Verificar} que se crearon las 52 tablas:
+\begin{lstlisting}[style=sqlstyle]
+SELECT COUNT(*) AS total_tablas
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE = 'BASE TABLE';
+-- Resultado esperado: 52
+\end{lstlisting}
+\end{enumerate}
+
+\begin{successbox}
+Verificar que el resultado sea exactamente \textbf{52 tablas}. Si es menor, revisar el log de ejecuci\'on del DDL para identificar errores de sintaxis o dependencias faltantes.
+\end{successbox}
+
+\section{Fase 3 --- Migrar datos (D\'ia 0, hora 0+15min)}
+
+\begin{enumerate}
+    \item \textbf{Ejecutar el script de migraci\'on}:
+\begin{lstlisting}[style=bashstyle]
+cd backend/scripts/migration/
+python migrate.py
+\end{lstlisting}
+    \item \textbf{Monitorear la salida} --- cada tabla muestra progreso:
+\begin{lstlisting}[style=bashstyle]
+============================================================
+MIGRACION SQL Server -> SQL Server
+Garces Fruit - Segmentacion Nuevas Especies
+============================================================
+  [paises] 5/5 OK
+  [regiones] 16/16 OK
+  [campos] 3/3 OK
+  [especies] 7/7 OK
+  ...
+  [plantas] 2291/2291 OK
+  [mediciones_laboratorio] 4500/4500 OK
+  ...
+
+============================================================
+RESUMEN DE MIGRACION
+============================================================
+Tablas migradas: 52/52
+Total registros: 15,234
+Tiempo: 45.3s
+
+Migracion completada exitosamente.
+\end{lstlisting}
+    \item Si hay errores, el script muestra qu\'e tabla fall\'o y por qu\'e. \textbf{No continuar} al paso siguiente hasta resolver todos los errores.
+\end{enumerate}
+
+\begin{warningbox}
+El script usa \texttt{SET IDENTITY\_INSERT ON/OFF} para preservar los IDs originales. Esto es \textbf{cr\'itico} para mantener la integridad de las foreign keys. No insertar datos manualmente sin activar esta opci\'on.
+\end{warningbox}
+
+\section{Fase 4 --- Validaci\'on (D\'ia 0, hora 0+30min)}
+
+\begin{enumerate}
+    \item \textbf{Ejecutar validaci\'on autom\'atica}:
+\begin{lstlisting}[style=bashstyle]
+python validate.py
+\end{lstlisting}
+    \item \textbf{Resultado esperado}:
+\begin{lstlisting}[style=bashstyle]
+Tabla                               Origen  Destino Estado
+-----------------------------------------------------------------
+paises                                   5        5 OK
+regiones                                16       16 OK
+campos                                   3        3 OK
+...
+plantas                               2291     2291 OK
+mediciones_laboratorio                4500     4500 OK
+...
+-----------------------------------------------------------------
+VALIDACION EXITOSA - Todos los conteos coinciden
+\end{lstlisting}
+    \item \textbf{Validaciones manuales adicionales}:
+\begin{lstlisting}[style=sqlstyle]
+-- Verificar integridad referencial
+SELECT 'plantas sin posicion valida' AS check_name,
+    COUNT(*) AS errores
+FROM plantas p
+LEFT JOIN posiciones_testblock pt
+    ON p.id_posicion = pt.id_posicion
+WHERE p.id_posicion IS NOT NULL
+    AND pt.id_posicion IS NULL
+
+UNION ALL
+
+SELECT 'mediciones sin planta valida',
+    COUNT(*)
+FROM mediciones_laboratorio m
+LEFT JOIN plantas p ON m.id_planta = p.id_planta
+WHERE m.id_planta IS NOT NULL
+    AND p.id_planta IS NULL
+
+UNION ALL
+
+SELECT 'variedades sin especie valida',
+    COUNT(*)
+FROM variedades v
+LEFT JOIN especies e ON v.id_especie = e.id_especie
+WHERE e.id_especie IS NULL;
+-- Resultado esperado: 0 errores en cada fila
+\end{lstlisting}
+    \item \textbf{Reseed IDENTITY} para que nuevos INSERTs usen el ID correcto:
+\begin{lstlisting}[style=sqlstyle]
+-- Para cada tabla, resetear el IDENTITY al maximo ID existente
+DECLARE @max_id INT;
+
+SELECT @max_id = ISNULL(MAX(id_planta), 0)
+FROM plantas;
+DBCC CHECKIDENT('plantas', RESEED, @max_id);
+
+-- Repetir para cada tabla (o automatizar con cursor)
+\end{lstlisting}
+\end{enumerate}
+
+\begin{successbox}
+La migraci\'on es exitosa cuando:
+\begin{itemize}[noitemsep]
+    \item \texttt{validate.py} reporta \textbf{todos OK}
+    \item Las queries de integridad referencial retornan \textbf{0 errores}
+    \item Los IDENTITY seeds est\'an correctamente posicionados
+\end{itemize}
+\end{successbox}
+
+\section{Fase 5 --- Cutover (D\'ia 0, hora 0+45min)}
+
+\begin{enumerate}
+    \item \textbf{Actualizar connection string} en el backend (\texttt{.env} o Azure App Configuration):
+\begin{lstlisting}[style=bashstyle]
+DATABASE_URL="mssql+pyodbc://administrador:$DB_DEST_PASS
+@tcp:adinf.database.windows.net,1433/adinf
+?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes"
+\end{lstlisting}
+    \item \textbf{Reiniciar el backend} para que tome la nueva conexi\'on
+    \item \textbf{Verificar funcionalidad b\'asica}:
+    \begin{itemize}[noitemsep]
+        \item Login de usuario admin
+        \item Listar testblocks
+        \item Ver detalle de una planta con mediciones
+        \item Crear un registro de prueba (ej: medici\'on de laboratorio)
+    \end{itemize}
+    \item \textbf{Monitorear logs} del backend por 15 minutos buscando errores de conexi\'on o integridad
+\end{enumerate}
+
+\section{Fase 6 --- Rollback (solo si falla)}
+
+Si la validaci\'on o el cutover fallan:
+
+\begin{enumerate}
+    \item \textbf{Revertir connection string} al origen
+    \item \textbf{Reiniciar backend} apuntando a la BD original
+    \item \textbf{Documentar} el error encontrado
+    \item \textbf{No borrar} la BD destino --- se usa para diagn\'ostico
+    \item \textbf{Programar} nueva ventana de migraci\'on con el fix aplicado
+\end{enumerate}
+
+% =============================================================================
+\chapter{Consideraciones Especiales}
+% =============================================================================
+
+\section{Columnas VARBINARY (im\'agenes)}
+
+Las tablas \texttt{portainjertos}, \texttt{variedades} y \texttt{defectos} contienen columnas \texttt{VARBINARY(MAX)} con im\'agenes codificadas. El script \texttt{migrate.py} las maneja nativamente como bytes de Python, sin necesidad de conversi\'on.
+
+\begin{warningbox}
+Las im\'agenes pueden ser grandes (varios MB). Si la migraci\'on es lenta en estas tablas, considere aumentar el \texttt{Connection Timeout} en \texttt{config.py} y reducir \texttt{BATCH\_SIZE} a 50.
+\end{warningbox}
+
+\section{Tabla \texttt{usuarios} y hashes bcrypt}
+
+Los hashes bcrypt en \texttt{password\_hash} se migran tal cual --- son strings de 64 caracteres. Los usuarios podr\'an hacer login con sus mismas credenciales en el destino sin necesidad de resetear contrase\~nas.
+
+\section{Tabla \texttt{audit\_log}}
+
+Se migra el hist\'orico completo. Considere si desea:
+\begin{itemize}[noitemsep]
+    \item Migrar todo (recomendado para trazabilidad)
+    \item Migrar solo los \'ultimos N meses
+    \item Archivar en tabla separada (\texttt{audit\_log\_historico})
+\end{itemize}
+
+\section{Collation}
+
+El origen usa \texttt{SQL\_Latin1\_General\_CP1\_CI\_AS}. Aseg\'urese de que el destino tenga la \textbf{misma collation} para evitar problemas con acentos, e\~nes y comparaciones de texto:
+
+\begin{lstlisting}[style=sqlstyle]
+-- Verificar collation del destino
+SELECT DATABASEPROPERTYEX(DB_NAME(), 'Collation');
+-- Debe retornar: SQL_Latin1_General_CP1_CI_AS
+\end{lstlisting}
+
+\section{Reseed autom\'atico de IDENTITY}
+
+Despu\'es de cargar datos con \texttt{IDENTITY\_INSERT ON}, el seed del IDENTITY no se actualiza autom\'aticamente. Se debe ejecutar \texttt{DBCC CHECKIDENT} para cada tabla. El siguiente script lo automatiza:
+
+\begin{lstlisting}[style=sqlstyle, caption={Reseed autom\'atico de todas las tablas}]
+DECLARE @sql NVARCHAR(MAX) = '';
+
+SELECT @sql = @sql +
+    'DECLARE @max_' + TABLE_NAME + ' INT; ' +
+    'SELECT @max_' + TABLE_NAME +
+    ' = ISNULL(MAX(' +
+    COLUMN_NAME + '), 0) FROM [' +
+    TABLE_NAME + ']; ' +
+    'DBCC CHECKIDENT(''' + TABLE_NAME +
+    ''', RESEED, @max_' + TABLE_NAME + '); '
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE COLUMNPROPERTY(
+    OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME),
+    COLUMN_NAME, 'IsIdentity') = 1;
+
+EXEC sp_executesql @sql;
+PRINT 'IDENTITY reseed completado para todas las tablas.';
+\end{lstlisting}
+
+% =============================================================================
+\chapter{Checklist de Migraci\'on}
+% =============================================================================
+
+\begin{table}[H]
+\centering
+\caption{Checklist completo de migraci\'on}
+\begin{tabularx}{\textwidth}{clX}
+\toprule
+\textbf{Paso} & \textbf{Check} & \textbf{Descripci\'on} \\
+\midrule
+\multicolumn{3}{l}{\textbf{Preparaci\'on}} \\
+1  & $\square$ & Ventana de mantenimiento confirmada \\
+2  & $\square$ & BD destino creada con collation correcta \\
+3  & $\square$ & Python + pyodbc instalados \\
+4  & $\square$ & Variables de entorno configuradas \\
+5  & $\square$ & Conectividad verificada a ambos servidores \\
+6  & $\square$ & Backup del origen realizado \\
+\midrule
+\multicolumn{3}{l}{\textbf{Ejecuci\'on}} \\
+7  & $\square$ & Aplicaci\'on detenida / modo solo lectura \\
+8  & $\square$ & DDL ejecutado --- 52 tablas creadas \\
+9  & $\square$ & \texttt{migrate.py} ejecutado sin errores \\
+10 & $\square$ & \texttt{validate.py} reporta todos OK \\
+11 & $\square$ & Queries de integridad referencial OK \\
+12 & $\square$ & IDENTITY reseed ejecutado \\
+\midrule
+\multicolumn{3}{l}{\textbf{Cutover}} \\
+13 & $\square$ & Connection string actualizado al destino \\
+14 & $\square$ & Backend reiniciado \\
+15 & $\square$ & Login de admin funciona \\
+16 & $\square$ & CRUD b\'asico verificado \\
+17 & $\square$ & Monitoreo de logs OK por 15 min \\
+\midrule
+\multicolumn{3}{l}{\textbf{Post-migraci\'on}} \\
+18 & $\square$ & Documentar resultado final \\
+19 & $\square$ & Notificar al equipo \\
+20 & $\square$ & Archivar scripts y logs de migraci\'on \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% =============================================================================
+\chapter{Ap\'endice A --- Variables de Entorno}
+% =============================================================================
+
+\begin{table}[H]
+\centering
+\caption{Variables de entorno requeridas}
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Variable} & \textbf{Descripci\'on} \\
+\midrule
+\texttt{DB\_SOURCE\_USER} & Usuario con permisos de lectura en BD origen (valuedata) \\
+\texttt{DB\_SOURCE\_PASS} & Contrase\~na del usuario origen \\
+\texttt{DB\_DEST\_PASS} & Contrase\~na del usuario \texttt{administrador} en BD destino (adinf) \\
+\bottomrule
+\end{tabularx}
+
+\begin{infobox}
+El servidor destino (\texttt{adinf.database.windows.net}), la base de datos (\texttt{adinf}) y el usuario (\texttt{administrador}) est\'an fijos en \texttt{config.py}. Solo la contrase\~na se parametriza como variable de entorno por seguridad.
+\end{infobox}
+\end{table}
+
+% =============================================================================
+\chapter{Ap\'endice B --- Troubleshooting}
+% =============================================================================
+
+\section{Errores comunes}
+
+\begin{longtable}{p{5cm}p{9cm}}
+\caption{Errores frecuentes y soluci\'on} \\
+\toprule
+\textbf{Error} & \textbf{Soluci\'on} \\
+\midrule
+\endfirsthead
+\endhead
+\texttt{IDENTITY\_INSERT is already ON for table X} &
+Solo una tabla puede tener IDENTITY\_INSERT ON a la vez. Si el script anterior fall\'o, ejecutar \texttt{SET IDENTITY\_INSERT [X] OFF} manualmente. \\
+\addlinespace
+\texttt{Cannot insert duplicate key} &
+La tabla destino ya tiene datos. Limpiar con \texttt{DELETE FROM [tabla]} antes de reintentar, o usar \texttt{TRUNCATE TABLE [tabla]} si no tiene FKs. \\
+\addlinespace
+\texttt{Foreign key constraint violation} &
+Las tablas se est\'an cargando en orden incorrecto. Verificar que \texttt{MIGRATION\_ORDER} respeta las dependencias. \\
+\addlinespace
+\texttt{Login timeout expired} &
+Verificar firewall rules en Azure. Agregar la IP de la m\'aquina de migraci\'on en ``Networking'' del SQL Server. \\
+\addlinespace
+\texttt{String data right truncation} &
+Una columna en el destino tiene tama\~no menor al dato. Comparar DDL origen vs destino para esa columna espec\'ifica. \\
+\addlinespace
+\texttt{pyodbc.InterfaceError: ODBC Driver not found} &
+Instalar ODBC Driver 18: \texttt{apt-get install msodbcsql18} (Linux) o descargarlo de Microsoft (Windows). \\
+\bottomrule
+\end{longtable}
+
+\section{C\'omo reintentar una tabla espec\'ifica}
+
+Si una tabla falla, puede migrarla individualmente:
+
+\begin{lstlisting}[style=pythonstyle]
+import pyodbc
+from config import SOURCE_CONN, DEST_CONN
+from migrate import migrate_table
+
+src = pyodbc.connect(SOURCE_CONN)
+dst = pyodbc.connect(DEST_CONN)
+dst.autocommit = False
+
+# Limpiar tabla destino primero
+dst.cursor().execute("DELETE FROM [nombre_tabla]")
+dst.commit()
+
+# Reintentar migracion
+migrate_table(src, dst, "nombre_tabla")
+
+src.close()
+dst.close()
+\end{lstlisting}
+
+% =============================================================================
+\chapter{Ap\'endice C --- Historial de Versiones}
+% =============================================================================
+
+\begin{table}[H]
+\centering
+\caption{Historial de versiones del documento}
+\begin{tabular}{llll}
+\toprule
+\textbf{Versi\'on} & \textbf{Fecha} & \textbf{Autor} & \textbf{Cambios} \\
+\midrule
+1.0 & 2026-04-10 & Equipo T\'ecnico & Versi\'on inicial \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}

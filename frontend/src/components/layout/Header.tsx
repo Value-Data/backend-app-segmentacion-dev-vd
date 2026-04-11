@@ -129,7 +129,7 @@ export function Header() {
     queryKey: ["health"],
     queryFn: () => get<{ status: string }>("/health"),
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: 120_000,
     retry: 0,
     enabled: !!token,
   });

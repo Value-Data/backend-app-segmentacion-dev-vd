@@ -565,6 +565,28 @@ def labores_dashboard(
 
 
 # ---------------------------------------------------------------------------
+# Count (lightweight badge endpoint)
+# ---------------------------------------------------------------------------
+
+@router.get("/count")
+def labores_count(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Lightweight count for sidebar badges — avoids loading all records."""
+    from sqlalchemy import func
+    total = db.query(func.count(EjecucionLabor.id_ejecucion)).scalar()
+    pendientes = db.query(func.count(EjecucionLabor.id_ejecucion)).filter(
+        EjecucionLabor.estado == "planificada"
+    ).scalar()
+    atrasadas = db.query(func.count(EjecucionLabor.id_ejecucion)).filter(
+        EjecucionLabor.estado == "planificada",
+        EjecucionLabor.fecha_programada < date.today(),
+    ).scalar()
+    return {"total": total, "pendientes": pendientes, "atrasadas": atrasadas or 0}
+
+
+# ---------------------------------------------------------------------------
 # Planificacion
 # ---------------------------------------------------------------------------
 

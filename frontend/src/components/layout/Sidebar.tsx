@@ -64,7 +64,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
   {
     items: [
       { to: "/alertas", label: "Alertas", icon: Bell, badgeKey: "alertas" },
-      { to: "/analisis", label: "Analisis", icon: BarChart3 },
+      { to: "/analisis", label: "Analisis General", icon: BarChart3 },
     ],
   },
   {
@@ -122,14 +122,14 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     staleTime: 60_000,
     enabled: !!token,
   });
-  const { data: labores } = useQuery({
-    queryKey: ["labores", "planificacion", "sidebar"],
-    queryFn: () => laboresService.planificacion(),
+  const { data: laboresCount } = useQuery({
+    queryKey: ["labores", "count", "sidebar"],
+    queryFn: () => laboresService.count(),
     staleTime: 60_000,
     enabled: !!token,
   });
   const alertCount = alertas?.length ?? 0;
-  const laboresAtrasadas = labores?.filter((l: { estado: string }) => l.estado === "atrasada").length ?? 0;
+  const laboresAtrasadas = laboresCount?.atrasadas ?? 0;
 
   const badgeCounts: Record<string, number> = {
     alertas: alertCount,

@@ -6,7 +6,7 @@ from datetime import date
 
 
 class InventarioCreate(BaseModel):
-    codigo_lote: str
+    codigo_lote: Optional[str] = None
     id_variedad: Optional[int] = None
     id_portainjerto: Optional[int] = None
     id_vivero: Optional[int] = None

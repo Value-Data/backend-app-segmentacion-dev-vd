@@ -1,9 +1,16 @@
 """Schemas for laboratorio (mediciones, fenologia, labores)."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from datetime import date
 from decimal import Decimal
+
+
+def _validate_range(v, lo: float, hi: float, field_name: str):
+    """Validate that an optional Decimal value is within [lo, hi]."""
+    if v is not None and (float(v) < lo or float(v) > hi):
+        raise ValueError(f"{field_name} debe estar entre {lo} y {hi}")
+    return v
 
 
 class MedicionCreate(BaseModel):
@@ -68,6 +75,28 @@ class MedicionCreate(BaseModel):
     id_variedad: Optional[int] = None
     id_especie: Optional[int] = None
     id_portainjerto: Optional[int] = None
+
+    # ── Scientific measurement validators ──────────────────────────────────
+    @field_validator("brix")
+    @classmethod
+    def validate_brix(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        return _validate_range(v, 0, 50, "Brix")
+
+    @field_validator("firmeza", "firmeza_punta", "firmeza_quilla", "firmeza_hombro",
+                     "firmeza_mejilla_1", "firmeza_mejilla_2")
+    @classmethod
+    def validate_firmeza(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        return _validate_range(v, 0, 100, "Firmeza")
+
+    @field_validator("acidez")
+    @classmethod
+    def validate_acidez(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        return _validate_range(v, 0, 10, "Acidez")
+
+    @field_validator("peso")
+    @classmethod
+    def validate_peso(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        return _validate_range(v, 0, 1000, "Peso")
 
 
 class MedicionBatchRequest(BaseModel):
