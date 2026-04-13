@@ -25,6 +25,8 @@ class TestBlock(SQLModel, table=True):
     fecha_creacion_tb: Optional[date] = Field(default=None)
     temporada_inicio: Optional[str] = Field(default=None, sa_column=Column(sa.String(10)))
     notas: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(None)))
+    poligono_coords: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(None)))
+    zoom_nivel: Optional[int] = Field(default=None)
     activo: bool = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
     fecha_modificacion: Optional[datetime] = Field(default=None)

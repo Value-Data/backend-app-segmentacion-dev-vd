@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from starlette.middleware.base import BaseHTTPMiddleware
 import json
 
 from app.core.config import get_settings
@@ -46,6 +47,8 @@ from app.routes.reportes import router as reportes_router
 from app.routes.seed import router as seed_router
 from app.routes.seed_geo import router as seed_geo_router
 from app.routes.relaciones import router as relaciones_router
+from app.routes.variedades_extra import router as variedades_extra_router
+from app.routes.testblock_grupo import router as testblock_grupo_router
 
 settings = get_settings()
 
@@ -87,6 +90,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Security headers (CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob: https://server.arcgisonline.com https://*.tile.openstreetmap.org; "
+            "connect-src 'self'"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# GZip compression for responses >= 1KB
+from starlette.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # Mount all routers under /api/v1
 API_PREFIX = "/api/v1"
 
@@ -106,6 +132,8 @@ app.include_router(reportes_router, prefix=API_PREFIX)
 app.include_router(seed_router, prefix=API_PREFIX)
 app.include_router(seed_geo_router, prefix=API_PREFIX)
 app.include_router(relaciones_router, prefix=API_PREFIX)
+app.include_router(variedades_extra_router, prefix=API_PREFIX)
+app.include_router(testblock_grupo_router, prefix=API_PREFIX)
 
 
 # ---------------------------------------------------------------------------

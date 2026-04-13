@@ -51,7 +51,7 @@ TABLE_PK_MAP: dict[str, str] = {
     "bitacora_variedades": "id_entrada",
     "usuarios": "id_usuario",
     "roles": "id_rol",
-    "audit_log": "id_log",
+    "audit_log": "id",
     "evidencia_labores": "id_evidencia",
     "variedades_log": "id_log",
     "defectos": "id",

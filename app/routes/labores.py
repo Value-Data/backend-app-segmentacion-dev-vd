@@ -1,9 +1,12 @@
 """Labores routes: planificacion, ejecucion, ordenes de trabajo, dashboard, evidencias, QR, fenologia."""
 
 import json
+import random
 from datetime import date, timedelta
 from io import BytesIO
 
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -322,6 +325,20 @@ def delete_detalle_labor(
 # Seed estados fenologicos
 # ---------------------------------------------------------------------------
 
+_MES_MAP = {
+    "Ene": 1, "Feb": 2, "Mar": 3, "Abr": 4, "May": 5, "Jun": 6,
+    "Jul": 7, "Ago": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dic": 12,
+}
+
+def _parse_mes_range(mes_orientativo: str | None) -> tuple[int | None, int | None]:
+    """Parse 'Jul-Sep' -> (7, 9), 'Oct' -> (10, 10), None -> (None, None)."""
+    if not mes_orientativo:
+        return None, None
+    parts = [p.strip() for p in mes_orientativo.replace("/", "-").split("-")]
+    m_ini = _MES_MAP.get(parts[0])
+    m_fin = _MES_MAP.get(parts[-1]) if len(parts) > 1 else m_ini
+    return m_ini, m_fin
+
 SEED_ESTADOS_FENOLOGICOS: dict[str, list[dict]] = {
     # Rangos ampliados: variedades tempranas pueden diferir 1-2 meses de las tardias
     "Cerezo": [
@@ -426,7 +443,7 @@ def seed_estados_fenologicos(
         )
 
         if existing:
-            # Update existing records: fill in missing fields (mes_orientativo, color_hex, activo)
+            # Update existing records: fill in missing fields (mes_orientativo, color_hex, activo, mes_inicio, mes_fin)
             existing_by_orden = {e.orden: e for e in existing}
             for seed_item in estados:
                 ef = existing_by_orden.get(seed_item["orden"])
@@ -437,12 +454,23 @@ def seed_estados_fenologicos(
                         ef.mes_orientativo = seed_item.get("mes_orientativo")
                     if getattr(ef, "activo", None) is None:
                         ef.activo = True
+                    # Fill mes_inicio / mes_fin from mes_orientativo if not set
+                    if not getattr(ef, "mes_inicio", None):
+                        m_ini, m_fin = _parse_mes_range(ef.mes_orientativo or seed_item.get("mes_orientativo"))
+                        ef.mes_inicio = m_ini
+                        ef.mes_fin = m_fin
                     db.add(ef)
                     updated += 1
         else:
             # Insert new records for this species
             for estado in estados:
-                ef = EstadoFenologico(id_especie=especie.id_especie, **estado)
+                m_ini, m_fin = _parse_mes_range(estado.get("mes_orientativo"))
+                ef = EstadoFenologico(
+                    id_especie=especie.id_especie,
+                    mes_inicio=m_ini,
+                    mes_fin=m_fin,
+                    **estado,
+                )
                 db.add(ef)
                 created += 1
 
@@ -534,6 +562,28 @@ def labores_dashboard(
         "por_mes": dict(sorted(por_mes.items())),
         "pct_cumplimiento": round(len(ejecutadas) / max(len(all_labores), 1) * 100, 1),
     }
+
+
+# ---------------------------------------------------------------------------
+# Count (lightweight badge endpoint)
+# ---------------------------------------------------------------------------
+
+@router.get("/count")
+def labores_count(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Lightweight count for sidebar badges — avoids loading all records."""
+    from sqlalchemy import func
+    total = db.query(func.count(EjecucionLabor.id_ejecucion)).scalar()
+    pendientes = db.query(func.count(EjecucionLabor.id_ejecucion)).filter(
+        EjecucionLabor.estado == "planificada"
+    ).scalar()
+    atrasadas = db.query(func.count(EjecucionLabor.id_ejecucion)).filter(
+        EjecucionLabor.estado == "planificada",
+        EjecucionLabor.fecha_programada < date.today(),
+    ).scalar()
+    return {"total": total, "pendientes": pendientes, "atrasadas": atrasadas or 0}
 
 
 # ---------------------------------------------------------------------------
@@ -789,7 +839,7 @@ def add_evidencia(
 def registrar_fenologico(
     data: dict,
     db: Session = Depends(get_db),
-    user: Usuario = Depends(require_role("admin", "agronomo")),
+    user: Usuario = Depends(require_role("admin", "agronomo", "laboratorio", "operador")),
 ):
     """Register fenological observation for one or more positions.
 
@@ -918,6 +968,395 @@ def historial_fenologico(
         results.append(item)
 
     return results
+
+
+@router.get("/fenologia-comparativa")
+def fenologia_comparativa(
+    temporada_actual: str = Query(..., description="Ej: 2025-2026"),
+    temporada_anterior: str = Query(..., description="Ej: 2024-2025"),
+    id_especie: int | None = Query(None),
+    id_variedad: int | None = Query(None),
+    id_testblock: int | None = Query(None),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Compare fenological records between two seasons.
+
+    Returns per-estado: { estado, fecha_actual, fecha_anterior, diferencia_dias }
+    grouped by variedad, so the user can see how each variety is tracking vs last year.
+    """
+    from sqlalchemy import func, case, and_
+
+    # Base query: registros joined with posiciones and estados
+    q_base = (
+        db.query(
+            RegistroFenologico.id_estado_fenol,
+            RegistroFenologico.temporada,
+            func.min(RegistroFenologico.fecha_registro).label("primera_fecha"),
+            PosicionTestBlock.id_variedad,
+        )
+        .join(PosicionTestBlock, PosicionTestBlock.id_posicion == RegistroFenologico.id_posicion)
+        .filter(
+            RegistroFenologico.temporada.in_([temporada_actual, temporada_anterior]),
+            PosicionTestBlock.id_variedad.isnot(None),
+        )
+    )
+
+    if id_testblock:
+        q_base = q_base.filter(PosicionTestBlock.id_testblock == id_testblock)
+    if id_variedad:
+        q_base = q_base.filter(PosicionTestBlock.id_variedad == id_variedad)
+    if id_especie:
+        from app.models.variedades import Variedad
+        var_ids = [v.id_variedad for v in db.query(Variedad.id_variedad).filter(Variedad.id_especie == id_especie).all()]
+        if var_ids:
+            q_base = q_base.filter(PosicionTestBlock.id_variedad.in_(var_ids))
+        else:
+            return []
+
+    rows = (
+        q_base
+        .group_by(RegistroFenologico.id_estado_fenol, RegistroFenologico.temporada, PosicionTestBlock.id_variedad)
+        .all()
+    )
+
+    # Build lookup maps
+    estado_ids = list({r.id_estado_fenol for r in rows})
+    variedad_ids = list({r.id_variedad for r in rows if r.id_variedad})
+
+    estado_map = {}
+    if estado_ids:
+        for ef in db.query(EstadoFenologico).filter(EstadoFenologico.id_estado.in_(estado_ids)).all():
+            estado_map[ef.id_estado] = {
+                "nombre": ef.nombre, "codigo": ef.codigo,
+                "color_hex": ef.color_hex, "orden": ef.orden,
+            }
+
+    variedad_map = {}
+    if variedad_ids:
+        from app.models.variedades import Variedad
+        for v in db.query(Variedad).filter(Variedad.id_variedad.in_(variedad_ids)).all():
+            variedad_map[v.id_variedad] = {"nombre": v.nombre, "codigo": v.codigo}
+
+    # Pivot: (variedad, estado) -> { actual: date, anterior: date }
+    pivot: dict[tuple, dict] = {}
+    for r in rows:
+        key = (r.id_variedad, r.id_estado_fenol)
+        if key not in pivot:
+            pivot[key] = {"actual": None, "anterior": None}
+        if r.temporada == temporada_actual:
+            pivot[key]["actual"] = r.primera_fecha
+        else:
+            pivot[key]["anterior"] = r.primera_fecha
+
+    # Build response grouped by variedad
+    by_variedad: dict[int, list] = {}
+    for (vid, eid), dates in pivot.items():
+        if vid not in by_variedad:
+            by_variedad[vid] = []
+        diff_dias = None
+        if dates["actual"] and dates["anterior"]:
+            diff_dias = (dates["actual"] - dates["anterior"]).days
+        by_variedad[vid].append({
+            "estado": estado_map.get(eid, {}),
+            "id_estado_fenol": eid,
+            "fecha_actual": str(dates["actual"]) if dates["actual"] else None,
+            "fecha_anterior": str(dates["anterior"]) if dates["anterior"] else None,
+            "diferencia_dias": diff_dias,
+        })
+
+    # Sort estados by orden within each variedad
+    result = []
+    for vid, estados in by_variedad.items():
+        estados.sort(key=lambda x: x.get("estado", {}).get("orden", 999))
+        result.append({
+            "variedad": variedad_map.get(vid, {"nombre": f"#{vid}", "codigo": ""}),
+            "id_variedad": vid,
+            "estados": estados,
+        })
+    result.sort(key=lambda x: x["variedad"].get("nombre", ""))
+
+    return {
+        "temporada_actual": temporada_actual,
+        "temporada_anterior": temporada_anterior,
+        "variedades": result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Fenologia comparativa — Export Excel
+# ---------------------------------------------------------------------------
+
+@router.get("/fenologia-comparativa/export")
+def fenologia_comparativa_export(
+    temporada_actual: str = Query(..., description="Ej: 2025-2026"),
+    temporada_anterior: str = Query(..., description="Ej: 2024-2025"),
+    id_especie: int | None = Query(None),
+    id_variedad: int | None = Query(None),
+    id_testblock: int | None = Query(None),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Export fenologia comparativa data as Excel file."""
+    from sqlalchemy import func
+
+    # Reuse the same query logic from fenologia_comparativa
+    q_base = (
+        db.query(
+            RegistroFenologico.id_estado_fenol,
+            RegistroFenologico.temporada,
+            func.min(RegistroFenologico.fecha_registro).label("primera_fecha"),
+            PosicionTestBlock.id_variedad,
+        )
+        .join(PosicionTestBlock, PosicionTestBlock.id_posicion == RegistroFenologico.id_posicion)
+        .filter(
+            RegistroFenologico.temporada.in_([temporada_actual, temporada_anterior]),
+            PosicionTestBlock.id_variedad.isnot(None),
+        )
+    )
+
+    if id_testblock:
+        q_base = q_base.filter(PosicionTestBlock.id_testblock == id_testblock)
+    if id_variedad:
+        q_base = q_base.filter(PosicionTestBlock.id_variedad == id_variedad)
+    if id_especie:
+        from app.models.variedades import Variedad
+        var_ids = [v.id_variedad for v in db.query(Variedad.id_variedad).filter(Variedad.id_especie == id_especie).all()]
+        if var_ids:
+            q_base = q_base.filter(PosicionTestBlock.id_variedad.in_(var_ids))
+        else:
+            # No varieties: return empty workbook
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Comparativa"
+            ws.append(["Sin datos para esta especie"])
+            buf = BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            return StreamingResponse(
+                buf,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": "attachment; filename=comparativa_fenologica.xlsx"},
+            )
+
+    rows = (
+        q_base
+        .group_by(RegistroFenologico.id_estado_fenol, RegistroFenologico.temporada, PosicionTestBlock.id_variedad)
+        .all()
+    )
+
+    # Build lookup maps
+    estado_ids = list({r.id_estado_fenol for r in rows})
+    variedad_ids = list({r.id_variedad for r in rows if r.id_variedad})
+
+    estado_map = {}
+    if estado_ids:
+        for ef in db.query(EstadoFenologico).filter(EstadoFenologico.id_estado.in_(estado_ids)).all():
+            estado_map[ef.id_estado] = {"nombre": ef.nombre, "codigo": ef.codigo, "orden": ef.orden}
+
+    variedad_map = {}
+    if variedad_ids:
+        from app.models.variedades import Variedad
+        for v in db.query(Variedad).filter(Variedad.id_variedad.in_(variedad_ids)).all():
+            variedad_map[v.id_variedad] = {"nombre": v.nombre, "codigo": v.codigo}
+
+    # Pivot data
+    pivot: dict[tuple, dict] = {}
+    for r in rows:
+        key = (r.id_variedad, r.id_estado_fenol)
+        if key not in pivot:
+            pivot[key] = {"actual": None, "anterior": None}
+        if r.temporada == temporada_actual:
+            pivot[key]["actual"] = r.primera_fecha
+        else:
+            pivot[key]["anterior"] = r.primera_fecha
+
+    # Build workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Comparativa Fenologica"
+
+    # Header style
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(start_color="6B21A8", end_color="6B21A8", fill_type="solid")
+    center_align = Alignment(horizontal="center", vertical="center")
+
+    headers = ["Variedad", "Codigo", "Estado Fenologico", temporada_actual, temporada_anterior, "Diferencia (dias)"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+
+    row_num = 2
+    # Sort by variedad name, then estado order
+    sorted_keys = sorted(
+        pivot.keys(),
+        key=lambda k: (variedad_map.get(k[0], {}).get("nombre", ""), estado_map.get(k[1], {}).get("orden", 999)),
+    )
+
+    for vid, eid in sorted_keys:
+        var_info = variedad_map.get(vid, {"nombre": f"#{vid}", "codigo": ""})
+        est_info = estado_map.get(eid, {"nombre": f"#{eid}"})
+        dates = pivot[(vid, eid)]
+        diff = None
+        if dates["actual"] and dates["anterior"]:
+            diff = (dates["actual"] - dates["anterior"]).days
+
+        ws.cell(row=row_num, column=1, value=var_info["nombre"])
+        ws.cell(row=row_num, column=2, value=var_info.get("codigo", ""))
+        ws.cell(row=row_num, column=3, value=est_info["nombre"])
+        ws.cell(row=row_num, column=4, value=str(dates["actual"]) if dates["actual"] else "-")
+        ws.cell(row=row_num, column=5, value=str(dates["anterior"]) if dates["anterior"] else "-")
+        ws.cell(row=row_num, column=6, value=diff if diff is not None else "-")
+        row_num += 1
+
+    # Auto-width columns
+    for col in ws.columns:
+        max_len = 0
+        col_letter = col[0].column_letter
+        for cell in col:
+            try:
+                if cell.value:
+                    max_len = max(max_len, len(str(cell.value)))
+            except Exception:
+                pass
+        ws.column_dimensions[col_letter].width = min(max_len + 4, 40)
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=comparativa_fenologica.xlsx"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fenologia — Seed demo data
+# ---------------------------------------------------------------------------
+
+@router.post("/fenologia/seed-demo", status_code=201)
+def seed_fenologia_demo(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Seed synthetic registros_fenologicos for 2 seasons (2024-2025 and 2025-2026).
+
+    Creates realistic dates based on each estado's mes_orientativo for a sample
+    of positions from existing testblocks. Admin only.
+    """
+    from app.models.variedades import Variedad
+
+    temporadas = ["2024-2025", "2025-2026"]
+
+    # Get all active estados fenologicos
+    estados = db.query(EstadoFenologico).filter(EstadoFenologico.activo == True).all()
+    if not estados:
+        raise HTTPException(status_code=400, detail="No hay estados fenologicos. Ejecute seed-estados-fenologicos primero.")
+
+    # Group estados by especie
+    estados_by_especie: dict[int, list] = {}
+    for ef in estados:
+        estados_by_especie.setdefault(ef.id_especie, []).append(ef)
+
+    # Get variedades for each especie
+    variedades_by_especie: dict[int, list[int]] = {}
+    for vid, eid in db.query(Variedad.id_variedad, Variedad.id_especie).filter(Variedad.activo == True).all():
+        variedades_by_especie.setdefault(eid, []).append(vid)
+
+    # Get sample positions (up to 5 per variedad from active positions in testblocks)
+    all_positions = (
+        db.query(PosicionTestBlock)
+        .filter(
+            PosicionTestBlock.estado == "alta",
+            PosicionTestBlock.id_variedad.isnot(None),
+        )
+        .all()
+    )
+
+    pos_by_variedad: dict[int, list] = {}
+    for p in all_positions:
+        pos_by_variedad.setdefault(p.id_variedad, []).append(p)
+
+    created = 0
+
+    for temporada in temporadas:
+        # Parse temporada year: "2024-2025" -> season starts Jul 2024
+        year_start = int(temporada.split("-")[0])
+
+        for especie_id, especie_estados in estados_by_especie.items():
+            especie_estados_sorted = sorted(especie_estados, key=lambda e: e.orden)
+            variedad_ids = variedades_by_especie.get(especie_id, [])
+            if not variedad_ids:
+                continue
+
+            for var_id in variedad_ids[:3]:  # Max 3 variedades per especie
+                positions = pos_by_variedad.get(var_id, [])
+                if not positions:
+                    continue
+                sample_positions = positions[:3]  # Max 3 positions per variedad
+
+                for ef in especie_estados_sorted:
+                    # Skip photo-only estados (no real date)
+                    if "foto" in (ef.nombre or "").lower():
+                        continue
+
+                    # Compute a realistic date from mes_inicio or mes_orientativo
+                    m_start = ef.mes_inicio
+                    if m_start is None:
+                        continue
+
+                    # In southern hemisphere seasons: Jul-Dec belong to year_start,
+                    # Jan-Jun belong to year_start+1
+                    if m_start >= 7:
+                        year = year_start
+                    else:
+                        year = year_start + 1
+
+                    # Pick a day in the first half of the month + small random offset
+                    day = random.randint(5, 20)
+                    try:
+                        base_date = date(year, m_start, day)
+                    except ValueError:
+                        base_date = date(year, m_start, 15)
+
+                    # Add random jitter per temporada so seasons differ a bit
+                    jitter = random.randint(-5, 10)
+                    if temporada == "2025-2026":
+                        jitter += random.randint(-3, 7)  # slightly different from anterior
+                    registro_date = base_date + timedelta(days=jitter)
+
+                    for pos in sample_positions:
+                        # Check for duplicates
+                        existing = (
+                            db.query(RegistroFenologico)
+                            .filter(
+                                RegistroFenologico.id_posicion == pos.id_posicion,
+                                RegistroFenologico.id_estado_fenol == ef.id_estado,
+                                RegistroFenologico.temporada == temporada,
+                            )
+                            .first()
+                        )
+                        if existing:
+                            continue
+
+                        reg = RegistroFenologico(
+                            id_posicion=pos.id_posicion,
+                            id_planta=getattr(pos, "id_planta", None),
+                            id_estado_fenol=ef.id_estado,
+                            temporada=temporada,
+                            fecha_registro=registro_date,
+                            porcentaje=random.choice([50, 75, 100]),
+                            observaciones=f"Dato demo - {ef.nombre}",
+                            usuario_registro=user.username,
+                        )
+                        db.add(reg)
+                        created += 1
+
+    db.commit()
+    return {"message": f"Se crearon {created} registros fenologicos demo.", "created": created}
 
 
 # ---------------------------------------------------------------------------

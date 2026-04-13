@@ -306,6 +306,8 @@ class EstadoFenologico(SQLModel, table=True):
     descripcion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(200)))
     color_hex: Optional[str] = Field(default=None, sa_column=Column(sa.String(7)))
     mes_orientativo: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(20)))
+    mes_inicio: Optional[int] = Field(default=None)
+    mes_fin: Optional[int] = Field(default=None)
     activo: Optional[bool] = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
     usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))

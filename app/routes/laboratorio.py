@@ -212,11 +212,7 @@ def mediciones_por_planta(
 
     result = []
     for m in mediciones:
-        data = {c: getattr(m, c) for c in m.__class__.model_fields}
-        # Convert Decimal fields to float for JSON serialization
-        for key in ("brix", "acidez", "firmeza", "peso", "calibre"):
-            if data.get(key) is not None:
-                data[key] = float(data[key])
+        data = _serialize_medicion(m)
         cc = cluster_map.get(m.id_medicion)
         data["cluster"] = cc.cluster if cc else None
         data["cluster_label"] = f"C{cc.cluster}" if cc and cc.cluster else None
@@ -225,23 +221,40 @@ def mediciones_por_planta(
     return result
 
 
-@router.get("/mediciones")
-def list_mediciones(
-    testblock: int | None = Query(None),
-    temporada: str | None = Query(None),
-    especie: int | None = Query(None),
-    campo: int | None = Query(None),
-    variedad: int | None = Query(None),
-    pmg: int | None = Query(None),
-    fecha_cosecha_desde: str | None = Query(None, description="Fecha cosecha desde (YYYY-MM-DD)"),
-    fecha_cosecha_hasta: str | None = Query(None, description="Fecha cosecha hasta (YYYY-MM-DD)"),
-    tipo_evaluacion: str | None = Query(None, description="'laboratorio' o 'poscosecha'"),
-    periodo_almacenaje_min: int | None = Query(None, description="Periodo almacenaje minimo (dias)"),
-    periodo_almacenaje_max: int | None = Query(None, description="Periodo almacenaje maximo (dias)"),
-    db: Session = Depends(get_db),
-    user: Usuario = Depends(get_current_user),
+def _serialize_medicion(m: MedicionLaboratorio) -> dict:
+    """Convert a MedicionLaboratorio ORM object to a plain dict with Decimal->float."""
+    data = {c: getattr(m, c) for c in m.__class__.model_fields}
+    # Convert Decimal fields to float for JSON serialization
+    _decimal_fields = (
+        "brix", "acidez", "firmeza", "calibre", "peso", "perimetro",
+        "firmeza_punta", "firmeza_quilla", "firmeza_hombro",
+        "firmeza_mejilla_1", "firmeza_mejilla_2",
+        "pardeamiento", "traslucidez", "gelificacion", "harinosidad",
+        "rendimiento",
+    )
+    for key in _decimal_fields:
+        if data.get(key) is not None:
+            data[key] = float(data[key])
+    return data
+
+
+def _apply_medicion_filters(
+    q,
+    *,
+    testblock: int | None = None,
+    temporada: str | None = None,
+    especie: int | None = None,
+    campo: int | None = None,
+    variedad: int | None = None,
+    pmg: int | None = None,
+    fecha_cosecha_desde: str | None = None,
+    fecha_cosecha_hasta: str | None = None,
+    tipo_evaluacion: str | None = None,
+    periodo_almacenaje_min: int | None = None,
+    periodo_almacenaje_max: int | None = None,
+    db: Session | None = None,
 ):
-    q = db.query(MedicionLaboratorio)
+    """Apply all medicion filters to a query. Returns the filtered query."""
     if testblock:
         pos_ids = [p.id_posicion for p in db.query(PosicionTestBlock.id_posicion).filter(
             PosicionTestBlock.id_testblock == testblock
@@ -256,13 +269,12 @@ def list_mediciones(
     if variedad:
         q = q.filter(MedicionLaboratorio.id_variedad == variedad)
     if pmg:
-        # PMG requires joining through variedades
         from app.models.variedades import Variedad
         var_ids = [v.id_variedad for v in db.query(Variedad.id_variedad).filter(Variedad.id_pmg == pmg).all()]
         if var_ids:
             q = q.filter(MedicionLaboratorio.id_variedad.in_(var_ids))
         else:
-            q = q.filter(False)  # No variedades for this PMG
+            q = q.filter(False)
     if fecha_cosecha_desde:
         from datetime import date as date_type
         q = q.filter(MedicionLaboratorio.fecha_cosecha >= date_type.fromisoformat(fecha_cosecha_desde))
@@ -280,7 +292,52 @@ def list_mediciones(
         q = q.filter(MedicionLaboratorio.periodo_almacenaje >= periodo_almacenaje_min)
     if periodo_almacenaje_max is not None:
         q = q.filter(MedicionLaboratorio.periodo_almacenaje <= periodo_almacenaje_max)
-    return q.order_by(MedicionLaboratorio.fecha_medicion.desc()).all()
+    return q
+
+
+@router.get("/mediciones")
+def list_mediciones(
+    testblock: int | None = Query(None),
+    temporada: str | None = Query(None),
+    especie: int | None = Query(None),
+    campo: int | None = Query(None),
+    variedad: int | None = Query(None),
+    pmg: int | None = Query(None),
+    fecha_cosecha_desde: str | None = Query(None, description="Fecha cosecha desde (YYYY-MM-DD)"),
+    fecha_cosecha_hasta: str | None = Query(None, description="Fecha cosecha hasta (YYYY-MM-DD)"),
+    tipo_evaluacion: str | None = Query(None, description="'laboratorio' o 'poscosecha'"),
+    periodo_almacenaje_min: int | None = Query(None, description="Periodo almacenaje minimo (dias)"),
+    periodo_almacenaje_max: int | None = Query(None, description="Periodo almacenaje maximo (dias)"),
+    skip: int = Query(0, ge=0, description="Offset for pagination"),
+    limit: int = Query(5000, ge=1, le=50000, description="Max records to return"),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """List mediciones with filters and pagination.
+
+    Returns a dict with ``data`` (list of mediciones) and ``total`` (count
+    before pagination) so the frontend can implement server-side pagination.
+    """
+    q = db.query(MedicionLaboratorio)
+    q = _apply_medicion_filters(
+        q,
+        testblock=testblock, temporada=temporada, especie=especie,
+        campo=campo, variedad=variedad, pmg=pmg,
+        fecha_cosecha_desde=fecha_cosecha_desde,
+        fecha_cosecha_hasta=fecha_cosecha_hasta,
+        tipo_evaluacion=tipo_evaluacion,
+        periodo_almacenaje_min=periodo_almacenaje_min,
+        periodo_almacenaje_max=periodo_almacenaje_max,
+        db=db,
+    )
+    total = q.count()
+    rows = q.order_by(MedicionLaboratorio.fecha_medicion.desc()).offset(skip).limit(limit).all()
+    return {
+        "data": [_serialize_medicion(m) for m in rows],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -173,8 +173,11 @@ def generate_qr_batch(
 
     c.save()
     buf.seek(0)
+
+    filename = "qr-labels.pdf"
+
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": "attachment; filename=qr-labels.pdf"
+        "Content-Disposition": f"attachment; filename={filename}"
     })
 
 
@@ -268,7 +271,21 @@ def create_inventario(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
+    # Auto-generate codigo_lote if not provided
+    if not data.codigo_lote:
+        data.codigo_lote = _generar_codigo_lote(db)
     return crud.create(db, InventarioVivero, data, usuario=user.username)
+
+
+def _generar_codigo_lote(db: Session) -> str:
+    """Generate the next sequential lote code: INV-00001, INV-00002, ..."""
+    from sqlalchemy import text
+    result = db.execute(text(
+        "SELECT MAX(CAST(SUBSTRING(codigo_lote, 5, LEN(codigo_lote) - 4) AS INT)) "
+        "FROM inventario_vivero WHERE codigo_lote LIKE 'INV-%'"
+    )).scalar()
+    seq = (result or 0) + 1
+    return f"INV-{seq:05d}"
 
 
 @router.put("/{id}")

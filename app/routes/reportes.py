@@ -305,8 +305,8 @@ def _build_variedad_summary(data: dict) -> str:
     lines = [
         f"VARIEDAD: {v.get('nombre')} (codigo: {v.get('codigo')})",
         f"Especie: {v.get('especie_nombre')}, PMG: {v.get('pmg_nombre')}, Estado: {v.get('estado')}",
-        f"Tipo: {v.get('tipo')}, Epoca cosecha: {v.get('epoca_cosecha')}, Vigor: {v.get('vigor')}",
-        f"Calibre esperado: {v.get('calibre_esperado')}, Firmeza esperada: {v.get('firmeza_esperada')}",
+        f"Tipo: {v.get('tipo')}, Epoca cosecha: {v.get('epoca_cosecha')}",
+        f"Calibre esperado: {v.get('calibre_esperado')}",
         "",
         f"INVENTARIO: {len(data['inventario'])} lotes",
     ]
@@ -1140,6 +1140,7 @@ def report_pdf(
     buf.seek(0)
 
     filename = f"reporte_{tipo}_{id_entidad}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
     return StreamingResponse(
         buf,
         media_type="application/pdf",
@@ -1308,7 +1309,7 @@ def report_variedad_pdf(
     info_rows = [
         ["Nombre", str(variedad.nombre), "Codigo", str(variedad.codigo)],
         ["Especie", especie_nombre, "PMG", pmg_nombre],
-        ["Epoca cosecha", str(variedad.epoca_cosecha or variedad.epoca or "-"), "Vigor", str(variedad.vigor or "-")],
+        ["Epoca cosecha", str(variedad.epoca_cosecha or variedad.epoca or "-"), "Req. frio", str(variedad.requerimiento_frio or "-")],
         ["Origen", str(variedad.origen or "-"), "Estado", str(variedad.estado or "-")],
     ]
     t = Table(info_rows, colWidths=[1.2 * inch, 1.8 * inch, 1.2 * inch, 1.8 * inch])
@@ -1426,6 +1427,7 @@ def report_variedad_pdf(
     buf.seek(0)
 
     filename = f"variedad_{id_variedad}_{variedad.codigo}_{dt.now().strftime('%Y%m%d')}.pdf"
+
     return StreamingResponse(
         buf,
         media_type="application/pdf",
@@ -1731,6 +1733,7 @@ def report_planta_pdf(
 
     codigo_safe = (planta.codigo or str(id_planta)).replace("/", "-")
     filename = f"planta_{id_planta}_{codigo_safe}_{dt.now().strftime('%Y%m%d')}.pdf"
+
     return StreamingResponse(
         buf,
         media_type="application/pdf",
@@ -2075,6 +2078,7 @@ def report_lote_pdf(
 
     codigo_safe = lote.codigo_lote.replace("/", "-")
     filename = f"lote_{id_inventario}_{codigo_safe}_{dt.now().strftime('%Y%m%d')}.pdf"
+
     return StreamingResponse(
         buf,
         media_type="application/pdf",
@@ -2870,6 +2874,7 @@ def report_evaluacion_cosecha_pdf(
     filename = f"evaluacion_cosecha_{especie_title}_{dt.now().strftime('%Y%m%d_%H%M')}.pdf"
     # Sanitize filename
     filename = filename.replace(" ", "_").replace("/", "-")
+
     return StreamingResponse(
         buf,
         media_type="application/pdf",
@@ -3256,6 +3261,7 @@ def report_resumen_cosechas_pdf(
 
     filename = f"resumen_cosechas_{especie_title}_{dt.now().strftime('%Y%m%d_%H%M')}.pdf"
     filename = filename.replace(" ", "_").replace("/", "-")
+
     return StreamingResponse(
         buf,
         media_type="application/pdf",

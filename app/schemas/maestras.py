@@ -266,6 +266,8 @@ class EstadoFenologicoCreate(BaseModel):
     descripcion: Optional[str] = None
     color_hex: Optional[str] = None
     mes_orientativo: Optional[str] = None
+    mes_inicio: Optional[int] = None
+    mes_fin: Optional[int] = None
 
 class EstadoFenologicoUpdate(BaseModel):
     id_especie: Optional[int] = None
@@ -275,6 +277,8 @@ class EstadoFenologicoUpdate(BaseModel):
     descripcion: Optional[str] = None
     color_hex: Optional[str] = None
     mes_orientativo: Optional[str] = None
+    mes_inicio: Optional[int] = None
+    mes_fin: Optional[int] = None
     activo: Optional[bool] = None
 
 
