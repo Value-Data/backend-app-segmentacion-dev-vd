@@ -66,4 +66,21 @@ export const testblockService = {
     get<MapaTestBlockData>(`/testblocks/${id}/mapa`),
   updateMapa: (id: number, data: Record<string, unknown>) =>
     put<{ ok: boolean }>(`/testblocks/${id}/mapa`, data),
+
+  // -- Lotes desde TestBlock --
+  crearLote: (id: number, data: Record<string, unknown>) =>
+    post<{ lote_id: number; codigo_lote: string; plantas_creadas: number; message: string }>(
+      `/testblocks/${id}/crear-lote`, data,
+    ),
+  seedLotesDemo: () =>
+    post<{ lotes_creados: number; plantas_vinculadas: number; detalles: unknown[]; message: string }>(
+      `/testblocks/demo/seed-lotes`,
+    ),
+  lotesTestblock: (id: number) =>
+    get<{
+      id_inventario: number; codigo_lote: string; id_variedad: number | null;
+      id_portainjerto: number | null; tipo_planta: string | null;
+      cantidad_inicial: number; cantidad_actual: number; estado: string | null;
+      posiciones_en_tb: number; fecha_ingreso: string | null; observaciones: string | null;
+    }[]>(`/testblocks/${id}/lotes`),
 };

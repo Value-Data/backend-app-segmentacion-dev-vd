@@ -61,6 +61,9 @@ const AuditLogPage = lazy(() => import("@/pages/sistema/AuditLogPage").then(m =>
 // Mockup
 const MockupPage = lazy(() => import("@/pages/MockupPage").then(m => ({ default: m.MockupPage })));
 
+// Demo Lotes
+const DemoLotesPage = lazy(() => import("@/pages/DemoLotesPage").then(m => ({ default: m.DemoLotesPage })));
+
 // 404
 const NotFoundPage = lazy(() => import("@/pages/NotFound").then(m => ({ default: m.NotFoundPage })));
 
@@ -125,9 +128,11 @@ export function App() {
         <Route path="sistema/usuarios" element={<UsuariosPage />} />
         <Route path="sistema/audit-log" element={<AuditLogPage />} />
 
-        {/* 404 */}
         {/* Mockup */}
         <Route path="mockup" element={<MockupPage />} />
+
+        {/* Demo Lotes */}
+        <Route path="demo-lotes" element={<DemoLotesPage />} />
 
         {/* 404 */}
         <Route path="*" element={<NotFoundPage />} />

@@ -517,10 +517,71 @@ def grupo_alta(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
-    """Alta grupal: asignar plantas desde un lote a posiciones vacias."""
+    """Alta grupal: desde lote inventario O directa (sin inventario).
+
+    Modo inventario: { "id_lote": 10, posicion_ids/filtro... }
+    Modo directo:    { "id_variedad": 5, "id_portainjerto": 3, posicion_ids/filtro... }
+    """
     id_lote = data.get("id_lote")
+    id_variedad_directa = data.get("id_variedad")
+
+    # Modo directo (sin inventario) — para plantas pre-existentes
+    if not id_lote and id_variedad_directa:
+        posiciones = _resolve_posiciones(db, id, data)
+        vacias = [p for p in posiciones if p.estado in ("vacia", None, "baja")]
+        if not vacias:
+            raise HTTPException(status_code=400, detail="No hay posiciones disponibles")
+
+        id_pi = data.get("id_portainjerto")
+        id_esp = data.get("id_especie")
+        id_pmg = data.get("id_pmg")
+        obs = data.get("observaciones", "")
+        created = 0
+        affected_ids = []
+
+        for pos in vacias:
+            old_plantas = db.query(Planta).filter(Planta.id_posicion == pos.id_posicion).all()
+            for old_p in old_plantas:
+                if old_p.activa:
+                    old_p.activa = False
+                    old_p.fecha_baja = date.today()
+                    old_p.motivo_baja = "Alta directa grupal"
+                if old_p.codigo == pos.codigo_unico:
+                    old_p.codigo = f"{pos.codigo_unico}_prev_{old_p.id_planta}"
+            db.flush()
+
+            planta = Planta(
+                codigo=pos.codigo_unico,
+                id_posicion=pos.id_posicion,
+                id_variedad=id_variedad_directa,
+                id_portainjerto=id_pi,
+                id_especie=id_esp,
+                id_pmg=id_pmg,
+                fecha_alta=date.today(),
+                observaciones=obs,
+                usuario_creacion=user.username,
+            )
+            db.add(planta)
+            db.flush()
+
+            pos.estado = "alta"
+            pos.id_variedad = id_variedad_directa
+            pos.id_portainjerto = id_pi
+            pos.id_pmg = id_pmg
+            pos.fecha_alta = date.today()
+            pos.fecha_plantacion = date.today()
+            pos.usuario_alta = user.username
+            affected_ids.append(pos.id_posicion)
+            created += 1
+
+        _log_evento(db, id, "ALTA", affected_ids,
+                    datos_despues={"modo": "directa", "id_variedad": id_variedad_directa, "id_portainjerto": id_pi},
+                    usuario=user.username)
+        db.commit()
+        return {"affected": created, "mode": "directa", "message": f"{created} plantas alta directa (sin inventario)"}
+
     if not id_lote:
-        raise HTTPException(status_code=400, detail="Debe indicar id_lote")
+        raise HTTPException(status_code=400, detail="Debe indicar id_lote o id_variedad para alta directa")
 
     lote = db.query(InventarioVivero).filter(InventarioVivero.id_inventario == id_lote).first()
     if not lote:

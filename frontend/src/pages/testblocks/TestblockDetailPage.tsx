@@ -104,6 +104,7 @@ export function TestblockDetailPage() {
 
   /* --- Confirmation dialog state --- */
   const [altaConfirmOpen, setAltaConfirmOpen] = useState(false);
+  const [altaDirectaOpen, setAltaDirectaOpen] = useState(false);
   const [bajaConfirmOpen, setBajaConfirmOpen] = useState(false);
   const [replanteConfirmOpen, setReplanteConfirmOpen] = useState(false);
   const [addHileraOpen, setAddHileraOpen] = useState(false);
@@ -284,6 +285,24 @@ export function TestblockDetailPage() {
       placeholder: "Seleccionar lote",
     },
   ], [loteOptions]);
+
+  const variedadOptions = useMemo(() => {
+    return (lk.rawData.variedades || []).map((v: any) => ({
+      value: v.id_variedad, label: `${v.nombre} (${v.codigo})`,
+    }));
+  }, [lk.rawData.variedades]);
+
+  const piOptions = useMemo(() => {
+    return (lk.rawData.portainjertos || []).map((p: any) => ({
+      value: p.id_portainjerto, label: p.nombre,
+    }));
+  }, [lk.rawData.portainjertos]);
+
+  const altaDirectaFields: FieldDef[] = useMemo(() => [
+    { key: "id_variedad", label: "Variedad", type: "select", required: true, options: variedadOptions },
+    { key: "id_portainjerto", label: "Portainjerto", type: "select", required: true, options: piOptions },
+    { key: "observaciones", label: "Observaciones", type: "text" },
+  ], [variedadOptions, piOptions]);
 
   const bajaConfirmFields: FieldDef[] = useMemo(() => [
     { key: "motivo", label: "Motivo de Baja", type: "text", required: true, placeholder: "Ingrese el motivo de baja" },
@@ -541,6 +560,11 @@ export function TestblockDetailPage() {
     if (selectedPositions.size === 0) return;
     setSelectionMode("alta");
     setAltaConfirmOpen(true);
+  }, [selectedPositions]);
+
+  const handleGrupoAltaDirecta = useCallback(() => {
+    if (selectedPositions.size === 0) return;
+    setAltaDirectaOpen(true);
   }, [selectedPositions]);
 
   const handleGrupoBaja = useCallback(() => {
@@ -1079,7 +1103,10 @@ export function TestblockDetailPage() {
           </span>
           <span className="border-l h-5 mx-1" />
           <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={handleGrupoAlta} disabled={isProcessing}>
-            <Plus className="h-3 w-3" /> Alta
+            <Plus className="h-3 w-3" /> Alta (lote)
+          </Button>
+          <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleGrupoAltaDirecta} disabled={isProcessing}>
+            <Plus className="h-3 w-3" /> Alta Directa
           </Button>
           <Button size="sm" className="h-7 text-xs" variant="destructive" onClick={handleGrupoBaja} disabled={isProcessing}>
             <MinusCircle className="h-3 w-3" /> Baja
@@ -1869,6 +1896,35 @@ export function TestblockDetailPage() {
         onSubmit={handleAltaSubmit}
         fields={altaConfirmFields}
         title={`Alta de Plantas (${selectedPositions.size} posiciones)`}
+        isLoading={isProcessing}
+      />
+
+      {/* Alta Directa dialog (sin inventario) */}
+      <CrudForm
+        open={altaDirectaOpen}
+        onClose={() => { setAltaDirectaOpen(false); }}
+        onSubmit={async (data) => {
+          setIsProcessing(true);
+          try {
+            const ids = Array.from(selectedPositions);
+            const payload = {
+              posicion_ids: ids,
+              id_variedad: Number(data.id_variedad),
+              id_portainjerto: Number(data.id_portainjerto),
+              observaciones: data.observaciones || "",
+            };
+            const res = await post<{ created: number; message: string }>(`/testblocks/${tbId}/grupo/alta`, payload);
+            toast.success(res.message || `${res.created} plantas alta directa`);
+            queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+            setAltaDirectaOpen(false);
+            clearSelection();
+          } catch (err: any) {
+            toast.error("Error: " + (err?.message || ""));
+          }
+          setIsProcessing(false);
+        }}
+        fields={altaDirectaFields}
+        title={`Alta Directa — Sin Inventario (${selectedPositions.size} posiciones)`}
         isLoading={isProcessing}
       />
 
