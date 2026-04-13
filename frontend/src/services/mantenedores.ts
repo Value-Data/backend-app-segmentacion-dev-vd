@@ -39,4 +39,6 @@ export const variedadBitacoraService = {
     post<BitacoraEntry>(`/mantenedores/variedades/${variedadId}/bitacora`, data),
   update: (variedadId: number, entryId: number, data: Record<string, unknown>) =>
     put<BitacoraEntry>(`/mantenedores/variedades/${variedadId}/bitacora/${entryId}`, data),
+  remove: (variedadId: number, entryId: number) =>
+    del<unknown>(`/mantenedores/variedades/${variedadId}/bitacora/${entryId}`),
 };

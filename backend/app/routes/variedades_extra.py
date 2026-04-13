@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
@@ -153,6 +154,50 @@ def delete_foto(
     return {"detail": "Foto eliminada"}
 
 
+@router.get("/variedades/fotos/{fid}/file")
+def serve_foto(
+    fid: int,
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Serve foto file. Accepts token via query param for use in <img src>."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Token requerido")
+    from app.core.security import decode_access_token
+    payload = decode_access_token(token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Token invalido o expirado")
+    foto = db.get(VariedadFoto, fid)
+    if not foto:
+        raise HTTPException(status_code=404, detail="Foto no encontrada")
+    if not os.path.exists(foto.filepath):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+    return FileResponse(foto.filepath, media_type="image/jpeg", filename=foto.filename)
+
+
+@router.put("/variedades/{id_variedad}/fotos/{fid}/principal")
+def set_foto_principal(
+    id_variedad: int,
+    fid: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    foto = db.get(VariedadFoto, fid)
+    if not foto or foto.id_variedad != id_variedad:
+        raise HTTPException(status_code=404, detail="Foto no encontrada")
+    # Quitar principal de todas las fotos de esta variedad
+    all_fotos = (
+        db.query(VariedadFoto)
+        .filter(VariedadFoto.id_variedad == id_variedad)
+        .all()
+    )
+    for f in all_fotos:
+        f.es_principal = (f.id == fid)
+    db.commit()
+    db.refresh(foto)
+    return foto
+
+
 # ── Bitacora Portainjertos ────────────────────────────────────────────────
 
 @router.get("/portainjertos/{id_portainjerto}/bitacora")
@@ -211,6 +256,23 @@ def update_bitacora_pi(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.delete("/portainjertos/{id_portainjerto}/bitacora/{bid}")
+def delete_bitacora_pi(
+    id_portainjerto: int,
+    bid: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    entry = db.get(BitacoraPortainjerto, bid)
+    if not entry or entry.id_portainjerto != id_portainjerto:
+        raise HTTPException(status_code=404, detail="Entrada no encontrada")
+    entry.activo = False
+    entry.updated_at = datetime.utcnow()
+    entry.updated_by = user.username
+    db.commit()
+    return {"detail": "Entrada eliminada"}
 
 
 # ── TestBlock Eventos (historial + deshacer) ──────────────────────────────

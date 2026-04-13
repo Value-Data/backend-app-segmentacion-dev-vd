@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, LayoutGrid, List, Pencil, Trash2, Search, Loader2, Merge } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CrudTable } from "@/components/shared/CrudTable";
@@ -10,6 +11,7 @@ import { RelationshipChips, type ChipOption } from "@/components/shared/Relation
 import { useCrud } from "@/hooks/useCrud";
 import { useViveroPmgs } from "@/hooks/useRelaciones";
 import { useLookups } from "@/hooks/useLookups";
+import { get } from "@/services/api";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +56,7 @@ function ViveroPmgsChips({ viveroId }: { viveroId: number }) {
 
 export function ViverosPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data, isLoading, create, update, remove, isCreating, isUpdating } = useCrud("viveros");
   const { stringOptions, comunasPorRegionNombre } = useLookups();
   const [formOpen, setFormOpen] = useState(false);
@@ -63,6 +66,12 @@ export function ViverosPage() {
   const [deleteTarget, setDeleteTarget] = useState<Record<string, unknown> | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState<string>("");
+
+  const { data: nextCodeData } = useQuery({
+    queryKey: ["nextCode", "viveros"],
+    queryFn: () => get<{ codigo: string }>("/mantenedores/viveros/next-code"),
+    enabled: formOpen && !editRow,
+  });
 
   const rows = data as Record<string, unknown>[];
 
@@ -92,7 +101,7 @@ export function ViverosPage() {
     );
   }, [rows, search]);
 
-  const handleCreate = () => { setEditRow(null); setSelectedRegion(""); setFormOpen(true); };
+  const handleCreate = () => { setEditRow(null); setSelectedRegion(""); queryClient.invalidateQueries({ queryKey: ["nextCode", "viveros"] }); setFormOpen(true); };
   const handleEdit = (row: Record<string, unknown>) => { setEditRow(row); setSelectedRegion(row.region as string || ""); setFormOpen(true); };
   const handleDelete = async (row: Record<string, unknown>) => {
     await remove(row.id_vivero as number);
@@ -249,7 +258,7 @@ export function ViverosPage() {
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
         fields={fields}
-        initialData={editRow}
+        initialData={editRow ?? (nextCodeData ? { codigo: nextCodeData.codigo } : null)}
         title={editRow ? "Editar Vivero" : "Nuevo Vivero"}
         isLoading={isCreating || isUpdating}
         onFieldChange={(key, value) => {

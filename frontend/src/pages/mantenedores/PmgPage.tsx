@@ -7,9 +7,11 @@ import { CrudTable } from "@/components/shared/CrudTable";
 import { CrudForm } from "@/components/shared/CrudForm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { RelationshipChips, type ChipOption } from "@/components/shared/RelationshipChips";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCrud } from "@/hooks/useCrud";
 import { usePmgEspecies } from "@/hooks/useRelaciones";
 import { useLookups } from "@/hooks/useLookups";
+import { get } from "@/services/api";
 import {
   Dialog,
   DialogContent,
@@ -20,24 +22,10 @@ import {
 } from "@/components/ui/dialog";
 import type { FieldDef } from "@/types";
 import { col } from "./GenericMantenedorPage";
+import { withCurrentValue } from "@/lib/utils";
 import { MergeDialog } from "@/components/shared/MergeDialog";
 
 type ViewMode = "cards" | "table";
-
-const fields: FieldDef[] = [
-  { key: "codigo", label: "Codigo", type: "text", required: true },
-  { key: "nombre", label: "Nombre", type: "text", required: true },
-  { key: "licenciante", label: "Licenciante", type: "text" },
-  { key: "pais_origen", label: "Pais Origen", type: "text" },
-  { key: "pais", label: "Pais", type: "text" },
-  { key: "ciudad", label: "Ciudad", type: "text" },
-  { key: "email", label: "Email", type: "text" },
-  { key: "telefono", label: "Telefono", type: "text" },
-  { key: "direccion", label: "Direccion", type: "text" },
-  { key: "contacto", label: "Contacto", type: "text" },
-  { key: "viveros_chile", label: "Viveros Chile", type: "text" },
-  { key: "notas", label: "Notas", type: "textarea" },
-];
 
 const columns = [
   col("codigo", "Codigo"),
@@ -76,13 +64,38 @@ function PmgEspeciesChips({ pmgId }: { pmgId: number }) {
 
 export function PmgPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data, isLoading, create, update, remove, isCreating, isUpdating } = useCrud("pmg");
+  const { stringOptions } = useLookups();
   const [formOpen, setFormOpen] = useState(false);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Record<string, unknown> | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
+
+  const { data: nextCodeData } = useQuery({
+    queryKey: ["nextCode", "pmg"],
+    queryFn: () => get<{ codigo: string }>("/mantenedores/pmg/next-code"),
+    enabled: formOpen && !editRow,
+  });
+
+  const paisOpts = stringOptions.paises;
+
+  const fields: FieldDef[] = useMemo(() => [
+    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "nombre", label: "Nombre", type: "text", required: true },
+    { key: "licenciante", label: "Licenciante", type: "text" },
+    { key: "pais_origen", label: "Pais Origen", type: "select", options: withCurrentValue(paisOpts, editRow?.pais_origen) },
+    { key: "pais", label: "Pais Sede", type: "select", options: withCurrentValue(paisOpts, editRow?.pais) },
+    { key: "ciudad", label: "Ciudad", type: "text" },
+    { key: "email", label: "Email", type: "text" },
+    { key: "telefono", label: "Telefono", type: "text" },
+    { key: "direccion", label: "Direccion", type: "text" },
+    { key: "contacto", label: "Contacto", type: "text" },
+    { key: "viveros_chile", label: "Viveros Chile", type: "text" },
+    { key: "notas", label: "Notas", type: "textarea" },
+  ], [paisOpts, editRow]);
 
   const rows = data as Record<string, unknown>[];
 
@@ -96,7 +109,7 @@ export function PmgPage() {
     );
   }, [rows, search]);
 
-  const handleCreate = () => { setEditRow(null); setFormOpen(true); };
+  const handleCreate = () => { setEditRow(null); queryClient.invalidateQueries({ queryKey: ["nextCode", "pmg"] }); setFormOpen(true); };
   const handleEdit = (row: Record<string, unknown>) => { setEditRow(row); setFormOpen(true); };
   const handleDelete = async (row: Record<string, unknown>) => {
     await remove(row.id_pmg as number);
@@ -252,7 +265,7 @@ export function PmgPage() {
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
         fields={fields}
-        initialData={editRow}
+        initialData={editRow ?? (nextCodeData ? { codigo: nextCodeData.codigo } : null)}
         title={editRow ? "Editar PMG" : "Nuevo PMG"}
         isLoading={isCreating || isUpdating}
       />

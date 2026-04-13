@@ -32,6 +32,7 @@ export function TemporadasPage() {
       fields={fields}
       columns={columns}
       idField="id_temporada"
+      autoCode
     />
   );
 }

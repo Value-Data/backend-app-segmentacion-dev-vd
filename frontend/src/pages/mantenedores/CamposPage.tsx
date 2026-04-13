@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input";
 import { CrudTable } from "@/components/shared/CrudTable";
 import { CrudForm } from "@/components/shared/CrudForm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCrud } from "@/hooks/useCrud";
 import { useLookups } from "@/hooks/useLookups";
+import { get } from "@/services/api";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +36,7 @@ const columns = [
 
 export function CamposPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data, isLoading, create, update, remove, isCreating, isUpdating } = useCrud("campos");
   const { stringOptions, comunasPorRegionNombre } = useLookups();
   const [formOpen, setFormOpen] = useState(false);
@@ -43,6 +46,12 @@ export function CamposPage() {
   const [deleteTarget, setDeleteTarget] = useState<Record<string, unknown> | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState<string>("");
+
+  const { data: nextCodeData } = useQuery({
+    queryKey: ["nextCode", "campos"],
+    queryFn: () => get<{ codigo: string }>("/mantenedores/campos/next-code"),
+    enabled: formOpen && !editRow,
+  });
 
   const rows = data as Record<string, unknown>[];
 
@@ -81,6 +90,7 @@ export function CamposPage() {
   const handleCreate = () => {
     setEditRow(null);
     setSelectedRegion("");
+    queryClient.invalidateQueries({ queryKey: ["nextCode", "campos"] });
     setFormOpen(true);
   };
   const handleEdit = (row: Record<string, unknown>) => {
@@ -255,7 +265,7 @@ export function CamposPage() {
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
         fields={fields}
-        initialData={editRow}
+        initialData={editRow ?? (nextCodeData ? { codigo: nextCodeData.codigo } : null)}
         title={editRow ? "Editar Campo" : "Nuevo Campo"}
         isLoading={isCreating || isUpdating}
         onFieldChange={handleFormChange}

@@ -1,12 +1,15 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, LayoutGrid, List, Pencil, Trash2, Search, Loader2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CrudTable } from "@/components/shared/CrudTable";
 import { CrudForm } from "@/components/shared/CrudForm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useCrud } from "@/hooks/useCrud";
+import { withCurrentValue } from "@/lib/utils";
+import { get } from "@/services/api";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +34,8 @@ interface GenericMantenedorPageProps {
   columns: ColumnDef<Record<string, unknown>, unknown>[];
   idField: string;
   params?: Record<string, string | number | boolean | undefined | null>;
+  /** When true, auto-fetch next sequential code for new records. */
+  autoCode?: boolean;
 }
 
 export function GenericMantenedorPage({
@@ -42,17 +47,25 @@ export function GenericMantenedorPage({
   columns,
   idField,
   params,
+  autoCode = false,
 }: GenericMantenedorPageProps) {
   // Derive singular form: explicit prop > strip trailing "s" from title
   const singular = singularTitle ?? (title.endsWith("s") ? title.slice(0, -1) : title);
   const formTitlePrefix = titleGender === "f" ? "Nueva" : "Nuevo";
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data, isLoading, create, update, remove, isCreating, isUpdating } = useCrud(entidad, params);
   const [formOpen, setFormOpen] = useState(false);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Record<string, unknown> | null>(null);
+
+  const { data: nextCodeData } = useQuery({
+    queryKey: ["nextCode", entidad],
+    queryFn: () => get<{ codigo: string }>(`/mantenedores/${entidad}/next-code`),
+    enabled: autoCode && formOpen && !editRow,
+  });
 
   // Identify key fields for card display
   const nameField = fields.find((f) => f.key === "nombre") || fields[0];
@@ -77,6 +90,7 @@ export function GenericMantenedorPage({
 
   const handleCreate = () => {
     setEditRow(null);
+    if (autoCode) queryClient.invalidateQueries({ queryKey: ["nextCode", entidad] });
     setFormOpen(true);
   };
 
@@ -284,8 +298,14 @@ export function GenericMantenedorPage({
         open={formOpen}
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
-        fields={fields}
-        initialData={editRow}
+        fields={editRow
+          ? fields.map((f) =>
+              f.type === "select" && f.options
+                ? { ...f, options: withCurrentValue(f.options as { value: string; label: string }[], editRow[f.key]) }
+                : f
+            )
+          : fields}
+        initialData={editRow ?? (autoCode && nextCodeData ? { codigo: nextCodeData.codigo } : null)}
         title={editRow ? `Editar ${singular}` : `${formTitlePrefix} ${singular}`}
         isLoading={isCreating || isUpdating}
       />

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2, Upload, Camera, History, X, Link2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2, Upload, Camera, History, X, Link2, Star } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { useLookups } from "@/hooks/useLookups";
 import { mantenedorService, variedadBitacoraService } from "@/services/mantenedores";
 import type { BitacoraEntry } from "@/services/mantenedores";
 import { uploadFile, get, del, put, post } from "@/services/api";
-import { formatDate } from "@/lib/utils";
+import { formatDate, withCurrentValue } from "@/lib/utils";
 import type { FieldDef } from "@/types";
 import type { Especie, Pmg } from "@/types/maestras";
 import { useAuthStore } from "@/stores/authStore";
@@ -23,6 +23,7 @@ interface VariedadFoto {
   filename: string;
   filepath: string;
   descripcion?: string | null;
+  es_principal?: boolean;
   fecha_creacion?: string;
 }
 
@@ -134,6 +135,22 @@ export function VariedadesPage() {
     },
   });
 
+  const setPrincipalMut = useMutation({
+    mutationFn: (fotoId: number) => put<VariedadFoto>(`/variedades/${varId}/fotos/${fotoId}/principal`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["variedadFotos", varId] });
+      toast.success("Foto principal actualizada");
+    },
+  });
+
+  const deleteBitacoraMut = useMutation({
+    mutationFn: (entryId: number) => variedadBitacoraService.remove(varId!, entryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bitacora", varId] });
+      toast.success("Entrada eliminada");
+    },
+  });
+
   // Change log query
   const { data: changeLog } = useQuery({
     queryKey: ["variedadLog", varId],
@@ -169,23 +186,8 @@ export function VariedadesPage() {
 
   const especieOpts = ((especies || []) as Especie[]).map((e) => ({ value: e.id_especie, label: e.nombre }));
   const pmgOpts = ((pmgs || []) as Pmg[]).map((p) => ({ value: p.id_pmg, label: p.nombre }));
-  const origenOpts = [
-    { value: "Chile", label: "Chile" },
-    { value: "USA", label: "USA" },
-    { value: "España", label: "España" },
-    { value: "Italia", label: "Italia" },
-    { value: "Brasil", label: "Brasil" },
-    { value: "Francia", label: "Francia" },
-    { value: "Sudáfrica", label: "Sudáfrica" },
-    { value: "Australia", label: "Australia" },
-    { value: "Nueva Zelanda", label: "Nueva Zelanda" },
-    { value: "Rusia", label: "Rusia" },
-    { value: "China", label: "China" },
-    { value: "Japón", label: "Japón" },
-    { value: "Canadá", label: "Canadá" },
-    { value: "Argentina", label: "Argentina" },
-    { value: "Uruguay", label: "Uruguay" },
-  ];
+  const { stringOptions } = useLookups();
+  const origenOpts = stringOptions.paises;
 
   const fields: FieldDef[] = [
     { key: "codigo", label: "Codigo", type: "text", required: true },
@@ -293,6 +295,11 @@ export function VariedadesPage() {
     }
   };
 
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+  const token = useAuthStore((s) => s.token);
+  const fotoUrl = (fotoId: number) => `${API_BASE}/variedades/fotos/${fotoId}/file?token=${encodeURIComponent(token || "")}`;
+  const principalFoto = fotos?.find((f) => f.es_principal);
+
   // Detail view
   if (selectedVar) {
     const img = selectedVar.imagen as string | null;
@@ -347,7 +354,9 @@ export function VariedadesPage() {
         {detailTab === "info" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="bg-white rounded-lg border p-4 space-y-3">
-              {img ? (
+              {principalFoto ? (
+                <img src={fotoUrl(principalFoto.id)} alt={selectedVar.nombre as string} className="w-full rounded-lg object-cover max-h-64" />
+              ) : img ? (
                 <img src={`data:image/jpeg;base64,${img}`} alt={selectedVar.nombre as string} className="w-full rounded-lg object-cover max-h-64" />
               ) : (
                 <div className="w-full h-40 bg-muted rounded-lg flex items-center justify-center">
@@ -517,24 +526,42 @@ export function VariedadesPage() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {fotos.map((f) => (
-                  <div key={f.id} className="relative group border rounded-lg overflow-hidden">
-                    <div className="aspect-square bg-muted flex items-center justify-center">
-                      <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
+                  <div key={f.id} className={`relative group border rounded-lg overflow-hidden ${f.es_principal ? "ring-2 ring-yellow-400" : ""}`}>
+                    <div className="aspect-square bg-muted">
+                      <img
+                        src={fotoUrl(f.id)}
+                        alt={f.filename}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
                     </div>
                     <div className="p-2">
-                      <p className="text-xs font-medium truncate">{f.filename}</p>
+                      <div className="flex items-center gap-1">
+                        {f.es_principal && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />}
+                        <p className="text-xs font-medium truncate">{f.filename}</p>
+                      </div>
                       {f.descripcion && <p className="text-xs text-muted-foreground truncate">{f.descripcion}</p>}
                       <p className="text-[10px] text-muted-foreground">{formatDate(f.fecha_creacion)}</p>
                     </div>
-                    <button
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Eliminar foto"
-                      onClick={() => {
-                        if (confirm("Eliminar esta foto?")) deleteFotoMut.mutate(f.id);
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    {/* Botones flotantes */}
+                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        className={`rounded-full p-1 ${f.es_principal ? "bg-yellow-400 text-white" : "bg-white/80 text-gray-600 hover:bg-yellow-400 hover:text-white"}`}
+                        title={f.es_principal ? "Foto principal" : "Marcar como principal"}
+                        onClick={() => setPrincipalMut.mutate(f.id)}
+                      >
+                        <Star className={`h-3 w-3 ${f.es_principal ? "fill-white" : ""}`} />
+                      </button>
+                      <button
+                        className="bg-red-500 text-white rounded-full p-1"
+                        title="Eliminar foto"
+                        onClick={() => {
+                          if (confirm("Eliminar esta foto?")) deleteFotoMut.mutate(f.id);
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -565,18 +592,33 @@ export function VariedadesPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">{formatDate(b.fecha)}</span>
                         {isAdmin && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            title="Editar entrada"
-                            onClick={() => {
-                              setEditingBitacora(b);
-                              setBitacoraOpen(true);
-                            }}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              title="Editar entrada"
+                              onClick={() => {
+                                setEditingBitacora(b);
+                                setBitacoraOpen(true);
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              title="Eliminar entrada"
+                              onClick={() => {
+                                if (confirm("Eliminar esta entrada de bitacora?")) {
+                                  deleteBitacoraMut.mutate(b.id_entrada);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>

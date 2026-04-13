@@ -27,6 +27,7 @@ class VariedadFoto(SQLModel, table=True):
     filename: str = Field(sa_column=Column(sa.NVARCHAR(255), nullable=False))
     filepath: str = Field(sa_column=Column(sa.NVARCHAR(500), nullable=False))
     descripcion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(500)))
+    es_principal: Optional[bool] = Field(default=False)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 

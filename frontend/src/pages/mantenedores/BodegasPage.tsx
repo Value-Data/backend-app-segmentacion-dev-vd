@@ -25,6 +25,7 @@ export function BodegasPage() {
       fields={fields}
       columns={columns}
       idField="id_bodega"
+      autoCode
     />
   );
 }

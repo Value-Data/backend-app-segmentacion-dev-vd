@@ -7,9 +7,11 @@ import { CrudTable } from "@/components/shared/CrudTable";
 import { CrudForm } from "@/components/shared/CrudForm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { RelationshipChips, type ChipOption } from "@/components/shared/RelationshipChips";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCrud } from "@/hooks/useCrud";
 import { usePortainjertoEspecies } from "@/hooks/useRelaciones";
 import { useLookups } from "@/hooks/useLookups";
+import { get } from "@/services/api";
 import {
   Dialog,
   DialogContent,
@@ -20,24 +22,9 @@ import {
 } from "@/components/ui/dialog";
 import type { FieldDef } from "@/types";
 import { col } from "./GenericMantenedorPage";
+import { withCurrentValue } from "@/lib/utils";
 
 type ViewMode = "cards" | "table";
-
-const fields: FieldDef[] = [
-  { key: "codigo", label: "Codigo", type: "text", required: true },
-  { key: "nombre", label: "Nombre", type: "text", required: true },
-  { key: "vigor", label: "Vigor", type: "select", options: [
-    { value: "bajo", label: "Bajo" },
-    { value: "medio", label: "Medio" },
-    { value: "alto", label: "Alto" },
-  ]},
-  { key: "origen", label: "Origen", type: "text" },
-  { key: "cruce", label: "Cruce", type: "text" },
-  { key: "propagacion", label: "Propagacion", type: "text" },
-  { key: "obtentor", label: "Obtentor", type: "text" },
-  { key: "ventajas", label: "Ventajas", type: "textarea" },
-  { key: "notas", label: "Notas", type: "textarea" },
-];
 
 const columns = [
   col("codigo", "Codigo"),
@@ -82,12 +69,36 @@ function PortainjertoEspeciesChips({ portainjertoId }: { portainjertoId: number 
 
 export function PortainjertosPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data, isLoading, create, update, remove, isCreating, isUpdating } = useCrud("portainjertos");
+  const { stringOptions } = useLookups();
   const [formOpen, setFormOpen] = useState(false);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Record<string, unknown> | null>(null);
+
+  const { data: nextCodeData } = useQuery({
+    queryKey: ["nextCode", "portainjertos"],
+    queryFn: () => get<{ codigo: string }>("/mantenedores/portainjertos/next-code"),
+    enabled: formOpen && !editRow,
+  });
+
+  const fields: FieldDef[] = useMemo(() => [
+    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "nombre", label: "Nombre", type: "text", required: true },
+    { key: "vigor", label: "Vigor", type: "select", options: [
+      { value: "bajo", label: "Bajo" },
+      { value: "medio", label: "Medio" },
+      { value: "alto", label: "Alto" },
+    ]},
+    { key: "origen", label: "Pais de Origen", type: "select", options: withCurrentValue(stringOptions.paises, editRow?.origen) },
+    { key: "cruce", label: "Cruce", type: "text" },
+    { key: "propagacion", label: "Propagacion", type: "text" },
+    { key: "obtentor", label: "Obtentor", type: "text" },
+    { key: "ventajas", label: "Ventajas", type: "textarea" },
+    { key: "notas", label: "Notas", type: "textarea" },
+  ], [stringOptions.paises, editRow]);
 
   const rows = data as Record<string, unknown>[];
 
@@ -101,7 +112,7 @@ export function PortainjertosPage() {
     );
   }, [rows, search]);
 
-  const handleCreate = () => { setEditRow(null); setFormOpen(true); };
+  const handleCreate = () => { setEditRow(null); queryClient.invalidateQueries({ queryKey: ["nextCode", "portainjertos"] }); setFormOpen(true); };
   const handleEdit = (row: Record<string, unknown>) => { setEditRow(row); setFormOpen(true); };
   const handleDelete = async (row: Record<string, unknown>) => {
     await remove(row.id_portainjerto as number);
@@ -254,7 +265,7 @@ export function PortainjertosPage() {
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
         fields={fields}
-        initialData={editRow}
+        initialData={editRow ?? (nextCodeData ? { codigo: nextCodeData.codigo } : null)}
         title={editRow ? "Editar Portainjerto" : "Nuevo Portainjerto"}
         isLoading={isCreating || isUpdating}
       />

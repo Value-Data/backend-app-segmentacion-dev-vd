@@ -85,6 +85,11 @@ export function useLookups() {
     queryFn: () => mantenedorService("bodegas").list(),
     staleTime: 5 * 60_000,
   });
+  const { data: paises } = useQuery({
+    queryKey: ["lookup", "paises"],
+    queryFn: () => mantenedorService("paises").list(),
+    staleTime: 5 * 60_000,
+  });
 
   // Memoize all ID->name maps — only recomputed when underlying data changes
   const maps = useMemo(() => ({
@@ -98,7 +103,8 @@ export function useLookups() {
     regionMap: buildMap(regiones as LookupItem[], "id_region", "nombre"),
     comunaMap: buildMap(comunas as LookupItem[], "id_comuna", "nombre"),
     bodegaMap: buildMap(bodegas as LookupItem[], "id_bodega", "nombre"),
-  }), [variedades, especies, portainjertos, campos, pmgs, viveros, temporadas, regiones, comunas, bodegas]);
+    paisMap: buildMap(paises as LookupItem[], "id_pais", "nombre"),
+  }), [variedades, especies, portainjertos, campos, pmgs, viveros, temporadas, regiones, comunas, bodegas, paises]);
 
   const resolve = useCallback(
     (map: Map<number, string>, id: unknown): string => {
@@ -120,13 +126,15 @@ export function useLookups() {
     temporadas: toOptions(temporadas as LookupItem[], "id_temporada", "nombre"),
     regiones: toOptions(regiones as LookupItem[], "id_region", "nombre"),
     comunas: toOptions(comunas as LookupItem[], "id_comuna", "nombre"),
-  }), [variedades, especies, portainjertos, campos, pmgs, viveros, temporadas, regiones, comunas]);
+    paises: toOptions(paises as LookupItem[], "id_pais", "nombre"),
+  }), [variedades, especies, portainjertos, campos, pmgs, viveros, temporadas, regiones, comunas, paises]);
 
   // Memoize string-value options for text-based fields
   const stringOptions = useMemo(() => ({
     regiones: toStringOptions(regiones as LookupItem[], "nombre"),
     comunas: toStringOptions(comunas as LookupItem[], "nombre"),
-  }), [regiones, comunas]);
+    paises: toStringOptions(paises as LookupItem[], "nombre"),
+  }), [regiones, comunas, paises]);
 
   /** Return comunas filtered by region name (string match, since campos/viveros store
    *  region as VARCHAR text, not FK). */
@@ -157,6 +165,7 @@ export function useLookups() {
     region: (id: unknown) => resolve(maps.regionMap, id),
     comuna: (id: unknown) => resolve(maps.comunaMap, id),
     bodega: (id: unknown) => resolve(maps.bodegaMap, id),
+    pais: (id: unknown) => resolve(maps.paisMap, id),
 
     // Datos raw para dropdowns en formularios
     rawData: {
@@ -167,6 +176,7 @@ export function useLookups() {
       temporadas: temporadas as LookupItem[] | undefined,
       regiones: regiones as LookupItem[] | undefined,
       comunas: comunas as LookupItem[] | undefined,
+      paises: paises as LookupItem[] | undefined,
     },
 
     // Opciones para select (value/label) — numeric ID values

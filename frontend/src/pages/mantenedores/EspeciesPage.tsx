@@ -27,6 +27,7 @@ export function EspeciesPage() {
       fields={fields}
       columns={columns}
       idField="id_especie"
+      autoCode
     />
   );
 }

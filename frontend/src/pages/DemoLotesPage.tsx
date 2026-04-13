@@ -1,28 +1,37 @@
 /**
- * DemoLotesPage - Pagina de validacion del flujo de creacion de lotes desde TestBlocks.
+ * DemoLotesPage - Creacion visual de lotes desde grilla de TestBlock.
  *
- * Tres secciones:
- * 1. Seed Lotes Demo: auto-crear lotes desde TBs existentes
- * 2. Crear Lote Manual: formulario para crear lote desde un TB
- * 3. Seleccionar por Lote: explorar lotes de un TB y acciones demo
+ * Secciones:
+ * 1. Seed Lotes Demo (auto-crear lotes desde TBs existentes)
+ * 2. Grilla visual del TestBlock con posiciones coloreadas por variedad
+ * 3. Acciones sobre la seleccion (crear lote / seed a lote existente)
  */
 
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  Package, Sprout, Database, Leaf, ChevronRight,
-  FlaskConical, Hammer, QrCode, XCircle, Loader2,
+  Package, Database, Loader2, CheckSquare, PlusCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { testblockService } from "@/services/testblock";
 import { useLookups } from "@/hooks/useLookups";
 import { useTestblocks } from "@/hooks/useTestblock";
+import type { PosicionTestBlock } from "@/types/testblock";
+
+// --------------------------------------------------------------------------
+// Constants
+// --------------------------------------------------------------------------
+const VARIEDAD_COLORS = [
+  "#22C55E", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6",
+  "#EC4899", "#14B8A6", "#F97316", "#06B6D4", "#84CC16",
+  "#A855F7", "#6366F1", "#D946EF", "#0EA5E9", "#10B981",
+];
 
 // --------------------------------------------------------------------------
 // Types
@@ -41,25 +50,11 @@ interface SeedResult {
   message: string;
 }
 
-interface CrearLoteResult {
-  lote_id: number;
-  codigo_lote: string;
-  plantas_creadas: number;
-  message: string;
-}
-
-interface LoteInfo {
-  id_inventario: number;
-  codigo_lote: string;
-  id_variedad: number | null;
-  id_portainjerto: number | null;
-  tipo_planta: string | null;
-  cantidad_inicial: number;
-  cantidad_actual: number;
-  estado: string | null;
-  posiciones_en_tb: number;
-  fecha_ingreso: string | null;
-  observaciones: string | null;
+interface VariedadInfo {
+  id: number;
+  name: string;
+  color: string;
+  count: number;
 }
 
 // --------------------------------------------------------------------------
@@ -70,31 +65,16 @@ export function DemoLotesPage() {
   const lookups = useLookups();
   const { data: testblocks, isLoading: tbLoading } = useTestblocks();
 
-  // ---- Section 1 state ----
+  // ---- State ----
   const [seedResult, setSeedResult] = useState<SeedResult | null>(null);
-
-  // ---- Section 2 state ----
   const [selectedTbId, setSelectedTbId] = useState<number | null>(null);
-  const [variedadId, setVariedadId] = useState<number | null>(null);
-  const [portainjertoId, setPortainjertoId] = useState<number | null>(null);
-  const [cantidadPos, setCantidadPos] = useState<number>(5);
-  const [crearResult, setCrearResult] = useState<CrearLoteResult | null>(null);
-
-  // ---- Section 3 state ----
-  const [exploreTbId, setExploreTbId] = useState<number | null>(null);
-  const [selectedLote, setSelectedLote] = useState<LoteInfo | null>(null);
+  const [selectedPosIds, setSelectedPosIds] = useState<Set<number>>(new Set());
 
   // ---- Queries ----
-  const { data: posiciones } = useQuery({
+  const { data: posiciones, isLoading: posLoading } = useQuery({
     queryKey: ["testblocks", selectedTbId, "posiciones"],
     queryFn: () => testblockService.posiciones(selectedTbId!),
     enabled: !!selectedTbId,
-  });
-
-  const { data: lotes, isLoading: lotesLoading, refetch: refetchLotes } = useQuery({
-    queryKey: ["testblocks", exploreTbId, "lotes"],
-    queryFn: () => testblockService.lotesTestblock(exploreTbId!),
-    enabled: !!exploreTbId,
   });
 
   // ---- Mutations ----
@@ -114,8 +94,9 @@ export function DemoLotesPage() {
     mutationFn: (params: { tbId: number; body: Record<string, unknown> }) =>
       testblockService.crearLote(params.tbId, params.body),
     onSuccess: (data) => {
-      setCrearResult(data as CrearLoteResult);
-      toast.success(data.message);
+      toast.success(data.message || `Lote ${data.codigo_lote} creado con ${data.plantas_creadas} plantas`);
+      setSelectedPosIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["testblocks", selectedTbId, "posiciones"] });
       queryClient.invalidateQueries({ queryKey: ["testblocks"] });
     },
     onError: () => {
@@ -123,38 +104,140 @@ export function DemoLotesPage() {
     },
   });
 
-  // ---- Handlers ----
-  const handleCrearLote = () => {
-    if (!selectedTbId || !variedadId || !portainjertoId) {
-      toast.error("Seleccione TestBlock, Variedad y Portainjerto");
-      return;
+  // ---- Derived: grid data ----
+  const { posMap, hileras, maxPos } = useMemo(() => {
+    const map = new Map<string, PosicionTestBlock>();
+    let maxH = 0;
+    let maxP = 0;
+    for (const p of posiciones || []) {
+      map.set(`${p.hilera}-${p.posicion}`, p);
+      if (p.hilera > maxH) maxH = p.hilera;
+      if (p.posicion > maxP) maxP = p.posicion;
+    }
+    return { posMap: map, hileras: maxH, maxPos: maxP };
+  }, [posiciones]);
+
+  // ---- Derived: variedad color mapping ----
+  const variedadMap = useMemo(() => {
+    const map = new Map<number, VariedadInfo>();
+    if (!posiciones) return map;
+
+    // Collect unique variedades
+    const uniqueIds: number[] = [];
+    for (const p of posiciones) {
+      const vid = p.planta_variedad ?? p.id_variedad;
+      if (vid != null && !map.has(vid)) {
+        const idx = uniqueIds.length;
+        uniqueIds.push(vid);
+        map.set(vid, {
+          id: vid,
+          name: lookups.variedad(vid),
+          color: VARIEDAD_COLORS[idx % VARIEDAD_COLORS.length],
+          count: 0,
+        });
+      }
+      if (vid != null) {
+        const info = map.get(vid)!;
+        info.count++;
+      }
+    }
+    return map;
+  }, [posiciones, lookups]);
+
+  const variedadList = useMemo(
+    () => Array.from(variedadMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
+    [variedadMap],
+  );
+
+  // ---- Derived: selection summary ----
+  const selectionSummary = useMemo(() => {
+    if (selectedPosIds.size === 0 || !posiciones) return null;
+
+    const selected = posiciones.filter((p) => selectedPosIds.has(p.id_posicion));
+    const variedades = new Set<number>();
+    const portainjertos = new Set<number>();
+
+    for (const p of selected) {
+      const vid = p.planta_variedad ?? p.id_variedad;
+      const pid = p.planta_portainjerto ?? p.id_portainjerto;
+      if (vid != null) variedades.add(vid);
+      if (pid != null) portainjertos.add(pid);
     }
 
-    // Pick empty/baja positions from the loaded positions
-    const disponibles = (posiciones || [])
-      .filter((p: any) => p.estado === "vacia" || p.estado === "baja" || !p.estado)
-      .slice(0, cantidadPos);
+    return {
+      count: selected.length,
+      variedadIds: Array.from(variedades),
+      portainjertoIds: Array.from(portainjertos),
+      variedadNames: Array.from(variedades).map((v) => lookups.variedad(v)),
+      portainjertoNames: Array.from(portainjertos).map((p) => lookups.portainjerto(p)),
+    };
+  }, [selectedPosIds, posiciones, lookups]);
 
-    if (disponibles.length === 0) {
-      toast.error("No hay posiciones disponibles (vacias o baja) en este TestBlock");
+  // ---- Handlers ----
+  const togglePosition = useCallback((id: number) => {
+    setSelectedPosIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectByVariedad = useCallback((variedadId: number) => {
+    if (!posiciones) return;
+    const ids = posiciones
+      .filter((p) => (p.planta_variedad ?? p.id_variedad) === variedadId)
+      .map((p) => p.id_posicion);
+
+    setSelectedPosIds((prev) => {
+      // Check if all of this variedad are already selected
+      const allSelected = ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) {
+        // Deselect all of this variedad
+        for (const id of ids) next.delete(id);
+      } else {
+        // Select all of this variedad
+        for (const id of ids) next.add(id);
+      }
+      return next;
+    });
+  }, [posiciones]);
+
+  const selectAll = useCallback(() => {
+    if (!posiciones) return;
+    setSelectedPosIds((prev) => {
+      if (prev.size === posiciones.length) {
+        return new Set();
+      }
+      return new Set(posiciones.map((p) => p.id_posicion));
+    });
+  }, [posiciones]);
+
+  const handleCrearLote = useCallback(() => {
+    if (!selectedTbId || !selectionSummary) return;
+
+    if (selectionSummary.variedadIds.length !== 1) {
+      toast.error("Seleccione posiciones de una sola variedad para crear un lote");
+      return;
+    }
+    if (selectionSummary.portainjertoIds.length !== 1) {
+      toast.error("Seleccione posiciones con un solo portainjerto para crear un lote");
       return;
     }
 
     crearLoteMutation.mutate({
       tbId: selectedTbId,
       body: {
-        id_variedad: variedadId,
-        id_portainjerto: portainjertoId,
-        posicion_ids: disponibles.map((p: any) => p.id_posicion),
+        id_variedad: selectionSummary.variedadIds[0],
+        id_portainjerto: selectionSummary.portainjertoIds[0],
+        posicion_ids: Array.from(selectedPosIds),
       },
     });
-  };
-
-  const handleDemoAction = (action: string, lote: LoteInfo) => {
-    toast.info(`Accion "${action}" para lote ${lote.codigo_lote}`, {
-      description: `ID: ${lote.id_inventario} | Plantas: ${lote.posiciones_en_tb}`,
-    });
-  };
+  }, [selectedTbId, selectionSummary, selectedPosIds, crearLoteMutation]);
 
   // ---- Render helpers ----
   const tbOptions = (testblocks || []).map((tb: any) => ({
@@ -162,45 +245,94 @@ export function DemoLotesPage() {
     label: `${tb.codigo} - ${tb.nombre}`,
   }));
 
+  /** Get the background color for a grid cell */
+  const getCellStyle = (pos: PosicionTestBlock | undefined): React.CSSProperties => {
+    if (!pos) return {};
+
+    const estado = pos.estado || "vacia";
+
+    if (estado === "vacia") {
+      return { backgroundColor: "#ffffff", border: "1px solid #d1d5db" };
+    }
+
+    if (estado === "baja") {
+      // Red-striped for baja
+      return {
+        background: "repeating-linear-gradient(45deg, #fca5a5, #fca5a5 3px, #ef4444 3px, #ef4444 6px)",
+        border: "1px solid #dc2626",
+      };
+    }
+
+    // alta / replante — color by variedad
+    const vid = pos.planta_variedad ?? pos.id_variedad;
+    if (vid != null && variedadMap.has(vid)) {
+      return {
+        backgroundColor: variedadMap.get(vid)!.color,
+        border: "1px solid rgba(0,0,0,0.15)",
+      };
+    }
+
+    // Fallback for alta/replante with no variedad
+    return { backgroundColor: "#22C55E", border: "1px solid rgba(0,0,0,0.15)" };
+  };
+
   return (
-    <div className="space-y-8 p-6 max-w-5xl mx-auto">
+    <div className="space-y-6 p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Package className="h-6 w-6 text-amber-700" />
-          Demo: Lotes desde TestBlocks
+          Lotes desde TestBlocks
         </h1>
         <p className="text-muted-foreground mt-1">
-          Pagina de validacion para el flujo de creacion de lotes de plantas directamente desde TestBlocks.
+          Seleccione posiciones visualmente en la grilla del TestBlock para crear lotes de plantas.
         </p>
       </div>
 
       {/* ================================================================ */}
-      {/* SECTION 1: Seed Lotes Demo */}
+      {/*  TOP: TestBlock Selector + Seed Button                           */}
       {/* ================================================================ */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-blue-600" />
-            1. Seed Lotes Demo
-          </CardTitle>
-          <CardDescription>
-            Auto-crear lotes desde TestBlocks existentes. Agrupa posiciones por (variedad, portainjerto)
-            y crea registros en inventario_vivero vinculando plantas ya existentes.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button
-            onClick={() => seedMutation.mutate()}
-            disabled={seedMutation.isPending}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            {seedMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Auto-crear lotes desde TestBlocks existentes
-          </Button>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
+            <div className="space-y-1 flex-1 max-w-sm">
+              <label className="text-sm font-medium">TestBlock</label>
+              <Select
+                value={selectedTbId ? String(selectedTbId) : ""}
+                onValueChange={(v) => {
+                  setSelectedTbId(Number(v));
+                  setSelectedPosIds(new Set());
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={tbLoading ? "Cargando..." : "Seleccionar TestBlock"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {tbOptions.map((opt: { value: number; label: string }) => (
+                    <SelectItem key={opt.value} value={String(opt.value)}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => seedMutation.mutate()}
+                disabled={seedMutation.isPending}
+              >
+                {seedMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Database className="mr-2 h-4 w-4" />
+                Seed Lotes Demo
+              </Button>
+            </div>
+          </div>
+
+          {/* Seed result */}
           {seedResult && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4 space-y-3">
               <div className="flex gap-6 text-sm font-medium">
                 <span className="text-blue-800">
                   Lotes creados: <strong>{seedResult.lotes_creados}</strong>
@@ -243,280 +375,256 @@ export function DemoLotesPage() {
       </Card>
 
       {/* ================================================================ */}
-      {/* SECTION 2: Crear Lote Manual */}
+      {/*  MIDDLE: Visual Grid                                              */}
       {/* ================================================================ */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sprout className="h-5 w-5 text-green-600" />
-            2. Crear Lote Manual
-          </CardTitle>
-          <CardDescription>
-            Seleccione un TestBlock, variedad, portainjerto y cantidad de posiciones.
-            Se creara un lote y se asignaran plantas a posiciones vacias.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* TestBlock */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium">TestBlock</label>
-              <Select
-                value={selectedTbId ? String(selectedTbId) : ""}
-                onValueChange={(v) => {
-                  setSelectedTbId(Number(v));
-                  setCrearResult(null);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={tbLoading ? "Cargando..." : "Seleccionar TestBlock"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {tbOptions.map((opt: { value: number; label: string }) => (
-                    <SelectItem key={opt.value} value={String(opt.value)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Variedad */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Variedad</label>
-              <Select
-                value={variedadId ? String(variedadId) : ""}
-                onValueChange={(v) => setVariedadId(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar variedad" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(lookups.options.variedades || []).map((opt: { value: number; label: string }) => (
-                    <SelectItem key={opt.value} value={String(opt.value)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Portainjerto */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Portainjerto</label>
-              <Select
-                value={portainjertoId ? String(portainjertoId) : ""}
-                onValueChange={(v) => setPortainjertoId(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar portainjerto" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(lookups.options.portainjertos || []).map((opt: { value: number; label: string }) => (
-                    <SelectItem key={opt.value} value={String(opt.value)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Cantidad */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Cantidad de posiciones</label>
-              <Input
-                type="number"
-                min={1}
-                max={100}
-                value={cantidadPos}
-                onChange={(e) => setCantidadPos(Number(e.target.value) || 1)}
-              />
-            </div>
-          </div>
-
-          {selectedTbId && posiciones && (
-            <p className="text-xs text-muted-foreground">
-              Posiciones disponibles (vacias/baja):{" "}
-              <strong>
-                {posiciones.filter((p: any) => p.estado === "vacia" || p.estado === "baja" || !p.estado).length}
-              </strong>{" "}
-              / {posiciones.length} total
-            </p>
-          )}
-
-          <Button
-            onClick={handleCrearLote}
-            disabled={crearLoteMutation.isPending || !selectedTbId || !variedadId || !portainjertoId}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            {crearLoteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Crear Lote
-          </Button>
-
-          {crearResult && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-1">
-              <p className="font-medium text-green-800">{crearResult.message}</p>
-              <p className="text-sm text-green-700">
-                Codigo: <span className="font-mono font-bold">{crearResult.codigo_lote}</span>
-                {" | "}ID: {crearResult.lote_id}
-                {" | "}Plantas: {crearResult.plantas_creadas}
+      {selectedTbId && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Grilla del TestBlock</CardTitle>
+            <CardDescription>
+              Click en una celda para seleccionar/deseleccionar. Click en una variedad de la leyenda para seleccionar todas sus posiciones.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {posLoading ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Cargando posiciones...
+              </div>
+            ) : !posiciones || posiciones.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic py-8 text-center">
+                Este TestBlock no tiene posiciones generadas.
               </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <>
+                {/* Toolbar */}
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <span className="text-muted-foreground">
+                    {hileras} hileras x {maxPos} posiciones ({posiciones.length} total)
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={selectAll}
+                    className="h-7 text-xs"
+                  >
+                    <CheckSquare className="mr-1 h-3.5 w-3.5" />
+                    {selectedPosIds.size === posiciones.length ? "Deseleccionar Todo" : "Seleccionar Todo"}
+                  </Button>
+                  {selectedPosIds.size > 0 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setSelectedPosIds(new Set())}
+                      className="h-7 text-xs text-muted-foreground"
+                    >
+                      Limpiar seleccion
+                    </Button>
+                  )}
+                </div>
 
-      {/* ================================================================ */}
-      {/* SECTION 3: Seleccionar por Lote */}
-      {/* ================================================================ */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Leaf className="h-5 w-5 text-amber-600" />
-            3. Seleccionar por Lote
-          </CardTitle>
-          <CardDescription>
-            Explorar lotes vinculados a un TestBlock. Click en un lote para ver detalle y acciones demo.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex gap-4 items-end">
-            <div className="space-y-1 flex-1 max-w-xs">
-              <label className="text-sm font-medium">TestBlock</label>
-              <Select
-                value={exploreTbId ? String(exploreTbId) : ""}
-                onValueChange={(v) => {
-                  setExploreTbId(Number(v));
-                  setSelectedLote(null);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={tbLoading ? "Cargando..." : "Seleccionar TestBlock"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {tbOptions.map((opt: { value: number; label: string }) => (
-                    <SelectItem key={opt.value} value={String(opt.value)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {exploreTbId && (
-              <Button variant="outline" size="sm" onClick={() => refetchLotes()}>
-                Refrescar
-              </Button>
+                {/* Grid */}
+                <div className="overflow-x-auto pb-2">
+                  <div className="inline-block min-w-fit">
+                    {/* Column headers */}
+                    <div
+                      className="grid gap-0.5 mb-0.5"
+                      style={{ gridTemplateColumns: `32px repeat(${maxPos}, 1fr)` }}
+                    >
+                      <div />
+                      {Array.from({ length: maxPos }, (_, pi) => (
+                        <div
+                          key={pi}
+                          className="text-[8px] font-bold text-muted-foreground text-center"
+                        >
+                          {pi + 1}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Grid rows */}
+                    {Array.from({ length: hileras }, (_, hi) => (
+                      <div
+                        key={hi}
+                        className="grid gap-0.5"
+                        style={{ gridTemplateColumns: `32px repeat(${maxPos}, 1fr)` }}
+                      >
+                        {/* Row label */}
+                        <div className="text-[9px] font-bold text-muted-foreground flex items-center justify-center">
+                          H{hi + 1}
+                        </div>
+
+                        {/* Cells */}
+                        {Array.from({ length: maxPos }, (_, pi) => {
+                          const pos = posMap.get(`${hi + 1}-${pi + 1}`);
+                          const estado = pos?.estado || "vacia";
+                          const isSelected = pos ? selectedPosIds.has(pos.id_posicion) : false;
+
+                          // Determine cell label
+                          const vid = pos ? (pos.planta_variedad ?? pos.id_variedad) : null;
+                          const varName = vid != null ? lookups.variedad(vid) : null;
+                          const label = varName && varName !== "-"
+                            ? varName.substring(0, 3)
+                            : estado === "alta"
+                              ? "A"
+                              : estado === "baja"
+                                ? "B"
+                                : estado === "replante"
+                                  ? "R"
+                                  : "";
+
+                          // Tooltip
+                          const tip = pos
+                            ? `${pos.codigo_unico} | ${estado}${varName && varName !== "-" ? ` | ${varName}` : ""}`
+                            : `H${hi + 1}P${pi + 1} - sin crear`;
+
+                          if (!pos) {
+                            // No position record — empty grid slot
+                            return (
+                              <div
+                                key={pi}
+                                className="w-[24px] h-[24px] rounded-[3px] bg-gray-50 border border-dashed border-gray-200"
+                                title={tip}
+                              />
+                            );
+                          }
+
+                          return (
+                            <button
+                              key={pi}
+                              className={`w-[24px] h-[24px] rounded-[3px] text-[7px] font-bold transition-all leading-none flex items-center justify-center ${
+                                isSelected
+                                  ? "ring-[2.5px] ring-blue-500 ring-offset-1 scale-110 z-10"
+                                  : "hover:ring-2 hover:ring-blue-300"
+                              } ${
+                                estado === "vacia"
+                                  ? "text-gray-400"
+                                  : "text-white drop-shadow-sm"
+                              }`}
+                              style={{
+                                ...getCellStyle(pos),
+                                opacity: estado === "vacia" ? 0.45 : 1,
+                              }}
+                              title={tip}
+                              onClick={() => togglePosition(pos.id_posicion)}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Legend */}
+                <div className="border-t pt-3">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    Leyenda de Variedades (click para seleccionar)
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {variedadList.map((v) => {
+                      // Check if all positions of this variedad are selected
+                      const posOfVar = (posiciones || []).filter(
+                        (p) => (p.planta_variedad ?? p.id_variedad) === v.id,
+                      );
+                      const allSelected = posOfVar.length > 0 && posOfVar.every((p) => selectedPosIds.has(p.id_posicion));
+
+                      return (
+                        <button
+                          key={v.id}
+                          onClick={() => selectByVariedad(v.id)}
+                          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all border ${
+                            allSelected
+                              ? "border-blue-500 bg-blue-50 shadow-sm"
+                              : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          <span
+                            className="w-3 h-3 rounded-sm flex-shrink-0"
+                            style={{ backgroundColor: v.color }}
+                          />
+                          <span>{v.name}</span>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                            {v.count}
+                          </Badge>
+                        </button>
+                      );
+                    })}
+
+                    {/* Estado indicators */}
+                    <div className="flex items-center gap-3 ml-4 pl-4 border-l text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <span className="w-3 h-3 rounded-sm bg-white border border-gray-400" />
+                        Vacia
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span
+                          className="w-3 h-3 rounded-sm"
+                          style={{
+                            background: "repeating-linear-gradient(45deg, #fca5a5, #fca5a5 2px, #ef4444 2px, #ef4444 4px)",
+                          }}
+                        />
+                        Baja
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
-          </div>
+          </CardContent>
+        </Card>
+      )}
 
-          {lotesLoading && exploreTbId && (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Cargando lotes...
-            </div>
-          )}
-
-          {exploreTbId && !lotesLoading && lotes && lotes.length === 0 && (
-            <p className="text-sm text-muted-foreground italic">
-              No hay lotes vinculados a este TestBlock. Use la seccion 1 o 2 para crear lotes.
-            </p>
-          )}
-
-          {lotes && lotes.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {lotes.map((lote) => (
-                <button
-                  key={lote.id_inventario}
-                  onClick={() => setSelectedLote(lote)}
-                  className={`text-left p-3 rounded-lg border transition-all ${
-                    selectedLote?.id_inventario === lote.id_inventario
-                      ? "border-amber-500 bg-amber-50 shadow-sm"
-                      : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono text-sm font-bold text-amber-800">
-                      {lote.codigo_lote}
-                    </span>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="text-xs text-muted-foreground space-y-0.5">
-                    <div>Variedad: {lookups.variedad(lote.id_variedad)}</div>
-                    <div>Portainjerto: {lookups.portainjerto(lote.id_portainjerto)}</div>
-                    <div>Posiciones: {lote.posiciones_en_tb} | Estado: {lote.estado || "-"}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Selected lote detail */}
-          {selectedLote && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
-              <h4 className="font-bold text-amber-900">
-                Lote: {selectedLote.codigo_lote}
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                <div>
-                  <span className="text-muted-foreground block text-xs">Variedad</span>
-                  <span className="font-medium">
-                    {lookups.variedad(selectedLote.id_variedad)}
+      {/* ================================================================ */}
+      {/*  BOTTOM: Actions on selection                                     */}
+      {/* ================================================================ */}
+      {selectedTbId && selectionSummary && selectionSummary.count > 0 && (
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardContent className="pt-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              {/* Selection info */}
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">
+                  {selectionSummary.count} posicion{selectionSummary.count !== 1 ? "es" : ""} seleccionada{selectionSummary.count !== 1 ? "s" : ""}
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span>
+                    Variedad{selectionSummary.variedadNames.length !== 1 ? "es" : ""}:{" "}
+                    <strong className="text-foreground">{selectionSummary.variedadNames.join(", ")}</strong>
+                  </span>
+                  <span>
+                    Portainjerto{selectionSummary.portainjertoNames.length !== 1 ? "s" : ""}:{" "}
+                    <strong className="text-foreground">{selectionSummary.portainjertoNames.join(", ")}</strong>
                   </span>
                 </div>
-                <div>
-                  <span className="text-muted-foreground block text-xs">Portainjerto</span>
-                  <span className="font-medium">
-                    {lookups.portainjerto(selectedLote.id_portainjerto)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-xs">Plantas (posiciones)</span>
-                  <span className="font-medium">{selectedLote.posiciones_en_tb}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-xs">Estado</span>
-                  <span className="font-medium capitalize">{selectedLote.estado || "-"}</span>
-                </div>
+                {selectionSummary.variedadIds.length > 1 && (
+                  <p className="text-xs text-amber-700 font-medium">
+                    Nota: Para crear un lote, seleccione posiciones de una sola variedad y portainjerto.
+                  </p>
+                )}
               </div>
-              <div className="flex flex-wrap gap-2 pt-2">
+
+              {/* Action buttons */}
+              <div className="flex gap-2">
                 <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleDemoAction("Fenologia", selectedLote)}
+                  onClick={handleCrearLote}
+                  disabled={
+                    crearLoteMutation.isPending ||
+                    selectionSummary.variedadIds.length !== 1 ||
+                    selectionSummary.portainjertoIds.length !== 1
+                  }
+                  className="bg-green-600 hover:bg-green-700"
                 >
-                  <FlaskConical className="mr-1 h-3.5 w-3.5" />
-                  Fenologia
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleDemoAction("Labores", selectedLote)}
-                >
-                  <Hammer className="mr-1 h-3.5 w-3.5" />
-                  Labores
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleDemoAction("QR", selectedLote)}
-                >
-                  <QrCode className="mr-1 h-3.5 w-3.5" />
-                  QR
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  onClick={() => handleDemoAction("Baja", selectedLote)}
-                >
-                  <XCircle className="mr-1 h-3.5 w-3.5" />
-                  Baja
+                  {crearLoteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Crear Lote
                 </Button>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
