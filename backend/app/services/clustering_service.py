@@ -13,6 +13,15 @@ Las escrituras a BD se realizan en la capa de rutas/servicios.
 
 from datetime import date
 from typing import Optional
+import time
+import logging
+
+_logger = logging.getLogger(__name__)
+
+# Cache for DB rules (TTL 5 minutes)
+_db_rules_cache: dict = {}
+_db_rules_ts: float = 0
+_DB_RULES_TTL = 300  # seconds
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +298,51 @@ def determinar_regla(
     return "ciruela_candy"
 
 
+def _load_db_rules() -> dict:
+    """Load rules from reglas_cluster table. Cached for 5 minutes."""
+    global _db_rules_cache, _db_rules_ts
+
+    now = time.time()
+    if _db_rules_cache and (now - _db_rules_ts) < _DB_RULES_TTL:
+        return _db_rules_cache
+
+    try:
+        from app.core.database import SessionLocal
+        from app.models.regla_cluster import ReglaCluster
+        db = SessionLocal()
+        reglas = db.query(ReglaCluster).filter(ReglaCluster.activo == True).all()
+        result = {}
+        cluster_ranges = {}
+        for r in reglas:
+            result[r.codigo_regla] = {
+                "brix": [float(r.brix_b1 or 0), float(r.brix_b2 or 0), float(r.brix_b3 or 0)],
+                "mejillas": [float(r.mejillas_b1 or 0), float(r.mejillas_b2 or 0), float(r.mejillas_b3 or 0)],
+                "punto": [float(r.punto_b1 or 0), float(r.punto_b2 or 0), float(r.punto_b3 or 0)],
+                "acidez": [float(r.acidez_b1 or 0), float(r.acidez_b2 or 0), float(r.acidez_b3 or 0)],
+            }
+            cluster_ranges[r.codigo_regla] = {
+                "c1_max": r.cluster1_max or 5,
+                "c2_max": r.cluster2_max or 8,
+                "c3_max": r.cluster3_max or 11,
+            }
+        db.close()
+        if result:
+            _db_rules_cache = {"rules": result, "ranges": cluster_ranges}
+            _db_rules_ts = now
+            _logger.info(f"Loaded {len(result)} cluster rules from DB")
+        return _db_rules_cache
+    except Exception as e:
+        _logger.warning(f"Could not load DB rules, using hardcoded: {e}")
+        return {}
+
+
+def invalidate_rules_cache():
+    """Call after updating rules in the DB to force reload."""
+    global _db_rules_cache, _db_rules_ts
+    _db_rules_cache = {}
+    _db_rules_ts = 0
+
+
 def clasificar_medicion(
     brix: Optional[float],
     acidez: Optional[float],
@@ -298,22 +352,15 @@ def clasificar_medicion(
 ) -> dict:
     """Clasifica un grupo de medicion en bandas y cluster.
 
-    Aplica el algoritmo Band-Sum:
-    1. Clasifica cada metrica en banda 1-4 segun umbrales de la regla
-    2. Suma las 4 bandas (rango 4-16)
-    3. Asigna cluster: 4-5 → C1, 6-8 → C2, 9-11 → C3, 12-16 → C4
-
-    Args:
-        brix: Grados brix promedio.
-        acidez: Acidez (primera lectura o promedio).
-        firmeza_mejillas: Firmeza de mejillas promedio.
-        firmeza_punto_debil: Firmeza del punto mas debil (min de punta/quilla/hombro).
-        regla: Clave de regla de umbrales (ej: "ciruela_candy").
-
-    Returns:
-        Diccionario con bandas individuales, suma, cluster y regla aplicada.
+    Loads thresholds from DB first (cached 5 min), falls back to hardcoded RULES.
     """
-    rules = RULES.get(regla, RULES["ciruela_candy"])
+    # Try DB rules first
+    db_data = _load_db_rules()
+    db_rules = db_data.get("rules", {})
+    db_ranges = db_data.get("ranges", {})
+
+    rules = db_rules.get(regla) or RULES.get(regla, RULES["ciruela_candy"])
+    ranges = db_ranges.get(regla, {"c1_max": 5, "c2_max": 8, "c3_max": 11})
 
     banda_brix = clasificar_banda(brix, rules["brix"])
     banda_mejillas = clasificar_banda(firmeza_mejillas, rules["mejillas"])
@@ -322,11 +369,15 @@ def clasificar_medicion(
 
     suma = banda_brix + banda_mejillas + banda_punto + banda_acidez
 
-    if suma <= 5:
+    c1_max = ranges.get("c1_max", 5)
+    c2_max = ranges.get("c2_max", 8)
+    c3_max = ranges.get("c3_max", 11)
+
+    if suma <= c1_max:
         cluster = 1
-    elif suma <= 8:
+    elif suma <= c2_max:
         cluster = 2
-    elif suma <= 11:
+    elif suma <= c3_max:
         cluster = 3
     else:
         cluster = 4

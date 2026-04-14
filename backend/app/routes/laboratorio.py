@@ -212,6 +212,11 @@ def update_regla_cluster(
     regla.usuario_modificacion = user.username
     db.commit()
     db.refresh(regla)
+
+    # Invalidate clustering cache so new thresholds take effect immediately
+    from app.services.clustering_service import invalidate_rules_cache
+    invalidate_rules_cache()
+
     return regla
 
 
