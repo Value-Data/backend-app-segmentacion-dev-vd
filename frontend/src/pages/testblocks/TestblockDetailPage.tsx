@@ -1959,7 +1959,16 @@ export function TestblockDetailPage() {
             <div className="space-y-2.5 text-xs">
               <div>
                 <span className="text-muted-foreground">Variedad:</span>{" "}
-                <span className="font-semibold">{detailVarName}</span>
+                {(selectedPos.planta_variedad || selectedPos.id_variedad) ? (
+                  <button
+                    className="font-semibold text-blue-600 hover:underline"
+                    onClick={() => navigate(`/catalogos/variedades?id=${selectedPos.planta_variedad || selectedPos.id_variedad}`)}
+                  >
+                    {detailVarName}
+                  </button>
+                ) : (
+                  <span className="font-semibold">{detailVarName}</span>
+                )}
               </div>
               <div>
                 <span className="text-muted-foreground">Portainjerto:</span>{" "}

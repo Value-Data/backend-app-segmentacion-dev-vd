@@ -190,7 +190,7 @@ def clasificar_banda(valor: Optional[float], thresholds: list[float], inverted: 
         valor <= t1 → B1, <= t2 → B2, <= t3 → B3, else B4
     """
     if valor is None:
-        return 4  # peor banda por defecto
+        return None  # dato faltante — no penalizar
 
     if inverted:
         if valor <= thresholds[0]:
@@ -367,20 +367,32 @@ def clasificar_medicion(
     banda_punto = clasificar_banda(firmeza_punto_debil, rules["punto"])
     banda_acidez = clasificar_banda(acidez, rules["acidez"], inverted=True)
 
-    suma = banda_brix + banda_mejillas + banda_punto + banda_acidez
+    # Calculate sum using only available bands (not None)
+    # Scale proportionally to 4 metrics when some are missing
+    bandas = [banda_brix, banda_mejillas, banda_punto, banda_acidez]
+    bandas_validas = [b for b in bandas if b is not None]
+    n_validas = len(bandas_validas)
 
-    c1_max = ranges.get("c1_max", 5)
-    c2_max = ranges.get("c2_max", 8)
-    c3_max = ranges.get("c3_max", 11)
-
-    if suma <= c1_max:
-        cluster = 1
-    elif suma <= c2_max:
-        cluster = 2
-    elif suma <= c3_max:
+    if n_validas == 0:
+        suma = 10  # No data → default to regular
         cluster = 3
     else:
-        cluster = 4
+        # Scale: if 3 of 4 metrics available with sum 6, scaled sum = 6 * 4/3 = 8
+        suma_parcial = sum(bandas_validas)
+        suma = round(suma_parcial * 4 / n_validas)
+
+        c1_max = ranges.get("c1_max", 5)
+        c2_max = ranges.get("c2_max", 8)
+        c3_max = ranges.get("c3_max", 11)
+
+        if suma <= c1_max:
+            cluster = 1
+        elif suma <= c2_max:
+            cluster = 2
+        elif suma <= c3_max:
+            cluster = 3
+        else:
+            cluster = 4
 
     return {
         "banda_brix": banda_brix,
@@ -389,6 +401,7 @@ def clasificar_medicion(
         "banda_acidez": banda_acidez,
         "suma_bandas": suma,
         "cluster": cluster,
+        "metricas_disponibles": n_validas,
         "cluster_label": CLUSTER_LABELS[cluster],
         "regla_aplicada": regla,
     }
