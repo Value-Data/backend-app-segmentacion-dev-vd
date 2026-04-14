@@ -146,6 +146,9 @@ def migracion_maestro_carozos(
     """Migración completa: crea estructura real y re-importa mediciones.
     Elimina mediciones dummy de TB-IMPORT-CAROZOS y las reemplaza con links correctos.
     """
+    import sys
+    sys.setrecursionlimit(5000)
+
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Solo .xlsx/.xls")
 
@@ -432,86 +435,52 @@ def migracion_maestro_carozos(
         if color_pulpa_raw:
             obs_parts.append(f"Color pulpa: {color_pulpa_raw}")
 
-        try:
-            sp = db.begin_nested()
-            medicion = MedicionLaboratorio(
-                id_posicion=link["id_posicion"], id_planta=link["id_planta"],
-                id_variedad=link["id_variedad"], id_especie=link["id_especie"],
-                id_portainjerto=link["id_portainjerto"], id_campo=link["id_campo"],
-                temporada=str(row[COL["temporada"]]).strip() if row[COL["temporada"]] else None,
-                fecha_medicion=fecha_medicion, fecha_cosecha=fecha_cosecha,
-                brix=_safe_decimal(row[COL["brix"]], 2),
-                acidez=_safe_decimal(row[COL["acidez"]], 3),
-                firmeza=_safe_decimal(firmeza_mejillas, 1) if firmeza_mejillas else None,
-                peso=_safe_decimal(row[COL["peso_g"]], 2),
-                color_pct=_safe_int(row[COL["cubr_total"]]),
-                observaciones=" | ".join(obs_parts)[:2000] if obs_parts else None,
-                usuario_registro=usuario,
-                firmeza_punta=_safe_decimal(f_punta, 2) if f_punta else None,
-                firmeza_quilla=_safe_decimal(f_quilla, 2) if f_quilla else None,
-                firmeza_hombro=_safe_decimal(f_hombro, 2) if f_hombro else None,
-                firmeza_mejilla_1=_safe_decimal(f_mej1, 2) if f_mej1 else None,
-                firmeza_mejilla_2=_safe_decimal(f_mej2, 2) if f_mej2 else None,
-                perimetro=_safe_decimal(row[COL["perimetro"]], 2),
-                n_muestra=_safe_int(row[COL["fruto_num"]]),
-                periodo_almacenaje=_safe_int(row[COL["periodo_almacenaje"]]),
-                repeticion=_safe_int(row[COL["repeticion"]]),
-                raleo_frutos=_safe_int(row[COL["raleo"]]),
-                rendimiento=_safe_decimal(row[COL["rendimiento"]], 2),
-                color_0_30=_safe_int(row[COL["cubr_0_30"]]),
-                color_30_50=_safe_int(row[COL["cubr_30_50"]]),
-                color_50_75=_safe_int(row[COL["cubr_50_75"]]),
-                color_75_100=_safe_int(row[COL["cubr_75_100"]]),
-                color_total=_safe_int(row[COL["cubr_total"]]),
-                color_verde=_safe_int(row[COL["color_verde"]]),
-                color_crema=_safe_int(row[COL["color_crema"]]),
-                color_amarillo=_safe_int(row[COL["color_amarillo"]]),
-                color_full=_safe_int(row[COL["color_full"]]),
-                color_dist_total=_safe_int(row[COL["color_total"]]),
-                pardeamiento=_safe_decimal(row[COL["pardeamiento"]], 2),
-                traslucidez=_safe_decimal(row[COL["traslucidez"]], 2),
-                gelificacion=_safe_decimal(row[COL["gelificacion"]], 2),
-                harinosidad=_safe_decimal(row[COL["harinosidad"]], 2),
-                total_frutos_pardeamiento=_safe_int(row[COL["pardeamiento_total"]]),
-                total_frutos_traslucidez=_safe_int(row[COL["traslucidez_total"]]),
-                total_frutos_gelificacion=_safe_int(row[COL["gelificacion_total"]]),
-                total_frutos_harinosidad=_safe_int(row[COL["harinosidad_total"]]),
-                color_pulpa=str(color_pulpa_raw).strip() if color_pulpa_raw else None,
-            )
-            db.add(medicion)
-            db.flush()
-            meds_creadas += 1
-
-            # Auto-clasificar
-            punto_debil = calcular_punto_debil(f_punta, f_quilla, f_hombro)
-            regla = determinar_regla(
-                especie=especie_raw,
-                peso_promedio=_safe_float(row[COL["peso_g"]]),
-                color_pulpa=str(color_pulpa_raw).strip() if color_pulpa_raw else None,
-                fecha_evaluacion=fecha_medicion,
-            )
-            result = clasificar_bandas(
-                brix=_safe_float(row[COL["brix"]]),
-                acidez=_safe_float(row[COL["acidez"]]),
-                firmeza_mejillas=firmeza_mejillas,
-                firmeza_punto_debil=punto_debil,
-                regla=regla,
-            )
-            clasif = ClasificacionCluster(
-                id_medicion=medicion.id_medicion,
-                cluster=result["cluster"], banda_brix=result["banda_brix"],
-                banda_firmeza=result["banda_firmeza"], banda_acidez=result["banda_acidez"],
-                banda_calibre=result["banda_firmeza_punto"],
-                score_total=Decimal(str(result["suma_bandas"])),
-                metodo="migracion_v1",
-            )
-            db.add(clasif)
-            meds_clasificadas += 1
-        except Exception as exc:
-            sp.rollback()
-            if len(errors) < 50:
-                errors.append({"row": row_idx, "error": str(exc)[:200]})
-            continue
+        medicion = MedicionLaboratorio(
+            id_posicion=link["id_posicion"], id_planta=link["id_planta"],
+            id_variedad=link["id_variedad"], id_especie=link["id_especie"],
+            id_portainjerto=link["id_portainjerto"], id_campo=link["id_campo"],
+            temporada=str(row[COL["temporada"]]).strip() if row[COL["temporada"]] else None,
+            fecha_medicion=fecha_medicion, fecha_cosecha=fecha_cosecha,
+            brix=_safe_decimal(row[COL["brix"]], 2),
+            acidez=_safe_decimal(row[COL["acidez"]], 3),
+            firmeza=_safe_decimal(firmeza_mejillas, 1) if firmeza_mejillas else None,
+            peso=_safe_decimal(row[COL["peso_g"]], 2),
+            color_pct=_safe_int(row[COL["cubr_total"]]),
+            observaciones=" | ".join(obs_parts)[:2000] if obs_parts else None,
+            usuario_registro=usuario,
+            firmeza_punta=_safe_decimal(f_punta, 2) if f_punta else None,
+            firmeza_quilla=_safe_decimal(f_quilla, 2) if f_quilla else None,
+            firmeza_hombro=_safe_decimal(f_hombro, 2) if f_hombro else None,
+            firmeza_mejilla_1=_safe_decimal(f_mej1, 2) if f_mej1 else None,
+            firmeza_mejilla_2=_safe_decimal(f_mej2, 2) if f_mej2 else None,
+            perimetro=_safe_decimal(row[COL["perimetro"]], 2),
+            n_muestra=_safe_int(row[COL["fruto_num"]]),
+            periodo_almacenaje=_safe_int(row[COL["periodo_almacenaje"]]),
+            repeticion=_safe_int(row[COL["repeticion"]]),
+            raleo_frutos=_safe_int(row[COL["raleo"]]),
+            rendimiento=_safe_decimal(row[COL["rendimiento"]], 2),
+            color_0_30=_safe_int(row[COL["cubr_0_30"]]),
+            color_30_50=_safe_int(row[COL["cubr_30_50"]]),
+            color_50_75=_safe_int(row[COL["cubr_50_75"]]),
+            color_75_100=_safe_int(row[COL["cubr_75_100"]]),
+            color_total=_safe_int(row[COL["cubr_total"]]),
+            color_verde=_safe_int(row[COL["color_verde"]]),
+            color_crema=_safe_int(row[COL["color_crema"]]),
+            color_amarillo=_safe_int(row[COL["color_amarillo"]]),
+            color_full=_safe_int(row[COL["color_full"]]),
+            color_dist_total=_safe_int(row[COL["color_total"]]),
+            pardeamiento=_safe_decimal(row[COL["pardeamiento"]], 2),
+            traslucidez=_safe_decimal(row[COL["traslucidez"]], 2),
+            gelificacion=_safe_decimal(row[COL["gelificacion"]], 2),
+            harinosidad=_safe_decimal(row[COL["harinosidad"]], 2),
+            total_frutos_pardeamiento=_safe_int(row[COL["pardeamiento_total"]]),
+            total_frutos_traslucidez=_safe_int(row[COL["traslucidez_total"]]),
+            total_frutos_gelificacion=_safe_int(row[COL["gelificacion_total"]]),
+            total_frutos_harinosidad=_safe_int(row[COL["harinosidad_total"]]),
+            color_pulpa=str(color_pulpa_raw).strip() if color_pulpa_raw else None,
+        )
+        db.add(medicion)
+        meds_creadas += 1
 
         batch_count += 1
         if batch_count >= BATCH_SIZE:
@@ -520,6 +489,47 @@ def migracion_maestro_carozos(
 
     if batch_count > 0:
         db.commit()
+
+    # Auto-clasificar en batch separado (evita recursion por sesión pesada)
+    logger.info(f"Paso 5b: Clasificando {meds_creadas} mediciones...")
+    nuevas_meds = db.query(MedicionLaboratorio).filter(
+        MedicionLaboratorio.usuario_registro == usuario,
+    ).order_by(MedicionLaboratorio.id_medicion.desc()).limit(meds_creadas + 100).all()
+
+    for med in nuevas_meds:
+        existing_clasif = db.query(ClasificacionCluster).filter(
+            ClasificacionCluster.id_medicion == med.id_medicion).first()
+        if existing_clasif:
+            continue
+        try:
+            f_mej1_v = float(med.firmeza_mejilla_1) if med.firmeza_mejilla_1 else None
+            f_mej2_v = float(med.firmeza_mejilla_2) if med.firmeza_mejilla_2 else None
+            f_punta_v = float(med.firmeza_punta) if med.firmeza_punta else None
+            f_quilla_v = float(med.firmeza_quilla) if med.firmeza_quilla else None
+            f_hombro_v = float(med.firmeza_hombro) if med.firmeza_hombro else None
+
+            fm = calcular_mejillas_promedio(f_mej1_v, f_mej2_v)
+            pd = calcular_punto_debil(f_punta_v, f_quilla_v, f_hombro_v)
+            regla = determinar_regla(especie="Ciruela", peso_promedio=float(med.peso) if med.peso else None)
+            result = clasificar_bandas(
+                brix=float(med.brix) if med.brix else None,
+                acidez=float(med.acidez) if med.acidez else None,
+                firmeza_mejillas=fm, firmeza_punto_debil=pd, regla=regla,
+            )
+            db.add(ClasificacionCluster(
+                id_medicion=med.id_medicion, cluster=result["cluster"],
+                banda_brix=result["banda_brix"], banda_firmeza=result["banda_firmeza"],
+                banda_acidez=result["banda_acidez"], banda_calibre=result["banda_firmeza_punto"],
+                score_total=Decimal(str(result["suma_bandas"])), metodo="migracion_v1",
+            ))
+            meds_clasificadas += 1
+        except Exception:
+            pass
+
+        if meds_clasificadas % 500 == 0:
+            db.commit()
+
+    db.commit()
 
     logger.info(f"Paso 5: {meds_creadas} mediciones, {meds_clasificadas} clasificadas, {meds_sin_link} sin link")
 

@@ -539,6 +539,7 @@ def seed_susceptibilidades(
 
     especies_db = {e.codigo: e.id_especie for e in db.query(Especie).all()}
     id_cir = especies_db.get("CIR") or especies_db.get("CER")
+    id_cer = especies_db.get("CER")
     id_nec = especies_db.get("NEC")
     id_dur = especies_db.get("DUR")
 
@@ -606,6 +607,33 @@ def seed_susceptibilidades(
         ("DUR-CON-010","Zona blanda","Soft area","Condición",22,id_dur),
         ("DUR-CON-011","Fruto blando","Soft fruit","Condición",23,id_dur),
         ("DUR-CON-012","Deshidratado","Dehydrated","Condición",24,id_dur),
+        # Cerezo (CER) — 26 susceptibilidades
+        ("CER-PYS-001","Partidura estilar","Bottom crack","Partiduras y Suturas",1,id_cer),
+        ("CER-PYS-002","Partidura de agua","Lateral crack","Partiduras y Suturas",2,id_cer),
+        ("CER-PYS-003","Sutura","Suture","Partiduras y Suturas",3,id_cer),
+        ("CER-PYS-004","Media luna","Half moon crack","Partiduras y Suturas",4,id_cer),
+        ("CER-DAH-001","Pitting","Pitting","Daños y Heridas",5,id_cer),
+        ("CER-DAH-002","Machucón","Bruising","Daños y Heridas",6,id_cer),
+        ("CER-DAH-003","Herida abierta","Open wound","Daños y Heridas",7,id_cer),
+        ("CER-PUD-001","Mancha parda","Brown spot","Pudriciones",8,id_cer),
+        ("CER-PUD-002","Pudrición parda","Brown rot","Pudriciones",9,id_cer),
+        ("CER-PUD-003","Pudrición negra","Black rot","Pudriciones",10,id_cer),
+        ("CER-PUD-004","Daño de pájaro","Bird damage","Pudriciones",11,id_cer),
+        ("CER-PUD-005","Larvas","Worms","Pudriciones",12,id_cer),
+        ("CER-PUD-006","Fruto blando","Soft fruit","Pudriciones",13,id_cer),
+        ("CER-DES-001","Piel de lagarto","Lizard skin","Deshidrataciones",14,id_cer),
+        ("CER-DES-002","Fruto deshidratado","Dehydrated fruit","Deshidrataciones",15,id_cer),
+        ("CER-DES-003","Pedicelo deshidratado","Dehydrated stem","Deshidrataciones",16,id_cer),
+        ("CER-CAL-001","Manchas","Stains","Defectos de Calidad",17,id_cer),
+        ("CER-CAL-002","Daño de trips","Thrips damage","Defectos de Calidad",18,id_cer),
+        ("CER-CAL-003","Daño de escama","Scale damage","Defectos de Calidad",19,id_cer),
+        ("CER-CAL-004","Virosis","Viral disease","Defectos de Calidad",20,id_cer),
+        ("CER-CAL-005","Hijuelo","Spur","Defectos de Calidad",21,id_cer),
+        ("CER-CAL-006","Fruto doble","Twin fruit","Defectos de Calidad",22,id_cer),
+        ("CER-CAL-007","Sin pedicelo","Stemless","Defectos de Calidad",23,id_cer),
+        ("CER-CAL-008","Falta color","Lack of color","Defectos de Calidad",24,id_cer),
+        ("CER-AMA-001","Manchas (amarillas)","Stains (yellow)","Cerezas Amarillas",25,id_cer),
+        ("CER-AMA-002","Machucón (amarillas)","Bruising (yellow)","Cerezas Amarillas",26,id_cer),
     ]
 
     created = updated = 0
