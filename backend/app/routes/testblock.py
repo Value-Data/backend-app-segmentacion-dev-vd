@@ -325,6 +325,7 @@ def reestructurar_testblock(
     created = 0
     if total_slots > total_existing:
         existing_coords = {(p.hilera, p.posicion) for p in posiciones}
+        from app.models.maestras import Cuartel
         cuartel = db.query(Cuartel).filter(Cuartel.id_cuartel == tb.id_cuartel).first() if tb.id_cuartel else None
         base_code = cuartel.codigo if cuartel else tb.codigo
 
