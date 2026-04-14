@@ -295,19 +295,21 @@ def reestructurar_testblock(
         .all()
     )
 
-    total_slots = num_hileras * pos_por_hilera
     total_existing = len(posiciones)
+
+    # Auto-adjust: if positions don't fit, increase hileras
+    import math
+    min_hileras = math.ceil(total_existing / pos_por_hilera) if pos_por_hilera > 0 else 1
+    if num_hileras < min_hileras:
+        num_hileras = min_hileras  # auto-expand to fit all positions
+
+    total_slots = num_hileras * pos_por_hilera
 
     # Redistribute: assign new hilera/posicion to each existing position
     reassigned = 0
     for i, pos in enumerate(posiciones):
         new_hilera = (i // pos_por_hilera) + 1
         new_posicion = (i % pos_por_hilera) + 1
-
-        if new_hilera > num_hileras:
-            # More positions than slots — put extras in last hilera
-            new_hilera = num_hileras
-            new_posicion = pos_por_hilera + (i - (num_hileras * pos_por_hilera)) + 1
 
         if pos.hilera != new_hilera or pos.posicion != new_posicion:
             pos.hilera = new_hilera
