@@ -2,7 +2,7 @@ import { GenericMantenedorPage, col, statusCol } from "./GenericMantenedorPage";
 import type { FieldDef } from "@/types";
 
 const fields: FieldDef[] = [
-  { key: "codigo", label: "Codigo", type: "text", required: true },
+  { key: "codigo", label: "Código", type: "text", required: true },
   { key: "nombre", label: "Nombre", type: "text", required: true },
   { key: "fecha_inicio", label: "Fecha Inicio", type: "date" },
   { key: "fecha_fin", label: "Fecha Fin", type: "date" },
@@ -15,7 +15,7 @@ const fields: FieldDef[] = [
 ];
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
   col("fecha_inicio", "Inicio"),
   col("fecha_fin", "Fin"),

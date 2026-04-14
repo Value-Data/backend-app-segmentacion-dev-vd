@@ -27,9 +27,9 @@ import { MergeDialog } from "@/components/shared/MergeDialog";
 type ViewMode = "cards" | "table" | "map";
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
-  col("ubicacion", "Ubicacion"),
+  col("ubicacion", "Ubicación"),
   col("comuna", "Comuna"),
   col("hectareas", "Ha"),
 ];
@@ -62,13 +62,13 @@ export function CamposPage() {
   );
 
   const fields: FieldDef[] = useMemo(() => [
-    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "codigo", label: "Código", type: "text", required: true },
     { key: "nombre", label: "Nombre", type: "text", required: true },
-    { key: "ubicacion", label: "Ubicacion", type: "text" },
-    { key: "region", label: "Region", type: "select", options: stringOptions.regiones },
+    { key: "ubicacion", label: "Ubicación", type: "text" },
+    { key: "region", label: "Región", type: "select", options: stringOptions.regiones },
     { key: "comuna", label: "Comuna", type: "select", options: comunaOpts },
-    { key: "direccion", label: "Direccion", type: "text" },
-    { key: "hectareas", label: "Hectareas", type: "number" },
+    { key: "direccion", label: "Dirección", type: "text" },
+    { key: "hectareas", label: "Hectáreas", type: "number" },
     { key: "latitud", label: "Latitud", type: "number" },
     { key: "longitud", label: "Longitud", type: "number" },
   ], [stringOptions.regiones, comunaOpts]);

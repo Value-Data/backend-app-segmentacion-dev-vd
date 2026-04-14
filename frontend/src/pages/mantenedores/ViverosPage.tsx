@@ -27,7 +27,7 @@ import { MergeDialog } from "@/components/shared/MergeDialog";
 type ViewMode = "cards" | "table";
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
   col("representante", "Representante"),
   col("comuna", "Comuna"),
@@ -81,13 +81,13 @@ export function ViverosPage() {
   );
 
   const fields: FieldDef[] = useMemo(() => [
-    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "codigo", label: "Código", type: "text", required: true },
     { key: "nombre", label: "Nombre", type: "text", required: true },
     { key: "representante", label: "Representante", type: "text" },
-    { key: "telefono", label: "Telefono", type: "text" },
+    { key: "telefono", label: "Teléfono", type: "text" },
     { key: "email", label: "Email", type: "text" },
-    { key: "direccion", label: "Direccion", type: "text" },
-    { key: "region", label: "Region", type: "select", options: stringOptions.regiones },
+    { key: "direccion", label: "Dirección", type: "text" },
+    { key: "region", label: "Región", type: "select", options: stringOptions.regiones },
     { key: "comuna", label: "Comuna", type: "select", options: comunaOpts },
   ], [stringOptions.regiones, comunaOpts]);
 

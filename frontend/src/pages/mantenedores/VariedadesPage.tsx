@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2, Upload, Camera, History, X, Link2, Star } from "lucide-react";
+import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2, Upload, Camera, History, X, Link2, Star, ShieldAlert } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { useLookups } from "@/hooks/useLookups";
 import { mantenedorService, variedadBitacoraService } from "@/services/mantenedores";
 import type { BitacoraEntry } from "@/services/mantenedores";
 import { uploadFile, get, del, put, post } from "@/services/api";
-import { formatDate, withCurrentValue } from "@/lib/utils";
+import { formatDate, withCurrentValue, humanize } from "@/lib/utils";
 import type { FieldDef } from "@/types";
 import type { Especie, Pmg } from "@/types/maestras";
 import { useAuthStore } from "@/stores/authStore";
@@ -21,9 +21,9 @@ interface VariedadFoto {
   id: number;
   id_variedad: number;
   filename: string;
-  filepath: string;
   descripcion?: string | null;
   es_principal?: boolean;
+  content_type?: string;
   fecha_creacion?: string;
 }
 
@@ -58,7 +58,7 @@ const bitacoraFields: FieldDef[] = [
   { key: "titulo", label: "Titulo", type: "text", required: true },
   { key: "fecha", label: "Fecha", type: "date", required: true },
   { key: "contenido", label: "Contenido", type: "textarea", required: true },
-  { key: "ubicacion", label: "Ubicacion", type: "text" },
+  { key: "ubicacion", label: "Ubicación", type: "text" },
   { key: "resultado", label: "Resultado", type: "text" },
 ];
 
@@ -74,10 +74,17 @@ export function VariedadesPage() {
   const [selectedVar, setSelectedVar] = useState<Record<string, unknown> | null>(null);
   const [bitacoraOpen, setBitacoraOpen] = useState(false);
   const [editingBitacora, setEditingBitacora] = useState<BitacoraEntry | null>(null);
-  const [detailTab, setDetailTab] = useState<"info" | "fotos" | "polinizantes" | "bitacora" | "log">("info");
+  const [detailTab, setDetailTab] = useState<"info" | "fotos" | "polinizantes" | "suscept" | "bitacora" | "log">("info");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [polSearch, setPolSearch] = useState("");
   const [polDropdownOpen, setPolDropdownOpen] = useState(false);
+
+  // Map {id_variedad: foto_id} for grid thumbnails
+  const { data: fotosPrincipalesMap } = useQuery({
+    queryKey: ["fotosPrincipales"],
+    queryFn: () => get<Record<number, number>>("/fotos-principales"),
+    staleTime: 2 * 60_000,
+  });
 
   const { data: especies } = useQuery({
     queryKey: ["especies"],
@@ -123,6 +130,7 @@ export function VariedadesPage() {
     mutationFn: (file: File) => uploadFile<VariedadFoto>(`/variedades/${varId}/fotos`, file),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["variedadFotos", varId] });
+      queryClient.invalidateQueries({ queryKey: ["fotosPrincipales"] });
       toast.success("Foto subida");
     },
   });
@@ -131,6 +139,7 @@ export function VariedadesPage() {
     mutationFn: (fotoId: number) => del<unknown>(`/variedades/${varId}/fotos/${fotoId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["variedadFotos", varId] });
+      queryClient.invalidateQueries({ queryKey: ["fotosPrincipales"] });
       toast.success("Foto eliminada");
     },
   });
@@ -139,6 +148,7 @@ export function VariedadesPage() {
     mutationFn: (fotoId: number) => put<VariedadFoto>(`/variedades/${varId}/fotos/${fotoId}/principal`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["variedadFotos", varId] });
+      queryClient.invalidateQueries({ queryKey: ["fotosPrincipales"] });
       toast.success("Foto principal actualizada");
     },
   });
@@ -148,6 +158,41 @@ export function VariedadesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bitacora", varId] });
       toast.success("Entrada eliminada");
+    },
+  });
+
+  // Susceptibilidades assigned to this variedad
+  const { data: varSuscepts } = useQuery({
+    queryKey: ["variedadSuscept", varId],
+    queryFn: () => get<any[]>(`/mantenedores/variedades/${varId}/susceptibilidades`),
+    enabled: !!varId,
+  });
+  // All susceptibilidades filtered by the variedad's especie
+  const varEspecieId = selectedVar?.id_especie as number | undefined;
+  const { data: allSuscepts } = useQuery({
+    queryKey: ["susceptibilidades", varEspecieId],
+    queryFn: () => get<any[]>("/mantenedores/susceptibilidades", { especie: varEspecieId }),
+    enabled: !!varEspecieId,
+  });
+  // Available susceptibilidades (not yet assigned)
+  const availableSuscepts = useMemo(() => {
+    if (!allSuscepts) return [];
+    const assignedIds = new Set((varSuscepts || []).map((vs: any) => vs.id_suscept));
+    return (allSuscepts as any[]).filter((s) => s.activo !== false && s.id_especie === varEspecieId && !assignedIds.has(s.id_suscept));
+  }, [allSuscepts, varSuscepts, varEspecieId]);
+
+  const addSusceptMut = useMutation({
+    mutationFn: (id_suscept: number) => post<any>(`/mantenedores/variedades/${varId}/susceptibilidades`, { id_variedad: varId, id_suscept }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["variedadSuscept", varId] });
+      toast.success("Susceptibilidad agregada");
+    },
+  });
+  const removeSusceptMut = useMutation({
+    mutationFn: (id_vs: number) => del<any>(`/mantenedores/variedades/${varId}/susceptibilidades/${id_vs}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["variedadSuscept", varId] });
+      toast.success("Susceptibilidad eliminada");
     },
   });
 
@@ -190,7 +235,7 @@ export function VariedadesPage() {
   const origenOpts = stringOptions.paises;
 
   const fields: FieldDef[] = [
-    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "codigo", label: "Código", type: "text", required: true },
     { key: "nombre", label: "Nombre", type: "text", required: true },
     { key: "id_especie", label: "Especie", type: "select", options: especieOpts },
     { key: "id_pmg", label: "PMG", type: "select", options: pmgOpts },
@@ -297,7 +342,7 @@ export function VariedadesPage() {
 
   const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api/v1";
   const token = useAuthStore((s) => s.token);
-  const fotoUrl = (fotoId: number) => `${API_BASE}/variedades/fotos/${fotoId}/file?token=${encodeURIComponent(token || "")}`;
+  const fotoUrl = (fotoId: number) => `${API_BASE}/files/fotos/${fotoId}?token=${encodeURIComponent(token || "")}`;
   const principalFoto = fotos?.find((f) => f.es_principal);
 
   // Detail view
@@ -315,14 +360,6 @@ export function VariedadesPage() {
             <Button size="sm" variant="outline" onClick={() => { setEditRow(selectedVar); setFormOpen(true); }}>
               <Pencil className="h-4 w-4 mr-1" /> Editar
             </Button>
-            <Button size="sm" variant="destructive" onClick={async () => {
-              if (confirm("Eliminar esta variedad?")) {
-                await remove(selectedVar.id_variedad as number);
-                setSelectedVar(null);
-              }
-            }}>
-              <Trash2 className="h-4 w-4 mr-1" /> Eliminar
-            </Button>
           </div>
         </div>
 
@@ -332,6 +369,7 @@ export function VariedadesPage() {
             { key: "info" as const, label: "Info", icon: Leaf },
             ...(!selectedVar.auto_fertil ? [{ key: "polinizantes" as const, label: `Polinizantes (${polinizantes?.length ?? 0})`, icon: Link2 }] : []),
             { key: "fotos" as const, label: `Fotos (${fotos?.length ?? 0})`, icon: Camera },
+            { key: "suscept" as const, label: `Suscept. (${varSuscepts?.length ?? 0})`, icon: ShieldAlert },
             { key: "bitacora" as const, label: `Bitacora (${bitacoras?.length ?? 0})`, icon: BookOpen },
             { key: "log" as const, label: `Historial (${changeLog?.length ?? 0})`, icon: History },
           ]).map((tab) => (
@@ -365,11 +403,11 @@ export function VariedadesPage() {
               )}
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div><span className="text-muted-foreground">Codigo:</span> {selectedVar.codigo as string}</div>
-                <div><span className="text-muted-foreground">Tipo:</span> {selectedVar.tipo as string || "-"}</div>
+                <div><span className="text-muted-foreground">Tipo:</span> {humanize(selectedVar.tipo as string)}</div>
                 <div><span className="text-muted-foreground">Color:</span> {selectedVar.color as string || "-"}</div>
-                <div><span className="text-muted-foreground">Epoca:</span> {selectedVar.epoca_cosecha as string || "-"}</div>
+                <div><span className="text-muted-foreground">Epoca:</span> {humanize(selectedVar.epoca_cosecha as string)}</div>
                 <div><span className="text-muted-foreground">Calibre:</span> {selectedVar.calibre_esperado != null ? `${selectedVar.calibre_esperado}` : "-"}</div>
-                <div><span className="text-muted-foreground">Req. Frio:</span> {selectedVar.requerimiento_frio as string || "-"}</div>
+                <div><span className="text-muted-foreground">Req. Frio:</span> {humanize(selectedVar.requerimiento_frio as string)}</div>
                 <div>
                   <span className="text-muted-foreground">Auto-fertil:</span>{" "}
                   {selectedVar.auto_fertil
@@ -391,7 +429,7 @@ export function VariedadesPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Especie:</span> {lk.especie(selectedVar.id_especie)}</div>
                 <div><span className="text-muted-foreground">PMG:</span> {lk.pmg(selectedVar.id_pmg)}</div>
-                <div><span className="text-muted-foreground">Estado:</span> {selectedVar.estado as string || "-"}</div>
+                <div><span className="text-muted-foreground">Estado:</span> {humanize(selectedVar.estado as string)}</div>
                 <div><span className="text-muted-foreground">Polinizantes:</span> {polinizantes?.length ?? 0}</div>
                 <div><span className="text-muted-foreground">Fotos:</span> {fotos?.length ?? 0}</div>
                 <div><span className="text-muted-foreground">Entradas bitacora:</span> {bitacoras?.length ?? 0}</div>
@@ -483,6 +521,81 @@ export function VariedadesPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Tab: Susceptibilidades */}
+        {detailTab === "suscept" && (
+          <div className="bg-white rounded-lg border p-4 space-y-4">
+            {/* Assigned susceptibilidades */}
+            <div>
+              <h4 className="text-sm font-semibold mb-2">Susceptibilidades asignadas</h4>
+              {(!varSuscepts || varSuscepts.length === 0) ? (
+                <p className="text-sm text-muted-foreground">Sin susceptibilidades asignadas. Agregue desde la lista de abajo.</p>
+              ) : (
+                <div className="space-y-1">
+                  {(varSuscepts as any[]).map((vs) => (
+                    <div key={vs.id_vs} className="flex items-center justify-between px-3 py-2 rounded-lg border bg-red-50 border-red-200">
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="h-3.5 w-3.5 text-red-500" />
+                        <div>
+                          <span className="text-sm font-medium">{vs.nombre || `#${vs.id_suscept}`}</span>
+                          {vs.grupo && <span className="text-xs text-muted-foreground ml-2">({vs.grupo})</span>}
+                          {vs.nombre_en && <span className="text-xs text-muted-foreground ml-1">— {vs.nombre_en}</span>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => removeSusceptMut.mutate(vs.id_vs)}
+                        className="text-red-400 hover:text-red-600 p-1"
+                        title="Quitar"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Available to add */}
+            <div>
+              <h4 className="text-sm font-semibold mb-2">
+                Agregar susceptibilidad
+                {varEspecieId && <span className="text-xs text-muted-foreground font-normal ml-1">(filtradas por especie)</span>}
+              </h4>
+              {availableSuscepts.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No hay mas susceptibilidades disponibles para esta especie.</p>
+              ) : (
+                <div>
+                  {/* Group by grupo */}
+                  {Array.from(
+                    availableSuscepts.reduce((map: Map<string, any[]>, s: any) => {
+                      const g = s.grupo || "Otros";
+                      if (!map.has(g)) map.set(g, []);
+                      map.get(g)!.push(s);
+                      return map;
+                    }, new Map<string, any[]>())
+                  ).map(([grupo, items]) => (
+                    <div key={grupo} className="mb-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">{grupo}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(items as any[]).sort((a: any, b: any) => (a.orden || 0) - (b.orden || 0)).map((s: any) => (
+                          <button
+                            key={s.id_suscept}
+                            onClick={() => addSusceptMut.mutate(s.id_suscept)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-gray-300 text-xs hover:border-red-400 hover:bg-red-50 transition-colors"
+                            title={s.nombre_en ? `${s.nombre_en} — Click para agregar` : "Click para agregar"}
+                          >
+                            <Plus className="h-3 w-3" />
+                            {s.nombre}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -699,6 +812,23 @@ export function VariedadesPage() {
           </div>
         )}
 
+        {/* Danger zone — separated from edit to prevent accidental deletion */}
+        <div className="mt-6 pt-4 border-t border-dashed border-red-200">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
+            onClick={async () => {
+              if (confirm(`Eliminar la variedad "${selectedVar.nombre}"? Esta accion no se puede deshacer.`)) {
+                await remove(selectedVar.id_variedad as number);
+                setSelectedVar(null);
+              }
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" /> Eliminar variedad
+          </Button>
+        </div>
+
         <CrudForm
           open={bitacoraOpen}
           onClose={() => { setBitacoraOpen(false); setEditingBitacora(null); }}
@@ -835,6 +965,7 @@ export function VariedadesPage() {
           <p className="text-xs text-muted-foreground mb-3">{filtered.length} variedades</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map((v) => {
+            const principalFotoId = fotosPrincipalesMap?.[v.id_variedad as number];
             const img = v.imagen as string | null;
             return (
               <div
@@ -850,8 +981,15 @@ export function VariedadesPage() {
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
-                {/* Image */}
-                {img ? (
+                {/* Image — prefer uploaded foto principal, fallback to legacy base64 */}
+                {principalFotoId ? (
+                  <img
+                    src={fotoUrl(principalFotoId)}
+                    alt={v.nombre as string}
+                    className="w-full h-36 object-cover"
+                    loading="lazy"
+                  />
+                ) : img ? (
                   <img
                     src={`data:image/jpeg;base64,${img}`}
                     alt={v.nombre as string}
@@ -876,7 +1014,7 @@ export function VariedadesPage() {
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     {activeEspecie === "todas" && <span className="font-medium text-garces-cherry">{lk.especie(v.id_especie)}</span>}
                     {v.tipo ? <span className="text-garces-earth">{String(v.tipo)}</span> : null}
-                    {v.epoca_cosecha ? <span>{String(v.epoca_cosecha)}</span> : null}
+                    {v.epoca_cosecha ? <span>{humanize(String(v.epoca_cosecha))}</span> : null}
                   </div>
 
                   <div className="flex gap-2 text-xs">

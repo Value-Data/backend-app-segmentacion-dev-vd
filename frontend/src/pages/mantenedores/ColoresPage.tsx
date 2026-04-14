@@ -2,7 +2,7 @@ import { GenericMantenedorPage, col } from "./GenericMantenedorPage";
 import type { FieldDef } from "@/types";
 
 const fields: FieldDef[] = [
-  { key: "codigo", label: "Codigo", type: "text" },
+  { key: "codigo", label: "Código", type: "text" },
   { key: "nombre", label: "Nombre", type: "text", required: true },
   { key: "tipo", label: "Tipo", type: "select", required: true, options: [
     { value: "fruto", label: "Fruto" },
@@ -14,7 +14,7 @@ const fields: FieldDef[] = [
 ];
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
   col("tipo", "Tipo"),
   col("aplica_especie", "Especie"),

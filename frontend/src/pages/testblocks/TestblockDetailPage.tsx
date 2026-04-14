@@ -6,7 +6,7 @@ import {
   Package, CheckCircle2, XCircle, ExternalLink, FlaskConical,
   AlertTriangle, Repeat2, MapPin, Settings2, PlusCircle, Rows3,
   Calendar, FileText, Pencil, Trash2, QrCode, X, Clock, Leaf,
-  ChevronDown, Shield, Hammer, Map as MapIcon,
+  ChevronDown, Shield, Hammer, Map as MapIcon, Camera, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ import { PlantaMedicionesDialog } from "@/components/shared/PlantaMedicionesDial
 import { MapaTestBlock } from "./MapaTestBlock";
 
 /* ------------------------------------------------------------------ */
-/*  Constants                                                          */
+/*  Constants                                                           */
 /* ------------------------------------------------------------------ */
 
 const ESTADO_COLORS: Record<string, string> = {
@@ -47,6 +47,7 @@ const HISTORIAL_ACTION_COLORS: Record<string, string> = {
   replante: "bg-blue-500",
   fenologia: "bg-purple-500",
   medicion: "bg-amber-500",
+  etapa: "bg-amber-600",
 };
 
 /** Small colored dot indicating cluster quality for a plant. */
@@ -62,7 +63,7 @@ function ClusterDot({ cluster }: { cluster?: number | null }) {
   );
 }
 
-type SelectionMode = "none" | "alta" | "baja" | "replante" | "eliminar" | "fenologia";
+type SelectionMode = "none" | "alta" | "baja" | "replante" | "eliminar" | "fenologia" | "etapa";
 
 // Removed static ESTADOS_FENOLOGICOS — now fetched from API (estados_fenologicos table)
 
@@ -86,10 +87,20 @@ export function TestblockDetailPage() {
 
   const lk = useLookups();
   const [colorMode] = useState<ColorMode>("estado");
+  const [gridSize, setGridSize] = useState<"sm" | "md" | "lg">("md");
   const [selectedPos, setSelectedPos] = useState<PosicionTestBlock | null>(null);
 
-  /* --- Estado toggle (Formacion / Produccion) --- */
-  const [estadoTB, setEstadoTB] = useState<"formacion" | "produccion">("formacion");
+  /* --- Etapa mutation (per-plant formacion/produccion) --- */
+  const etapaMut = useMutation({
+    mutationFn: (params: { etapa: string; posicion_ids?: number[]; id_lote?: number }) =>
+      testblockService.cambiarEtapa(tbId, params),
+    onSuccess: (data) => {
+      toast.success(data.message);
+      queryClient.invalidateQueries({ queryKey: ["testblocks", tbId, "posiciones"] });
+      queryClient.invalidateQueries({ queryKey: ["testblocks", tbId, "grilla"] });
+    },
+    onError: () => toast.error("Error al cambiar etapa"),
+  });
 
   /* --- Selection mode state --- */
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("none");
@@ -111,6 +122,8 @@ export function TestblockDetailPage() {
   const [addPosOpen, setAddPosOpen] = useState(false);
   const [delHileraOpen, setDelHileraOpen] = useState(false);
   const [fenologiaConfirmOpen, setFenologiaConfirmOpen] = useState(false);
+  const [etapaConfirmOpen, setEtapaConfirmOpen] = useState(false);
+  const [etapaTarget, setEtapaTarget] = useState<"formacion" | "produccion">("produccion");
   const [editTbOpen, setEditTbOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -139,9 +152,73 @@ export function TestblockDetailPage() {
     enabled: !!selectedPos?.id_posicion && selectionMode === "none",
   });
 
-  /* --- Detail panel observaciones editing --- */
+  /* --- Historial global del testblock --- */
+  const { data: historialTb } = useQuery({
+    queryKey: ["testblocks", tbId, "historial"],
+    queryFn: () => testblockService.historialTestblock(tbId),
+    staleTime: 30_000,
+  });
+
+  /* --- Labores pendientes for this testblock --- */
+  const { data: laboresTb } = useQuery({
+    queryKey: ["labores", "planificacion", tbId],
+    queryFn: () => laboresService.planificacion({ testblock: tbId }),
+    staleTime: 30_000,
+  });
+  const laboresPendientes = useMemo(() => {
+    if (!laboresTb) return [];
+    return (laboresTb as any[]).filter((l) => l.estado === "planificada");
+  }, [laboresTb]);
+  // Group by tipo labor
+  const laboresPorTipo = useMemo(() => {
+    const map = new Map<number, { nombre: string; labores: any[] }>();
+    for (const l of laboresPendientes) {
+      const id = l.id_labor || 0;
+      if (!map.has(id)) {
+        const tl = (allTiposLabor as any[] || []).find((t: any) => t.id_labor === id);
+        map.set(id, { nombre: tl?.nombre || `Labor #${id}`, labores: [] });
+      }
+      map.get(id)!.labores.push(l);
+    }
+    return Array.from(map.values()).sort((a, b) => b.labores.length - a.labores.length);
+  }, [laboresPendientes, allTiposLabor]);
+  // Set of posicion IDs with pending labores (for grid indicator)
+  const posConLabores = useMemo(() => {
+    return new Set(laboresPendientes.map((l: any) => l.id_posicion));
+  }, [laboresPendientes]);
+
+  const ejecutarLaborMut = useMutation({
+    mutationFn: (ids: number[]) => laboresService.ejecutarMasivo(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labores"] });
+      toast.success("Labores ejecutadas");
+    },
+  });
+
+  /* --- Detail panel editing --- */
   const [detailObs, setDetailObs] = useState("");
   const [detailObsDirty, setDetailObsDirty] = useState(false);
+  const [detailEditing, setDetailEditing] = useState(false);
+  const [editForm, setEditForm] = useState<Record<string, unknown>>({});
+
+  const editPosMut = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      testblockService.updatePosicion(selectedPos!.id_posicion, data),
+    onSuccess: () => {
+      toast.success("Posición actualizada");
+      queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+      setDetailEditing(false);
+    },
+  });
+
+  const deletePosSingleMut = useMutation({
+    mutationFn: () => testblockService.deletePosicion(selectedPos!.id_posicion),
+    onSuccess: () => {
+      toast.success("Posición eliminada");
+      setSelectedPos(null);
+      queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+    },
+  });
 
   // Sync detailObs when selectedPos changes
   const currentPosId = selectedPos?.id_posicion;
@@ -169,7 +246,7 @@ export function TestblockDetailPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
       if (res.count === 0) {
-        toast.info("Las posiciones ya estan generadas. Use \"Alta\" para plantar.");
+        toast.info("Las posiciones ya están generadas. Use \"Alta\" para plantar.");
       } else {
         toast.success(`${res.count} posiciones nuevas generadas. Use "Alta" para plantar.`);
       }
@@ -431,7 +508,7 @@ export function TestblockDetailPage() {
 
   const editTbFields: FieldDef[] = useMemo(() => [
     { key: "nombre", label: "Nombre", type: "text", required: true },
-    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "codigo", label: "Código", type: "text", required: true },
     { key: "id_campo", label: "Campo", type: "select", options: lk.options.campos },
     { key: "temporada_inicio", label: "Temporada Inicio", type: "text", placeholder: "Ej: 2024-2025" },
     { key: "latitud", label: "Latitud", type: "number", placeholder: "Ej: -34.1234567" },
@@ -488,7 +565,14 @@ export function TestblockDetailPage() {
 
   const handleGridCellClick = useCallback((pos: PosicionTestBlock | undefined) => {
     if (selectionMode === "none") {
-      if (pos) setSelectedPos(pos);
+      if (!pos) return;
+      // If already selecting positions (group mode), toggle this one
+      if (selectedPositions.size > 0) {
+        togglePosition(pos.id_posicion);
+        return;
+      }
+      // Otherwise show detail panel
+      setSelectedPos(pos);
       return;
     }
 
@@ -664,6 +748,8 @@ export function TestblockDetailPage() {
       setReplanteConfirmOpen(true);
     } else if (selectionMode === "fenologia") {
       setFenologiaConfirmOpen(true);
+    } else if (selectionMode === "etapa") {
+      setEtapaConfirmOpen(true);
     } else if (selectionMode === "eliminar") {
       if (confirm(`Eliminar ${selectedPositions.size} posicion(es)? Esta accion no se puede deshacer.`)) {
         delPosMut.mutate(Array.from(selectedPositions));
@@ -792,6 +878,19 @@ export function TestblockDetailPage() {
     return [{ id: tbId, lat: Number(tb.latitud), lng: Number(tb.longitud), label: tb.nombre || "", detail: tb.codigo || "" }];
   }, [tb?.latitud, tb?.longitud, tb?.nombre, tb?.codigo, tbId]);
 
+  // Etapa stats — must be above early returns to keep hook order stable
+  const etapaStats = useMemo(() => {
+    let formacion = 0;
+    let produccion = 0;
+    for (const p of grilla?.posiciones || []) {
+      if (p.estado === "alta" || p.estado === "replante") {
+        if (p.etapa === "produccion") produccion++;
+        else formacion++;
+      }
+    }
+    return { formacion, produccion };
+  }, [grilla?.posiciones]);
+
   /* ---------------------------------------------------------------- */
   /*  Loading / error states                                           */
   /* ---------------------------------------------------------------- */
@@ -826,6 +925,7 @@ export function TestblockDetailPage() {
     if (selectionMode === "replante") return estado === "baja" || estado === "replante";
     if (selectionMode === "eliminar") return estado === "vacia" || estado === "baja";
     if (selectionMode === "fenologia") return estado === "alta";
+    if (selectionMode === "etapa") return estado === "alta" || estado === "replante";
     return false;
   };
 
@@ -890,29 +990,12 @@ export function TestblockDetailPage() {
                 {lk.campo(tb.id_campo)}
               </span>
 
-              {/* Formacion / Produccion segmented control */}
-              <span className="inline-flex rounded-full border border-border overflow-hidden ml-1">
-                <button
-                  onClick={() => setEstadoTB("formacion")}
-                  className={`px-2.5 py-0.5 text-[11px] font-semibold transition-colors border-none ${
-                    estadoTB === "formacion"
-                      ? "bg-amber-500 text-white"
-                      : "bg-white text-muted-foreground hover:bg-muted/50"
-                  }`}
-                >
-                  Formacion
-                </button>
-                <button
-                  onClick={() => setEstadoTB("produccion")}
-                  className={`px-2.5 py-0.5 text-[11px] font-semibold transition-colors border-none ${
-                    estadoTB === "produccion"
-                      ? "bg-green-500 text-white"
-                      : "bg-white text-muted-foreground hover:bg-muted/50"
-                  }`}
-                >
-                  Produccion
-                </button>
-              </span>
+              {/* Replante badge if any */}
+              {(tb.pos_replante || 0) > 0 && (
+                <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-semibold">
+                  Replante {tb.pos_replante}
+                </span>
+              )}
             </div>
           </div>
 
@@ -921,55 +1004,37 @@ export function TestblockDetailPage() {
             <Button size="sm" variant="ghost" onClick={() => setEditTbOpen(true)} title="Editar TestBlock">
               <Pencil className="h-4 w-4" />
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setEditTbOpen(true)} title="Configuracion">
+            <Button size="sm" variant="outline" onClick={() => setEditTbOpen(true)} title="Configuración">
               <Settings2 className="h-4 w-4" />
             </Button>
 
-            {selectionMode === "none" ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-muted-foreground"
-                  onClick={async () => {
-                    try {
-                      toast.loading("Generando PDF de etiquetas QR...", { id: "qr-pdf" });
-                      const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
-                      const token = useAuthStore.getState().token;
-                      const res = await fetch(`${base}/testblocks/${tbId}/qr-pdf`, {
-                        headers: token ? { Authorization: `Bearer ${token}` } : {},
-                      });
-                      if (!res.ok) throw new Error(`Error ${res.status}`);
-                      const blob = await res.blob();
-                      const url = URL.createObjectURL(blob);
-                      window.open(url, "_blank");
-                      toast.dismiss("qr-pdf");
-                    } catch (err) {
-                      toast.dismiss("qr-pdf");
-                      const msg = err instanceof Error ? err.message : String(err);
-                      toast.error(`Error al generar QR PDF: ${msg}`);
-                    }
-                  }}
-                >
-                  <QrCode className="h-4 w-4" /> QR Etiquetas
-                </Button>
-                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => enterSelectionMode("alta")}>
-                  <Plus className="h-4 w-4" /> Alta
-                </Button>
-                <Button size="sm" variant="destructive" onClick={() => enterSelectionMode("baja")}>
-                  <MinusCircle className="h-4 w-4" /> Baja
-                </Button>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => enterSelectionMode("replante")}>
-                  <Repeat2 className="h-4 w-4" /> Replante
-                </Button>
-                <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white" onClick={() => enterSelectionMode("fenologia")}>
-                  <Leaf className="h-4 w-4" /> Fenologia
-                </Button>
-                <span className="hidden lg:block text-[10px] text-muted-foreground max-w-[160px] leading-tight">
-                  Click un boton para seleccionar multiples posiciones
-                </span>
-              </>
-            ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-muted-foreground"
+              onClick={async () => {
+                try {
+                  toast.loading("Generando PDF de etiquetas QR...", { id: "qr-pdf" });
+                  const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+                  const token = useAuthStore.getState().token;
+                  const res = await fetch(`${base}/testblocks/${tbId}/qr-pdf`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  });
+                  if (!res.ok) throw new Error(`Error ${res.status}`);
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  window.open(url, "_blank");
+                  toast.dismiss("qr-pdf");
+                } catch (err) {
+                  toast.dismiss("qr-pdf");
+                  const msg = err instanceof Error ? err.message : String(err);
+                  toast.error(`Error al generar QR PDF: ${msg}`);
+                }
+              }}
+            >
+              <QrCode className="h-4 w-4" /> QR Etiquetas
+            </Button>
+            {selectionMode !== "none" && (
               <Button size="sm" variant="outline" onClick={exitSelectionMode}>
                 <XCircle className="h-4 w-4" /> Cancelar
               </Button>
@@ -990,6 +1055,9 @@ export function TestblockDetailPage() {
           className="border-green-200"
           iconBg="bg-green-50"
           iconColor="text-green-600"
+          trend={etapaStats.formacion > 0 || etapaStats.produccion > 0
+            ? `Form: ${etapaStats.formacion} · Prod: ${etapaStats.produccion}`
+            : undefined}
         />
         <KpiCard
           title="Baja"
@@ -999,6 +1067,16 @@ export function TestblockDetailPage() {
           iconBg="bg-red-50"
           iconColor="text-red-600"
         />
+        {(tb.pos_replante || 0) > 0 && (
+          <KpiCard
+            title="Replante"
+            value={tb.pos_replante || 0}
+            icon={Repeat2}
+            className="border-blue-200"
+            iconBg="bg-blue-50"
+            iconColor="text-blue-600"
+          />
+        )}
         <KpiCard
           title="Vacia"
           value={tb.pos_vacia || 0}
@@ -1014,7 +1092,8 @@ export function TestblockDetailPage() {
       {/* ============================================================ */}
       {selectionMode === "none" && grilla?.posiciones && grilla.posiciones.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap bg-white rounded-lg border px-3 py-2">
-          <span className="text-xs font-semibold text-muted-foreground mr-1">Seleccionar:</span>
+          <span className="text-xs font-semibold text-muted-foreground mr-1">Seleccionar por:</span>
+          <span className="text-[10px] text-muted-foreground/60 mr-1 hidden lg:inline">(o click en celdas)</span>
 
           {/* By Variedad */}
           <div className="relative">
@@ -1067,6 +1146,32 @@ export function TestblockDetailPage() {
             <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
           </div>
 
+          {/* By specific position */}
+          <input
+            type="text"
+            placeholder="H3P5"
+            className="w-16 border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring bg-muted/50"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const val = (e.target as HTMLInputElement).value.trim().toUpperCase();
+                const match = val.match(/^H?(\d+)P(\d+)$/);
+                if (match) {
+                  const h = Number(match[1]);
+                  const p = Number(match[2]);
+                  const pos = grilla?.posiciones?.find((pos) => pos.hilera === h && pos.posicion === p);
+                  if (pos) {
+                    togglePosition(pos.id_posicion);
+                    (e.target as HTMLInputElement).value = "";
+                  } else {
+                    toast.error(`Posicion H${h}P${p} no encontrada`);
+                  }
+                } else {
+                  toast.error("Formato: H3P5 o 3P5");
+                }
+              }
+            }}
+          />
+
           {/* Select all alta */}
           <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={selectAllAlta}>
             Todo (alta)
@@ -1095,52 +1200,17 @@ export function TestblockDetailPage() {
       {/* ============================================================ */}
       {/*  GROUP ACTIONS BAR (shown when selection > 0, not in mode)    */}
       {/* ============================================================ */}
+      {/* GROUP ACTIONS BAR - inline hint */}
       {selectionMode === "none" && selectedPositions.size > 0 && (
-        <div className="flex items-center gap-2 flex-wrap bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-300 px-3 py-2">
-          <span className="text-xs font-bold text-foreground flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-            {selectedPositions.size} posicion{selectedPositions.size !== 1 ? "es" : ""}
-          </span>
-          <span className="border-l h-5 mx-1" />
-          <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={handleGrupoAlta} disabled={isProcessing}>
-            <Plus className="h-3 w-3" /> Alta (lote)
-          </Button>
-          <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleGrupoAltaDirecta} disabled={isProcessing}>
-            <Plus className="h-3 w-3" /> Alta Directa
-          </Button>
-          <Button size="sm" className="h-7 text-xs" variant="destructive" onClick={handleGrupoBaja} disabled={isProcessing}>
-            <MinusCircle className="h-3 w-3" /> Baja
-          </Button>
-          <Button size="sm" className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white" onClick={handleGrupoReplante} disabled={isProcessing}>
-            <Repeat2 className="h-3 w-3" /> Replante
-          </Button>
-          <Button size="sm" className="h-7 text-xs bg-purple-600 hover:bg-purple-700 text-white" onClick={handleGrupoFenologia} disabled={isProcessing}>
-            <Leaf className="h-3 w-3" /> Fenologia
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setGrupoLaboresOpen(true)} disabled={isProcessing}>
-            <Hammer className="h-3 w-3" /> Labores
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
-            onClick={() => {
-              if (confirm(`Marcar ${selectedPositions.size} posicion(es) como polinizante?`)) {
-                handleGrupoPolinizante();
-              }
-            }}
-            disabled={isProcessing}
-          >
-            <Shield className="h-3 w-3" /> Polinizante
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleGrupoQr} disabled={isProcessing}>
-            <QrCode className="h-3 w-3" /> QR
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 text-xs ml-auto" onClick={clearSelection}>
-            <X className="h-3 w-3" /> Limpiar
-          </Button>
+        <div className="flex items-center gap-2 bg-garces-cherry-pale rounded-lg border border-garces-cherry/20 px-3 py-1.5 text-xs text-garces-cherry">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          <span className="font-semibold">{selectedPositions.size} posicion{selectedPositions.size !== 1 ? "es" : ""} seleccionada{selectedPositions.size !== 1 ? "s" : ""}</span>
+          <span className="text-muted-foreground">— usa los botones de abajo para ejecutar acciones</span>
+          <button onClick={clearSelection} className="ml-auto text-garces-cherry hover:underline text-xs">Limpiar</button>
         </div>
       )}
+
+      {/* Actions are in the fixed bottom bar below */}
 
       {/* ============================================================ */}
       {/*  TWO-COLUMN: Grid area + Detail panel                        */}
@@ -1156,17 +1226,43 @@ export function TestblockDetailPage() {
                 <TabsTrigger value="variedades">Variedades</TabsTrigger>
                 <TabsTrigger value="mediciones">Mediciones</TabsTrigger>
                 <TabsTrigger value="inventario-tb">Inventario</TabsTrigger>
-                <TabsTrigger value="mapa"><MapIcon className="h-3.5 w-3.5 mr-1 inline-block" />Mapa</TabsTrigger>
+                <TabsTrigger value="labores-tb">
+                  Labores {laboresPendientes.length > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-[9px] font-bold min-w-[16px] h-[16px] px-1">
+                      {laboresPendientes.length}
+                    </span>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="historial">Historial</TabsTrigger>
               </TabsList>
 
-              {/* Legend (shown next to tabs) */}
-              <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-500" /> Alta</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400" /> Baja</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-300" /> Vacia</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm border border-dashed border-gray-400 bg-gray-100" /> Sin crear</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-500" /> Polinizante</span>
+              <div className="hidden sm:flex items-center gap-2 flex-wrap">
+                {/* Grid size toggle */}
+                <div className="flex items-center border rounded-md overflow-hidden mr-2">
+                  {(["sm", "md", "lg"] as const).map((sz) => (
+                    <button
+                      key={sz}
+                      onClick={() => setGridSize(sz)}
+                      className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                        gridSize === sz ? "bg-garces-cherry text-white" : "bg-white text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {sz === "sm" ? "S" : sz === "md" ? "M" : "L"}
+                    </button>
+                  ))}
+                </div>
+                {/* Legend */}
+                <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground flex-wrap">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-400" /> Form.</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-700" /> Prod.</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400" /> Baja</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-500" /> Repl.</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-300" /> Vacia</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm ring-2 ring-amber-400 bg-emerald-400" /> Polin.</span>
+                  {laboresPendientes.length > 0 && (
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-orange-400" /> Labor</span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1183,7 +1279,9 @@ export function TestblockDetailPage() {
                           ? "bg-blue-50 text-blue-800 border border-blue-200"
                           : selectionMode === "fenologia"
                             ? "bg-purple-50 text-purple-800 border border-purple-200"
-                            : "bg-red-50 text-red-800 border border-red-200"
+                            : selectionMode === "etapa"
+                              ? "bg-amber-50 text-amber-800 border border-amber-200"
+                              : "bg-red-50 text-red-800 border border-red-200"
                     }`}
                   >
                     <span>
@@ -1193,9 +1291,11 @@ export function TestblockDetailPage() {
                           ? "Seleccione posiciones con baja para replantar"
                           : selectionMode === "fenologia"
                             ? "Seleccione posiciones activas para registrar fenologia"
-                            : selectionMode === "eliminar"
-                              ? "Seleccione posiciones vacias/baja para eliminar"
-                              : "Seleccione posiciones activas para dar de baja"}
+                            : selectionMode === "etapa"
+                              ? "Seleccione posiciones activas para cambiar etapa"
+                              : selectionMode === "eliminar"
+                                ? "Seleccione posiciones vacias/baja para eliminar"
+                                : "Seleccione posiciones activas para dar de baja"}
                     </span>
                     {selectedPositions.size > 0 && (
                       <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded-full text-xs font-semibold border">
@@ -1215,15 +1315,15 @@ export function TestblockDetailPage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-0.5">
+                  <div className={gridSize === "sm" ? "space-y-0.5" : gridSize === "md" ? "space-y-1" : "space-y-1.5"}>
                     {/* Grid header row */}
                     <div
-                      className="grid gap-0.5"
-                      style={{ gridTemplateColumns: `28px repeat(${maxPos}, 1fr)` }}
+                      className={`grid ${gridSize === "sm" ? "gap-0.5" : "gap-1"}`}
+                      style={{ gridTemplateColumns: `${gridSize === "lg" ? 36 : 28}px repeat(${maxPos}, 1fr)` }}
                     >
-                      <div className="text-[8px] font-bold text-muted-foreground text-center">H\P</div>
+                      <div className={`${gridSize === "lg" ? "text-[10px]" : "text-[8px]"} font-bold text-muted-foreground text-center`}>H\P</div>
                       {Array.from({ length: maxPos }, (_, i) => (
-                        <div key={i} className="text-center text-[8px] font-semibold text-muted-foreground">{i + 1}</div>
+                        <div key={i} className={`text-center ${gridSize === "lg" ? "text-[10px]" : "text-[8px]"} font-semibold text-muted-foreground`}>{i + 1}</div>
                       ))}
                     </div>
 
@@ -1231,10 +1331,10 @@ export function TestblockDetailPage() {
                     {Array.from({ length: hileras }, (_, hi) => (
                       <div
                         key={hi}
-                        className="grid gap-0.5"
-                        style={{ gridTemplateColumns: `28px repeat(${maxPos}, 1fr)` }}
+                        className={`grid ${gridSize === "sm" ? "gap-0.5" : "gap-1"}`}
+                        style={{ gridTemplateColumns: `${gridSize === "lg" ? 36 : 28}px repeat(${maxPos}, 1fr)` }}
                       >
-                        <div className="text-[8px] font-bold text-muted-foreground flex items-center justify-center">
+                        <div className={`${gridSize === "lg" ? "text-[10px]" : "text-[8px]"} font-bold text-muted-foreground flex items-center justify-center`}>
                           {hi + 1}
                         </div>
                         {Array.from({ length: maxPos }, (_, pi) => {
@@ -1244,8 +1344,9 @@ export function TestblockDetailPage() {
                           const varName = pos?.planta_variedad
                             ? lk.variedad(pos.planta_variedad)
                             : qrInfo?.var || null;
+                          const labelLen = gridSize === "sm" ? 3 : gridSize === "md" ? 5 : 8;
                           const label = varName && varName !== "-"
-                            ? varName.substring(0, 3)
+                            ? varName.substring(0, labelLen)
                             : (estado === "alta" ? "A" : estado === "baja" ? "B" : estado === "replante" ? "R" : "");
                           const piName = pos?.planta_portainjerto
                             ? lk.portainjerto(pos.planta_portainjerto)
@@ -1265,6 +1366,9 @@ export function TestblockDetailPage() {
                           const isDetailSelected = selectionMode === "none" && !isGroupSelected && selectedPos?.id_posicion === pos?.id_posicion;
 
                           // Determine cell color — distinguish "no record" (sin crear) from "vacia" (created, no plant)
+                          // For alta: formacion = emerald-400, produccion = green-700
+                          // Polinizante: amber ring around the cell
+                          const isPolinizante = !!pos?.protegida;
                           const bgColor = !pos
                             ? "bg-gray-50 border border-dashed border-gray-300"
                             : estado === "vacia"
@@ -1273,12 +1377,21 @@ export function TestblockDetailPage() {
                               ? "bg-red-500"
                               : estado === "replante"
                                 ? "bg-blue-500"
-                                : "bg-green-500";
+                                : pos.etapa === "produccion"
+                                  ? "bg-green-700"
+                                  : "bg-emerald-400";
+                          const polinizanteRing = isPolinizante ? "ring-2 ring-amber-400" : "";
+
+                          const cellSize = gridSize === "sm"
+                            ? "text-[8px] py-[3px] rounded-[3px]"
+                            : gridSize === "md"
+                            ? "text-[10px] py-[6px] rounded"
+                            : "text-xs py-2 rounded-md";
 
                           return (
                             <button
                               key={pi}
-                              className={`relative rounded-[3px] text-[8px] font-semibold py-[3px] transition-all ${bgColor} ${
+                              className={`relative font-semibold transition-all ${cellSize} ${bgColor} ${polinizanteRing} ${
                                 estado !== "vacia" ? "text-white" : "text-gray-400"
                               } ${
                                 isSelected && isInSelectionMode
@@ -1291,21 +1404,22 @@ export function TestblockDetailPage() {
                                         ? "hover:ring-2 hover:ring-yellow-400 cursor-pointer"
                                         : isInSelectionMode
                                           ? "opacity-30 cursor-not-allowed"
-                                          : "hover:ring-2 hover:ring-garces-cherry cursor-pointer"
+                                          : polinizanteRing
+                                            ? "cursor-pointer"
+                                            : "hover:ring-2 hover:ring-garces-cherry cursor-pointer"
                               }`}
                               style={{ opacity: estado === "vacia" && !isInSelectionMode ? 0.4 : undefined }}
-                              title={tip}
-                              onClick={() => {
-                                if (!isInSelectionMode && selectedPositions.size > 0 && pos) {
-                                  // In group selection (toolbar) mode, toggle positions
-                                  togglePosition(pos.id_posicion);
-                                } else {
-                                  handleGridCellClick(pos);
-                                }
-                              }}
+                              title={`${tip}${isPolinizante ? " [Polinizante]" : ""}`}
+                              onClick={() => handleGridCellClick(pos)}
                               disabled={isInSelectionMode && !selectable && !pos}
                             >
                               {label}
+                              {isPolinizante && (
+                                <span className="absolute bottom-0 left-0.5 w-1.5 h-1.5 rounded-full bg-amber-400 ring-1 ring-white" title="Polinizante" />
+                              )}
+                              {pos && posConLabores.has(pos.id_posicion) && (
+                                <span className="absolute top-0 left-0.5 w-1.5 h-1.5 rounded-sm bg-orange-400 ring-1 ring-white" title="Labor pendiente" />
+                              )}
                               {(estado === "alta" || estado === "replante") && (
                                 <ClusterDot cluster={pos?.cluster_actual} />
                               )}
@@ -1339,10 +1453,12 @@ export function TestblockDetailPage() {
 
                 {/* Mobile legend */}
                 <div className="flex sm:hidden flex-wrap gap-3 mt-3 text-[10px] text-muted-foreground">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-500" /> Alta</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-400" /> Formación</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-700" /> Producción</span>
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400" /> Baja</span>
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-500" /> Replante</span>
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-200" /> Vacia</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm ring-2 ring-amber-400 bg-emerald-400" /> Polinizante</span>
                   {selectionMode !== "none" && (
                     <span className="flex items-center gap-1"><span className="w-2 h-2 rounded ring-2 ring-yellow-400 bg-yellow-100" /> Seleccionada</span>
                   )}
@@ -1538,28 +1654,159 @@ export function TestblockDetailPage() {
               </div>
             </TabsContent>
 
-            {/* --- MAPA TAB --- */}
-            <TabsContent value="mapa">
-              <MapaTestBlock
-                testblockId={tbId}
-                variedadNames={
-                  Object.fromEntries(
-                    (lk.rawData.variedades || []).map((v: any) => [v.id_variedad, v.nombre])
-                  )
-                }
-              />
+            {/* Mapa moved below the two-column layout */}
+
+            {/* --- LABORES TAB --- */}
+            <TabsContent value="labores-tb">
+              <div className="bg-white rounded-xl border overflow-auto">
+                <div className="flex items-center justify-between px-4 py-3 border-b">
+                  <h3 className="font-semibold text-sm">
+                    Labores Pendientes ({laboresPendientes.length})
+                  </h3>
+                  {laboresPendientes.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={ejecutarLaborMut.isPending}
+                      onClick={() => {
+                        if (confirm(`Marcar todas las ${laboresPendientes.length} labores como ejecutadas?`)) {
+                          const ids = laboresPendientes.map((l: any) => l.id_ejecucion);
+                          // Process in batches of 50
+                          (async () => {
+                            for (let i = 0; i < ids.length; i += 50) {
+                              await laboresService.ejecutarMasivo(ids.slice(i, i + 50));
+                            }
+                            queryClient.invalidateQueries({ queryKey: ["labores"] });
+                            toast.success(`${ids.length} labores ejecutadas`);
+                          })();
+                        }
+                      }}
+                    >
+                      Ejecutar Todas ({laboresPendientes.length})
+                    </Button>
+                  )}
+                </div>
+
+                {laboresPorTipo.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center text-center py-8">
+                    <CheckCircle2 className="h-10 w-10 text-green-500/30 mb-2" />
+                    <p className="text-sm text-muted-foreground">Sin labores pendientes para este TestBlock</p>
+                    <p className="text-xs text-muted-foreground mt-1">Planifica labores desde el modulo de Labores</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {laboresPorTipo.map((grupo) => (
+                      <div key={grupo.nombre} className="px-4 py-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Hammer className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-semibold text-sm">{grupo.nombre}</span>
+                            <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                              {grupo.labores.length} posiciones
+                            </span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={ejecutarLaborMut.isPending}
+                            onClick={() => {
+                              const ids = grupo.labores.map((l: any) => l.id_ejecucion);
+                              ejecutarLaborMut.mutate(ids);
+                            }}
+                          >
+                            <CheckCircle2 className="h-3 w-3 mr-1" /> Ejecutar grupo
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-1.5">
+                          {grupo.labores.slice(0, 30).map((l: any) => {
+                            const pos = grilla?.posiciones?.find((p) => p.id_posicion === l.id_posicion);
+                            return (
+                              <div
+                                key={l.id_ejecucion}
+                                className="flex items-center gap-1.5 px-2 py-1 rounded border text-[10px] bg-amber-50 border-amber-200 hover:bg-amber-100 cursor-pointer transition-colors"
+                                onClick={() => {
+                                  if (pos) {
+                                    setSelectedPos(pos);
+                                  }
+                                }}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                                <span className="font-mono font-medium truncate">
+                                  {pos ? `H${pos.hilera}P${pos.posicion}` : `POS-${l.id_posicion}`}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          {grupo.labores.length > 30 && (
+                            <div className="flex items-center px-2 py-1 text-[10px] text-muted-foreground">
+                              +{grupo.labores.length - 30} mas
+                            </div>
+                          )}
+                        </div>
+                        {grupo.labores[0]?.fecha_programada && (
+                          <p className="text-[10px] text-muted-foreground mt-1.5">
+                            <Calendar className="h-3 w-3 inline mr-1" />
+                            Programada: {grupo.labores[0].fecha_programada}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </TabsContent>
 
             {/* --- HISTORIAL TAB (testblock-level) --- */}
             <TabsContent value="historial">
-              <div className="bg-white rounded-xl border p-6">
-                <div className="flex flex-col items-center justify-center text-center py-8">
-                  <Clock className="h-12 w-12 text-muted-foreground/30 mb-3" />
-                  <h4 className="font-semibold text-sm">Historial del TestBlock</h4>
-                  <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                    Seleccione una posicion en la grilla para ver su historial detallado en el panel lateral.
-                  </p>
+              <div className="bg-white rounded-xl border overflow-auto">
+                <div className="flex items-center justify-between px-4 py-3 border-b">
+                  <h3 className="font-semibold text-sm">Historial del TestBlock ({historialTb?.length ?? 0})</h3>
                 </div>
+                {!historialTb || historialTb.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center text-center py-8">
+                    <Clock className="h-10 w-10 text-muted-foreground/30 mb-2" />
+                    <p className="text-sm text-muted-foreground">Sin historial registrado</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="h-9 px-3 text-left font-medium text-muted-foreground">Fecha</th>
+                        <th className="h-9 px-3 text-left font-medium text-muted-foreground">Posicion</th>
+                        <th className="h-9 px-3 text-left font-medium text-muted-foreground">Accion</th>
+                        <th className="h-9 px-3 text-left font-medium text-muted-foreground">Estado</th>
+                        <th className="h-9 px-3 text-left font-medium text-muted-foreground">Motivo</th>
+                        <th className="h-9 px-3 text-left font-medium text-muted-foreground">Usuario</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historialTb.map((ev) => {
+                        const accionColor = HISTORIAL_ACTION_COLORS[ev.accion] || "bg-gray-400";
+                        return (
+                          <tr key={ev.id_historial} className="border-b hover:bg-muted/30 transition-colors">
+                            <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                              {ev.fecha ? new Date(ev.fecha).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "-"}
+                            </td>
+                            <td className="px-3 py-2 text-xs font-mono">{(ev as any).codigo_posicion || `POS-${ev.id_posicion}`}</td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${accionColor}`}>
+                                {ev.accion}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">
+                              {ev.estado_anterior && ev.estado_nuevo
+                                ? `${ev.estado_anterior} → ${ev.estado_nuevo}`
+                                : ev.estado_nuevo || "-"}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground truncate max-w-[200px]">{ev.motivo || "-"}</td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">{ev.usuario || "-"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </TabsContent>
           </Tabs>
@@ -1573,10 +1820,42 @@ export function TestblockDetailPage() {
               <span className="font-bold text-sm">
                 H{selectedPos.hilera} - P{selectedPos.posicion}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <StatusBadge status={selectedPos.estado} />
+                {!detailEditing && (
+                  <button
+                    onClick={() => {
+                      setDetailEditing(true);
+                      setEditForm({
+                        conduccion: selectedPos.conduccion || "",
+                        marco_plantacion: selectedPos.marco_plantacion || "",
+                        ano_plantacion: selectedPos.ano_plantacion || "",
+                        protegida: !!selectedPos.protegida,
+                        observaciones: selectedPos.observaciones || "",
+                      });
+                    }}
+                    className="p-1 rounded hover:bg-muted transition-colors"
+                    title="Editar posicion"
+                  >
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                )}
+                {selectedPos.estado !== "alta" && (
+                  <button
+                    onClick={() => {
+                      if (confirm("Eliminar esta posicion? Se borrara permanentemente.")) {
+                        deletePosSingleMut.mutate();
+                      }
+                    }}
+                    className="p-1 rounded hover:bg-red-50 transition-colors"
+                    title="Eliminar posicion"
+                    disabled={deletePosSingleMut.isPending}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                  </button>
+                )}
                 <button
-                  onClick={() => setSelectedPos(null)}
+                  onClick={() => { setSelectedPos(null); setDetailEditing(false); }}
                   className="text-muted-foreground hover:text-foreground transition-colors"
                   title="Cerrar"
                 >
@@ -1585,7 +1864,72 @@ export function TestblockDetailPage() {
               </div>
             </div>
 
-            {/* Fields */}
+            {/* Edit form */}
+            {detailEditing ? (
+              <div className="space-y-2.5 text-xs">
+                <div>
+                  <label className="text-muted-foreground block mb-0.5">Conduccion</label>
+                  <input
+                    className="w-full border rounded px-2 py-1 text-xs"
+                    value={(editForm.conduccion as string) || ""}
+                    onChange={(e) => setEditForm({ ...editForm, conduccion: e.target.value })}
+                    placeholder="Ej: Eje central, KGB"
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground block mb-0.5">Marco plantacion</label>
+                  <input
+                    className="w-full border rounded px-2 py-1 text-xs"
+                    value={(editForm.marco_plantacion as string) || ""}
+                    onChange={(e) => setEditForm({ ...editForm, marco_plantacion: e.target.value })}
+                    placeholder="Ej: 4x2"
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground block mb-0.5">Ano plantacion</label>
+                  <input
+                    type="number"
+                    className="w-full border rounded px-2 py-1 text-xs"
+                    value={(editForm.ano_plantacion as string) || ""}
+                    onChange={(e) => setEditForm({ ...editForm, ano_plantacion: e.target.value ? Number(e.target.value) : "" })}
+                    placeholder="Ej: 2024"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="edit-protegida"
+                    checked={!!editForm.protegida}
+                    onChange={(e) => setEditForm({ ...editForm, protegida: e.target.checked })}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="edit-protegida" className="text-muted-foreground">Polinizante</label>
+                </div>
+                <div>
+                  <label className="text-muted-foreground block mb-0.5">Observaciones</label>
+                  <textarea
+                    className="w-full border rounded px-2 py-1 text-xs resize-none"
+                    rows={2}
+                    value={(editForm.observaciones as string) || ""}
+                    onChange={(e) => setEditForm({ ...editForm, observaciones: e.target.value })}
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-7 text-xs"
+                    disabled={editPosMut.isPending}
+                    onClick={() => editPosMut.mutate(editForm)}
+                  >
+                    {editPosMut.isPending ? "Guardando..." : "Guardar"}
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => setDetailEditing(false)}>
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+            /* Fields (read-only view) */
             <div className="space-y-2.5 text-xs">
               <div>
                 <span className="text-muted-foreground">Variedad:</span>{" "}
@@ -1625,17 +1969,41 @@ export function TestblockDetailPage() {
                   <span className="font-semibold">{selectedPos.marco_plantacion}</span>
                 </div>
               )}
+              {selectedPos.protegida && (
+                <div>
+                  <span className="text-muted-foreground">Polinizante:</span>{" "}
+                  <span className="font-semibold text-amber-600">Si</span>
+                </div>
+              )}
               <div>
-                <span className="text-muted-foreground">Estado posicion:</span>{" "}
-                {selectedPos.estado === "alta" || selectedPos.estado === "replante" ? (
-                  <StatusBadge
-                    status={estadoTB === "formacion" ? "Formacion" : "Produccion"}
-                    className={estadoTB === "formacion" ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}
-                  />
-                ) : (
-                  <StatusBadge status={selectedPos.estado === "vacia" ? "Vacia" : selectedPos.estado} />
-                )}
+                <span className="text-muted-foreground">Estado:</span>{" "}
+                <StatusBadge status={selectedPos.estado === "vacia" ? "Vacia" : selectedPos.estado} />
               </div>
+              {(selectedPos.estado === "alta" || selectedPos.estado === "replante") && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Etapa:</span>{" "}
+                  <StatusBadge
+                    status={selectedPos.etapa === "produccion" ? "Producción" : "Formación"}
+                    className={selectedPos.etapa === "produccion" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}
+                  />
+                  <button
+                    className="text-[11px] text-blue-600 hover:underline"
+                    onClick={() => {
+                      const newEtapa = selectedPos.etapa === "produccion" ? "formacion" : "produccion";
+                      etapaMut.mutate(
+                        { etapa: newEtapa, posicion_ids: [selectedPos.id_posicion] },
+                        {
+                          onSuccess: () => {
+                            setSelectedPos({ ...selectedPos, etapa: newEtapa });
+                          },
+                        },
+                      );
+                    }}
+                  >
+                    Cambiar a {selectedPos.etapa === "produccion" ? "Formación" : "Producción"}
+                  </button>
+                </div>
+              )}
               <div>
                 <span className="text-muted-foreground">Lote origen:</span>{" "}
                 {selectedPos.id_lote ? (
@@ -1668,30 +2036,66 @@ export function TestblockDetailPage() {
                 </div>
               )}
             </div>
+            )}
 
-            {/* Observaciones editable */}
-            <div className="mt-3 pt-3 border-t space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                Observaciones
-              </label>
-              <textarea
-                className="w-full border rounded-md px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring min-h-[48px]"
-                placeholder="Agregar observaciones..."
-                value={detailObs}
-                onChange={(e) => { setDetailObs(e.target.value); setDetailObsDirty(true); }}
-                rows={2}
-              />
-              {detailObsDirty && (
-                <Button
-                  size="sm"
-                  className="text-[10px] h-6 px-2"
-                  disabled={updateObsMut.isPending}
-                  onClick={() => updateObsMut.mutate(detailObs)}
-                >
-                  {updateObsMut.isPending ? "Guardando..." : "Guardar"}
-                </Button>
-              )}
-            </div>
+            {/* Labores pendientes for this position */}
+            {(() => {
+              const posLabores = laboresPendientes.filter((l: any) => l.id_posicion === selectedPos.id_posicion);
+              if (posLabores.length === 0) return null;
+              return (
+                <div className="mt-3 pt-3 border-t">
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                    Labores Pendientes ({posLabores.length})
+                  </div>
+                  <div className="space-y-1.5">
+                    {posLabores.map((l: any) => {
+                      const tl = (allTiposLabor as any[] || []).find((t: any) => t.id_labor === l.id_labor);
+                      return (
+                        <div key={l.id_ejecucion} className="flex items-center justify-between gap-1 px-2 py-1 rounded border border-amber-200 bg-amber-50 text-[10px]">
+                          <div>
+                            <span className="font-semibold">{tl?.nombre || `Labor #${l.id_labor}`}</span>
+                            <span className="text-muted-foreground ml-1">{l.fecha_programada}</span>
+                          </div>
+                          <button
+                            className="text-green-600 hover:text-green-800 font-bold shrink-0"
+                            title="Marcar como ejecutada"
+                            onClick={() => ejecutarLaborMut.mutate([l.id_ejecucion])}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Observaciones editable — only in view mode */}
+            {!detailEditing && (
+              <div className="mt-3 pt-3 border-t space-y-1.5">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Observaciones
+                </label>
+                <textarea
+                  className="w-full border rounded-md px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring min-h-[48px]"
+                  placeholder="Agregar observaciones..."
+                  value={detailObs}
+                  onChange={(e) => { setDetailObs(e.target.value); setDetailObsDirty(true); }}
+                  rows={2}
+                />
+                {detailObsDirty && (
+                  <Button
+                    size="sm"
+                    className="text-[10px] h-6 px-2"
+                    disabled={updateObsMut.isPending}
+                    onClick={() => updateObsMut.mutate(detailObs)}
+                  >
+                    {updateObsMut.isPending ? "Guardando..." : "Guardar"}
+                  </Button>
+                )}
+              </div>
+            )}
 
             {/* Mediciones button for plants */}
             {detailHasPlant && selectedPos.planta_id && (
@@ -1719,6 +2123,41 @@ export function TestblockDetailPage() {
                 </Button>
               </div>
             )}
+
+            {/* Upload evidence photo */}
+            <div className="border-t mt-3 pt-3">
+              <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-muted-foreground/30 hover:border-garces-cherry/50 hover:bg-garces-cherry-pale/30 cursor-pointer transition-colors text-[11px] text-muted-foreground">
+                <Camera className="h-3.5 w-3.5" />
+                <span>Subir foto de evidencia</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async () => {
+                      const base64 = (reader.result as string).split(",")[1];
+                      try {
+                        await post<any>(`/posiciones/${selectedPos.id_posicion}/evidencia`, {
+                          imagen_base64: base64,
+                          descripcion: `Foto ${file.name}`,
+                          id_planta: selectedPos.planta_id,
+                        });
+                        toast.success("Foto de evidencia registrada");
+                        queryClient.invalidateQueries({ queryKey: ["posiciones", selectedPos.id_posicion, "historial"] });
+                        queryClient.invalidateQueries({ queryKey: ["testblocks", tbId, "historial"] });
+                      } catch {
+                        toast.error("Error al subir foto");
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
 
             {/* Historial section */}
             <div className="border-t mt-3 pt-3">
@@ -1822,68 +2261,99 @@ export function TestblockDetailPage() {
       </div>
 
       {/* ============================================================ */}
-      {/*  Floating action bar for selection mode                      */}
+      {/*  MAPA — always visible below the grid                        */}
       {/* ============================================================ */}
-      {selectionMode !== "none" && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 z-50 ml-0 md:ml-60">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium">
-                {selectedPositions.size} posicion{selectedPositions.size !== 1 ? "es" : ""} seleccionada{selectedPositions.size !== 1 ? "s" : ""}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                Modo: {selectionMode === "alta" ? "Alta (click en vacias)" : selectionMode === "replante" ? "Replante (click en bajas)" : selectionMode === "fenologia" ? "Fenologia (click en activas)" : selectionMode === "eliminar" ? "Eliminar (click en vacias/bajas)" : "Baja (click en activas)"}
-              </span>
-            </div>
-            <div className="flex gap-2 items-center">
-              {selectionMode !== "eliminar" && (
-                <input
-                  type="text"
-                  className="border rounded-md px-2 py-1 text-xs w-48 focus:outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="Observaciones (opcional)"
-                  value={batchObservaciones}
-                  onChange={(e) => setBatchObservaciones(e.target.value)}
-                />
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelectedPositions(new Set())}
-                disabled={selectedPositions.size === 0}
-              >
-                Limpiar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exitSelectionMode}
-              >
-                Cancelar
-              </Button>
-              <Button
-                size="sm"
-                disabled={selectedPositions.size === 0}
-                onClick={handleConfirmSelection}
-                className={
-                  selectionMode === "alta"
-                    ? "bg-green-600 hover:bg-green-700"
-                    : selectionMode === "replante"
-                      ? "bg-blue-600 hover:bg-blue-700"
-                      : selectionMode === "fenologia"
-                        ? "bg-purple-600 hover:bg-purple-700"
-                        : "bg-red-600 hover:bg-red-700"
-                }
-              >
-                {selectionMode === "eliminar" ? <Trash2 className="h-4 w-4" /> : selectionMode === "fenologia" ? <Leaf className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                Confirmar {selectionMode === "alta" ? "Alta" : selectionMode === "replante" ? "Replante" : selectionMode === "fenologia" ? "Fenologia" : selectionMode === "eliminar" ? "Eliminar" : "Baja"} ({selectedPositions.size})
-              </Button>
-            </div>
+      {tb.latitud && tb.longitud && (
+        <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-2">
+            <MapIcon className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-muted-foreground">Ubicacion del TestBlock</h3>
+          </div>
+          <div className="h-[300px]">
+            <MapaTestBlock
+              testblockId={tbId}
+              variedadNames={
+                Object.fromEntries(
+                  (lk.rawData.variedades || []).map((v: any) => [v.id_variedad, v.nombre])
+                )
+              }
+            />
           </div>
         </div>
       )}
 
-      {/* Add bottom padding when floating bar is visible */}
-      {selectionMode !== "none" && <div className="h-16" />}
+      {/* ============================================================ */}
+      {/*  FIXED BOTTOM ACTION BAR                                     */}
+      {/* ============================================================ */}
+      {(selectedPositions.size > 0 || selectionMode !== "none") && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-2.5 z-50 ml-0 md:ml-60">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Count */}
+            <span className="text-xs font-bold text-foreground flex items-center gap-1 shrink-0">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+              {selectedPositions.size} pos.
+            </span>
+            <span className="border-l h-5 mx-0.5" />
+
+            {/* If in a selection mode (legacy flow), show confirm + cancel */}
+            {selectionMode !== "none" ? (
+              <>
+                <Button size="sm" className="h-7 text-xs" variant="outline" onClick={exitSelectionMode}>
+                  <X className="h-3 w-3" /> Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={selectedPositions.size === 0}
+                  onClick={handleConfirmSelection}
+                >
+                  <CheckCircle2 className="h-3 w-3" /> Confirmar ({selectedPositions.size})
+                </Button>
+              </>
+            ) : (
+              /* Direct action buttons — select positions then pick action */
+              <>
+                <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={handleGrupoAlta} disabled={isProcessing} title="Plantar desde lote de inventario">
+                  <Package className="h-3 w-3" /> Desde Lote
+                </Button>
+                <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleGrupoAltaDirecta} disabled={isProcessing} title="Plantar manualmente sin lote">
+                  <Plus className="h-3 w-3" /> Manual
+                </Button>
+                <Button size="sm" className="h-7 text-xs" variant="destructive" onClick={handleGrupoBaja} disabled={isProcessing}>
+                  <MinusCircle className="h-3 w-3" /> Baja
+                </Button>
+                <Button size="sm" className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white" onClick={handleGrupoReplante} disabled={isProcessing}>
+                  <Repeat2 className="h-3 w-3" /> Replante
+                </Button>
+                <Button size="sm" className="h-7 text-xs bg-purple-600 hover:bg-purple-700 text-white" onClick={handleGrupoFenologia} disabled={isProcessing}>
+                  <Leaf className="h-3 w-3" /> Fenolog.
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setGrupoLaboresOpen(true)} disabled={isProcessing}>
+                  <Hammer className="h-3 w-3" /> Labores
+                </Button>
+                <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white" onClick={() => { setEtapaTarget("formacion"); setEtapaConfirmOpen(true); }} disabled={isProcessing}>
+                  Form.
+                </Button>
+                <Button size="sm" className="h-7 text-xs bg-green-700 hover:bg-green-800 text-white" onClick={() => { setEtapaTarget("produccion"); setEtapaConfirmOpen(true); }} disabled={isProcessing}>
+                  Prod.
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs border-amber-300 text-amber-700" onClick={() => { if (confirm(`Marcar ${selectedPositions.size} pos. como polinizante?`)) handleGrupoPolinizante(); }} disabled={isProcessing}>
+                  <Shield className="h-3 w-3" /> Polin.
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleGrupoQr} disabled={isProcessing}>
+                  <QrCode className="h-3 w-3" /> QR
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs ml-auto" onClick={clearSelection}>
+                  <X className="h-3 w-3" /> Limpiar
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom padding when bar is visible */}
+      {(selectedPositions.size > 0 || selectionMode !== "none") && <div className="h-14" />}
 
       {/* ============================================================ */}
       {/*  DIALOGS                                                      */}
@@ -1895,7 +2365,7 @@ export function TestblockDetailPage() {
         onClose={() => { setAltaConfirmOpen(false); exitSelectionMode(); }}
         onSubmit={handleAltaSubmit}
         fields={altaConfirmFields}
-        title={`Alta de Plantas (${selectedPositions.size} posiciones)`}
+        title={`Plantar desde Lote de Inventario (${selectedPositions.size} posiciones)`}
         isLoading={isProcessing}
       />
 
@@ -1924,7 +2394,7 @@ export function TestblockDetailPage() {
           setIsProcessing(false);
         }}
         fields={altaDirectaFields}
-        title={`Alta Directa — Sin Inventario (${selectedPositions.size} posiciones)`}
+        title={`Plantar Manual — Sin Lote (${selectedPositions.size} posiciones)`}
         isLoading={isProcessing}
       />
 
@@ -1957,6 +2427,41 @@ export function TestblockDetailPage() {
         title={`Registro Fenologico (${selectedPositions.size} posiciones)`}
         isLoading={isProcessing}
       />
+
+      {/* Etapa confirmation dialog */}
+      {etapaConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4 space-y-4">
+            <h3 className="text-lg font-bold">Cambiar Etapa</h3>
+            <p className="text-sm text-muted-foreground">
+              Cambiar {selectedPositions.size} planta{selectedPositions.size !== 1 ? "s" : ""} a <strong>{etapaTarget === "produccion" ? "Producción" : "Formación"}</strong>?
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => { setEtapaConfirmOpen(false); exitSelectionMode(); }}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                className={etapaTarget === "produccion" ? "bg-green-700 hover:bg-green-800" : "bg-amber-600 hover:bg-amber-700"}
+                disabled={etapaMut.isPending}
+                onClick={() => {
+                  etapaMut.mutate(
+                    { etapa: etapaTarget, posicion_ids: Array.from(selectedPositions) },
+                    {
+                      onSuccess: () => {
+                        setEtapaConfirmOpen(false);
+                        exitSelectionMode();
+                      },
+                    },
+                  );
+                }}
+              >
+                {etapaMut.isPending ? "Cambiando..." : "Confirmar"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Plant mediciones / cluster history dialog */}
       <PlantaMedicionesDialog

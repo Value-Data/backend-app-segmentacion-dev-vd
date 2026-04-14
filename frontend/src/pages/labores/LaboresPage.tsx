@@ -4,6 +4,7 @@ import {
   Hammer, CheckCircle2, Clock, AlertTriangle, Plus, CalendarDays,
   TrendingUp, QrCode, Camera, FileText, Download, X, Image as ImageIcon,
   Calendar, MoreHorizontal, Leaf, Scissors, ChevronDown, ChevronRight, ListChecks,
+  ClipboardList, Play, Pencil, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -32,6 +33,14 @@ import { formatDate } from "@/lib/utils";
 import type { FieldDef } from "@/types";
 import type { EjecucionLabor } from "@/types/laboratorio";
 import { LaborCalendar } from "@/components/labores/LaborCalendar";
+import { ordenesTrabajoService } from "@/services/ordenesTrabajo";
+import type { OrdenTrabajo } from "@/services/ordenesTrabajo";
+import { NuevaOrdenTrabajoWizard } from "@/pages/labores/NuevaOrdenTrabajoWizard";
+import { RegistrarEjecucionDialog } from "@/pages/labores/RegistrarEjecucionDialog";
+import { TabKanban } from "./TabKanban";
+import { TabPorPersona } from "./TabPorPersona";
+import { TabCumplimientoTB } from "./TabCumplimientoTB";
+import { TabDesviaciones } from "./TabDesviaciones";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -90,7 +99,7 @@ function displayStatus(labor: EjecucionLabor): string {
 /** Today's date formatted in locale style */
 function todayFormatted(): string {
   const d = new Date();
-  const days = ["Domingo", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado"];
+  const days = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
   const months = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
@@ -137,6 +146,11 @@ export function LaboresPage() {
   const [pautaChecked, setPautaChecked] = useState<Set<string>>(new Set());
   const [expandedPautaLabor, setExpandedPautaLabor] = useState<number | null>(null);
 
+  // OT (Ordenes de Trabajo) state
+  const [otWizardOpen, setOtWizardOpen] = useState(false);
+  const [otEjecOpen, setOtEjecOpen] = useState(false);
+  const [selectedOt, setSelectedOt] = useState<OrdenTrabajo | null>(null);
+
   const tbFilterNum = tbFilter && tbFilter !== "all" ? Number(tbFilter) : undefined;
 
   // --- queries ---
@@ -154,6 +168,20 @@ export function LaboresPage() {
     queryKey: ["labores", "evidencias", evidenciaLabor?.id_ejecucion],
     queryFn: () => laboresService.evidencias(evidenciaLabor!.id_ejecucion),
     enabled: !!evidenciaLabor,
+  });
+
+  // Ordenes de Trabajo query
+  const { data: ordenesTrabajo, isLoading: loadingOts } = useQuery({
+    queryKey: ["ordenes-trabajo", tbFilterNum],
+    queryFn: () => ordenesTrabajoService.list(tbFilterNum ? { testblock: tbFilterNum } : undefined),
+  });
+
+  const deleteOtMut = useMutation({
+    mutationFn: (id: number) => ordenesTrabajoService.remove(id),
+    onSuccess: () => {
+      toast.success("Orden eliminada");
+      queryClient.invalidateQueries({ queryKey: ["ordenes-trabajo"] });
+    },
   });
 
   // Detalles for expanded labor in pauta
@@ -335,7 +363,7 @@ export function LaboresPage() {
 
   // --- form fields ---
   const createFields: FieldDef[] = [
-    { key: "id_posicion", label: "ID Posicion", type: "number" },
+    { key: "id_posicion", label: "ID Posición", type: "number" },
     { key: "id_labor", label: "Tipo de Labor", type: "select", required: true, options: laborOpts },
     { key: "temporada", label: "Temporada", type: "text", placeholder: "2024-2025" },
     { key: "fecha_programada", label: "Fecha Programada", type: "date", required: true },
@@ -351,9 +379,9 @@ export function LaboresPage() {
   ];
 
   const ejecutarFields: FieldDef[] = [
-    { key: "fecha_ejecucion", label: "Fecha Ejecucion", type: "date", required: true },
+    { key: "fecha_ejecucion", label: "Fecha Ejecución", type: "date", required: true },
     { key: "ejecutor", label: "Ejecutor", type: "text", required: true },
-    { key: "duracion_min", label: "Duracion (min)", type: "number" },
+    { key: "duracion_min", label: "Duración (min)", type: "number" },
     { key: "observaciones", label: "Observaciones", type: "textarea" },
   ];
 
@@ -366,7 +394,7 @@ export function LaboresPage() {
       cell: ({ getValue }: any) => resolvLabor(getValue()),
     },
     { accessorKey: "temporada", header: "Temporada", size: 100 },
-    { accessorKey: "id_posicion", header: "Posicion", size: 80 },
+    { accessorKey: "id_posicion", header: "Posición", size: 80 },
     {
       accessorKey: "fecha_programada",
       header: "Programada",
@@ -402,7 +430,7 @@ export function LaboresPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  title="Ejecutar rapido (1 click)"
+                  title="Ejecutar rápido (1 click)"
                   onClick={() => {
                     ejecutarMut.mutate({
                       id: labor.id_ejecucion,
@@ -536,14 +564,14 @@ export function LaboresPage() {
       {/* ==================== HEADER ==================== */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-garces-cherry">Gestion de Labores</h2>
+          <h2 className="text-xl font-bold text-garces-cherry">Gestión de Labores</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Labores y registro fenologico integrado
+            Labores y registro fenológico integrado
           </p>
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Planificar Posicion
+            <Plus className="h-4 w-4 mr-1" /> Planificar Posición
           </Button>
           <Button size="sm" onClick={() => setPlanTbOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> Planificar TestBlock
@@ -638,6 +666,13 @@ export function LaboresPage() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="ordenes" className="gap-1">
+            <ClipboardList className="h-3.5 w-3.5" /> Ordenes de Trabajo
+          </TabsTrigger>
+          <TabsTrigger value="kanban">Kanban</TabsTrigger>
+          <TabsTrigger value="por-persona">Por Persona</TabsTrigger>
+          <TabsTrigger value="cumplimiento">Cumplimiento</TabsTrigger>
+          <TabsTrigger value="desviaciones">Plan vs Real</TabsTrigger>
         </TabsList>
 
         {/* ==================== TAB: HOY ==================== */}
@@ -649,19 +684,40 @@ export function LaboresPage() {
                 {todayFormatted()} -- {hoyPendientes} pendiente{hoyPendientes !== 1 ? "s" : ""}, {hoyEjecutadas} ejecutada{hoyEjecutadas !== 1 ? "s" : ""}
               </p>
               {atrasadas.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const ids = atrasadas.slice(0, 50).map((l) => l.id_ejecucion);
-                    laboresService.ejecutarMasivo(ids).then(() => {
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      if (!confirm(`Ejecutar las ${atrasadas.length} labores atrasadas? Se procesarán en lotes de 50.`)) return;
+                      let total = 0;
+                      for (let i = 0; i < atrasadas.length; i += 50) {
+                        const batch = atrasadas.slice(i, i + 50).map((l) => l.id_ejecucion);
+                        try {
+                          await laboresService.ejecutarMasivo(batch);
+                          total += batch.length;
+                        } catch { break; }
+                      }
                       queryClient.invalidateQueries({ queryKey: ["labores"] });
-                      toast.success(`${ids.length} labores marcadas como ejecutadas`);
-                    }).catch(() => toast.error("Error al ejecutar masivo"));
-                  }}
-                >
-                  Ejecutar todas ({Math.min(atrasadas.length, 50)})
-                </Button>
+                      toast.success(`${total} labores marcadas como ejecutadas`);
+                    }}
+                  >
+                    Ejecutar todas ({atrasadas.length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    onClick={async () => {
+                      const ids = atrasadas.slice(0, 50).map((l) => l.id_ejecucion);
+                      await laboresService.ejecutarMasivo(ids);
+                      queryClient.invalidateQueries({ queryKey: ["labores"] });
+                      toast.success(`${ids.length} labores ejecutadas (lote de 50)`);
+                    }}
+                  >
+                    Solo 50
+                  </Button>
+                </div>
               )}
             </div>
 
@@ -757,7 +813,7 @@ export function LaboresPage() {
                             setSelectedLabor(labor);
                             setEjecutarOpen(true);
                           }}
-                          title="Mas opciones"
+                          title="Más opciones"
                         >
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
@@ -980,7 +1036,7 @@ export function LaboresPage() {
               <div className="bg-white rounded-xl border p-12 text-center">
                 <Scissors className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
                 <p className="text-sm font-semibold text-muted-foreground">
-                  Sin estados fenologicos para {selectedPautaEspecieName}
+                  Sin estados fenológicos para {selectedPautaEspecieName}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Un administrador puede poblar los estados desde Mantenedores o ejecutando el seed.
@@ -1090,7 +1146,7 @@ export function LaboresPage() {
                           className="text-green-600 hover:bg-green-50 h-8"
                           onClick={() => handleQuickExecute(labor)}
                           disabled={ejecutarMut.isPending}
-                          title="Ejecutar rapido"
+                          title="Ejecutar rápido"
                         >
                           <CheckCircle2 className="h-4 w-4" />
                         </Button>
@@ -1113,13 +1169,192 @@ export function LaboresPage() {
             </div>
           )}
         </TabsContent>
+
+        {/* ==================== TAB: ORDENES DE TRABAJO ==================== */}
+        <TabsContent value="ordenes">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {(ordenesTrabajo || []).length} ordenes de trabajo
+              </p>
+              <Button
+                size="sm"
+                className="bg-garces-cherry hover:bg-garces-cherry/90 gap-1"
+                onClick={() => setOtWizardOpen(true)}
+              >
+                <Plus className="h-3.5 w-3.5" /> Nueva Orden de Trabajo
+              </Button>
+            </div>
+            <CrudTable
+              data={ordenesTrabajo || []}
+              isLoading={loadingOts}
+              searchPlaceholder="Buscar ordenes..."
+              columns={[
+                {
+                  accessorKey: "codigo",
+                  header: "Codigo",
+                  cell: ({ row }: any) => (
+                    <span className="font-mono text-xs font-semibold">{row.original.codigo}</span>
+                  ),
+                },
+                {
+                  accessorKey: "tipo_labor_nombre",
+                  header: "Tipo Labor",
+                  cell: ({ row }: any) => (
+                    <span className="text-xs">{row.original.tipo_labor_nombre || `#${row.original.id_tipo_labor || "-"}`}</span>
+                  ),
+                },
+                {
+                  accessorKey: "testblock_nombre",
+                  header: "TestBlock",
+                  cell: ({ row }: any) => (
+                    <span className="text-xs">{row.original.testblock_nombre || `#${row.original.id_testblock || "-"}`}</span>
+                  ),
+                },
+                {
+                  accessorKey: "responsable_nombre",
+                  header: "Responsable",
+                  cell: ({ row }: any) => (
+                    <span className="text-xs">{row.original.responsable_nombre || "-"}</span>
+                  ),
+                },
+                {
+                  accessorKey: "fecha_plan_inicio",
+                  header: "Fechas",
+                  cell: ({ row }: any) => (
+                    <span className="text-xs">
+                      {formatDate(row.original.fecha_plan_inicio)} - {formatDate(row.original.fecha_plan_fin)}
+                    </span>
+                  ),
+                },
+                {
+                  accessorKey: "posiciones_total",
+                  header: "Posiciones",
+                  cell: ({ row }: any) => (
+                    <span className="text-xs">
+                      {row.original.posiciones_ejecutadas}/{row.original.posiciones_total}
+                    </span>
+                  ),
+                },
+                {
+                  accessorKey: "prioridad",
+                  header: "Prioridad",
+                  cell: ({ row }: any) => {
+                    const p = row.original.prioridad;
+                    const cls =
+                      p === "alta" ? "bg-red-100 text-red-800" :
+                      p === "media" ? "bg-amber-100 text-amber-800" :
+                      "bg-green-100 text-green-800";
+                    return (
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>
+                        {p}
+                      </span>
+                    );
+                  },
+                },
+                {
+                  accessorKey: "estado",
+                  header: "Estado",
+                  cell: ({ row }: any) => <StatusBadge status={row.original.estado} />,
+                },
+                {
+                  id: "acciones",
+                  header: "Acciones",
+                  cell: ({ row }: any) => {
+                    const ot = row.original as OrdenTrabajo;
+                    return (
+                      <div className="flex gap-1">
+                        {ot.estado !== "completada" && ot.estado !== "no_realizada" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1"
+                            onClick={(e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              setSelectedOt(ot);
+                              setOtEjecOpen(true);
+                            }}
+                          >
+                            <Play className="h-3 w-3" /> Ejecutar
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground"
+                          onClick={(e: React.MouseEvent) => {
+                            e.stopPropagation();
+                            toast.info("Edicion de OT pendiente de implementar");
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                          onClick={(e: React.MouseEvent) => {
+                            e.stopPropagation();
+                            if (confirm(`Eliminar orden ${ot.codigo}?`)) {
+                              deleteOtMut.mutate(ot.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    );
+                  },
+                },
+              ]}
+              exportFilename="ordenes_trabajo"
+            />
+          </div>
+        </TabsContent>
+
+        {/* ==================== TAB: KANBAN ==================== */}
+        <TabsContent value="kanban">
+          <TabKanban testblockFilter={tbFilterNum} />
+        </TabsContent>
+
+        {/* ==================== TAB: POR PERSONA ==================== */}
+        <TabsContent value="por-persona">
+          <TabPorPersona testblockFilter={tbFilterNum} />
+        </TabsContent>
+
+        {/* ==================== TAB: CUMPLIMIENTO ==================== */}
+        <TabsContent value="cumplimiento">
+          <TabCumplimientoTB />
+        </TabsContent>
+
+        {/* ==================== TAB: DESVIACIONES (Plan vs Real) ==================== */}
+        <TabsContent value="desviaciones">
+          <TabDesviaciones />
+        </TabsContent>
       </Tabs>
+
+      {/* Wizard dialog */}
+      <NuevaOrdenTrabajoWizard
+        open={otWizardOpen}
+        onClose={() => setOtWizardOpen(false)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["ordenes-trabajo"] })}
+      />
+
+      {/* Execution dialog */}
+      {selectedOt && (
+        <RegistrarEjecucionDialog
+          open={otEjecOpen}
+          onClose={() => { setOtEjecOpen(false); setSelectedOt(null); }}
+          ot={selectedOt}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["ordenes-trabajo"] })}
+        />
+      )}
 
       {/* ==================== CHARTS (below tabs, collapsible section) ==================== */}
       <details className="group">
         <summary className="cursor-pointer text-sm font-semibold text-garces-cherry flex items-center gap-2 select-none">
           <TrendingUp className="h-4 w-4" />
-          Graficos de cumplimiento
+          Gráficos de cumplimiento
           <span className="text-xs text-muted-foreground font-normal">(click para expandir)</span>
         </summary>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
@@ -1223,7 +1458,7 @@ export function LaboresPage() {
         onClose={() => setCreateOpen(false)}
         onSubmit={async (data) => { await createMut.mutateAsync(data); }}
         fields={createFields}
-        title="Planificar Labor (Posicion)"
+        title="Planificar Labor (Posición)"
         isLoading={createMut.isPending}
       />
 
@@ -1331,7 +1566,7 @@ export function LaboresPage() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              Codigo QR -- {qrLabor ? resolvLabor(qrLabor.id_labor) : ""}
+              Código QR -- {qrLabor ? resolvLabor(qrLabor.id_labor) : ""}
             </DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4">
@@ -1347,7 +1582,7 @@ export function LaboresPage() {
               </div>
             )}
             <div className="text-xs text-muted-foreground text-center space-y-1">
-              <p>ID: {qrLabor?.id_ejecucion} | Posicion: {qrLabor?.id_posicion}</p>
+              <p>ID: {qrLabor?.id_ejecucion} | Posición: {qrLabor?.id_posicion}</p>
               <p>Programada: {formatDate(qrLabor?.fecha_programada)}</p>
               <p>Estado: {qrLabor ? displayStatus(qrLabor) : "-"}</p>
             </div>
@@ -1450,7 +1685,7 @@ function AddEvidenciaDialog({
               className="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[60px]"
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Descripcion de la evidencia..."
+              placeholder="Descripción de la evidencia..."
             />
           </div>
           {tipo === "foto" && (

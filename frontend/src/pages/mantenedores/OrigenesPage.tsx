@@ -4,9 +4,9 @@ import { useLookups } from "@/hooks/useLookups";
 import type { FieldDef } from "@/types";
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
-  col("pais", "Pais"),
+  col("pais", "País"),
   col("tipo", "Tipo"),
 ];
 
@@ -14,9 +14,9 @@ export function OrigenesPage() {
   const { stringOptions } = useLookups();
 
   const fields: FieldDef[] = useMemo(() => [
-    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "codigo", label: "Código", type: "text", required: true },
     { key: "nombre", label: "Nombre", type: "text", required: true },
-    { key: "pais", label: "Pais", type: "select", options: stringOptions.paises },
+    { key: "pais", label: "País", type: "select", options: stringOptions.paises },
     { key: "tipo", label: "Tipo", type: "select", options: [
       { value: "licenciante", label: "Licenciante" },
       { value: "obtentor", label: "Obtentor" },

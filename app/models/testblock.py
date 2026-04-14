@@ -86,6 +86,7 @@ class Planta(SQLModel, table=True):
     id_pmg: Optional[int] = Field(default=None, foreign_key="pmg.id_pmg")
     id_lote_origen: Optional[int] = Field(default=None, foreign_key="inventario_vivero.id_inventario")
     condicion: Optional[str] = Field(default="EN_EVALUACION", sa_column=Column(sa.String(30)))
+    etapa: Optional[str] = Field(default="formacion", sa_column=Column(sa.String(20)))
     activa: bool = Field(default=True)
     ano_plantacion: Optional[int] = Field(default=None)
     ano_injertacion: Optional[int] = Field(default=None)

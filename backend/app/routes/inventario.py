@@ -256,6 +256,95 @@ def get_kardex(
     return movs
 
 
+# ── Plantas sin lote ──────────────────────────────────────────────────────
+@router.get("/plantas-sin-lote")
+def plantas_sin_lote(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Plants in testblocks where the position has no lote assigned."""
+    from app.models.testblock import PosicionTestBlock, Planta, TestBlock
+    from app.models.variedades import Variedad
+    from app.models.maestras import Portainjerto
+
+    # Use subquery to avoid SQL Server 2100-parameter limit
+    pos_subq = (
+        db.query(PosicionTestBlock.id_posicion)
+        .filter(PosicionTestBlock.estado.in_(["alta", "replante"]), PosicionTestBlock.id_lote == None)
+        .subquery()
+    )
+
+    plantas = (
+        db.query(Planta)
+        .filter(Planta.activa == True, Planta.id_posicion.in_(pos_subq))
+        .order_by(Planta.id_planta.desc())
+        .limit(2000)
+        .all()
+    )
+
+    enrich_pos_ids = [p.id_posicion for p in plantas if p.id_posicion]
+    pos_map = {}
+    tb_map = {}
+    if enrich_pos_ids:
+        positions = db.query(PosicionTestBlock).filter(PosicionTestBlock.id_posicion.in_(enrich_pos_ids)).all()
+        pos_map = {p.id_posicion: p for p in positions}
+        tb_ids = list({p.id_testblock for p in positions if p.id_testblock})
+        if tb_ids:
+            tbs = db.query(TestBlock).filter(TestBlock.id_testblock.in_(tb_ids)).all()
+            tb_map = {t.id_testblock: t for t in tbs}
+
+    var_ids = list({p.id_variedad for p in plantas if p.id_variedad})
+    pi_ids = list({p.id_portainjerto for p in plantas if p.id_portainjerto})
+    var_map = {v.id_variedad: v.nombre for v in db.query(Variedad).filter(Variedad.id_variedad.in_(var_ids)).all()} if var_ids else {}
+    pi_map = {p.id_portainjerto: p.nombre for p in db.query(Portainjerto).filter(Portainjerto.id_portainjerto.in_(pi_ids)).all()} if pi_ids else {}
+
+    result = []
+    for pl in plantas:
+        pos = pos_map.get(pl.id_posicion)
+        tb = tb_map.get(pos.id_testblock) if pos and pos.id_testblock else None
+        result.append({
+            "id_planta": pl.id_planta, "codigo": pl.codigo,
+            "id_variedad": pl.id_variedad, "variedad": var_map.get(pl.id_variedad, "-"),
+            "id_portainjerto": pl.id_portainjerto, "portainjerto": pi_map.get(pl.id_portainjerto, "-"),
+            "etapa": pl.etapa or "formacion", "condicion": pl.condicion, "ano_plantacion": pl.ano_plantacion,
+            "testblock": tb.nombre if tb else "-", "id_testblock": tb.id_testblock if tb else None,
+            "posicion": f"H{pos.hilera}P{pos.posicion}" if pos else "-", "id_posicion": pl.id_posicion,
+            "fecha_alta": str(pl.fecha_alta) if pl.fecha_alta else None,
+        })
+    return result
+
+
+# ── Asignar lote a plantas ───────────────────────────────────────────────
+@router.post("/asignar-lote")
+def asignar_lote_a_plantas(
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Assign an existing lote to plants that don't have one."""
+    from app.models.testblock import Planta, PosicionTestBlock
+    id_lote = data.get("id_lote")
+    planta_ids = data.get("planta_ids", [])
+    if not id_lote or not planta_ids:
+        raise HTTPException(status_code=400, detail="Se requiere id_lote y planta_ids")
+    lote = db.get(InventarioVivero, id_lote)
+    if not lote:
+        raise HTTPException(status_code=404, detail="Lote no encontrado")
+    updated = 0
+    for pid in planta_ids:
+        planta = db.get(Planta, pid)
+        if not planta or not planta.activa:
+            continue
+        planta.id_lote_origen = id_lote
+        if planta.id_posicion:
+            pos = db.get(PosicionTestBlock, planta.id_posicion)
+            if pos:
+                pos.id_lote = id_lote
+        updated += 1
+    db.commit()
+    return {"updated": updated, "message": f"{updated} plantas asignadas al lote {lote.codigo_lote}"}
+
+
 @router.get("/{id}")
 def get_inventario(
     id: int,
@@ -329,6 +418,114 @@ def despacho(
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
     return crear_despacho(db, data, usuario=user.username)
+
+
+# ── Sin asignar (lotes con stock no asignado a testblocks) ────────────────
+@router.get("/sin-testblock")
+def lotes_sin_testblock(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Lotes with remaining stock that hasn't been fully assigned to testblocks."""
+    from app.models.inventario import InventarioTestBlock
+    from sqlalchemy import func, case
+
+    # Subquery: total assigned per lote
+    assigned_sub = (
+        db.query(
+            InventarioTestBlock.id_inventario,
+            func.coalesce(func.sum(InventarioTestBlock.cantidad_asignada), 0).label("total_asignado"),
+        )
+        .group_by(InventarioTestBlock.id_inventario)
+        .subquery()
+    )
+
+    lotes = (
+        db.query(InventarioVivero)
+        .outerjoin(assigned_sub, InventarioVivero.id_inventario == assigned_sub.c.id_inventario)
+        .filter(
+            InventarioVivero.cantidad_actual > 0,
+            InventarioVivero.estado != "baja",
+        )
+        .all()
+    )
+    return lotes
+
+
+# ── Mediciones por lote ───────────────────────────────────────────────────
+@router.get("/{id}/mediciones")
+def mediciones_por_lote(
+    id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Get lab measurements for plants originating from this lote."""
+    from app.models.testblock import PosicionTestBlock, Planta
+    from app.models.laboratorio import MedicionLaboratorio
+
+    # Plants from this lote (via posicion.id_lote or planta.id_lote_origen)
+    plantas = (
+        db.query(Planta)
+        .filter(Planta.id_lote_origen == id)
+        .all()
+    )
+    if not plantas:
+        # Fallback: plants in positions linked to this lote
+        pos_ids = [
+            p.id_posicion for p in
+            db.query(PosicionTestBlock.id_posicion)
+            .filter(PosicionTestBlock.id_lote == id)
+            .all()
+        ]
+        if pos_ids:
+            plantas = (
+                db.query(Planta)
+                .filter(Planta.id_posicion.in_(pos_ids))
+                .all()
+            )
+
+    if not plantas:
+        return []
+
+    planta_ids = [p.id_planta for p in plantas]
+    mediciones = (
+        db.query(MedicionLaboratorio)
+        .filter(MedicionLaboratorio.id_planta.in_(planta_ids))
+        .order_by(MedicionLaboratorio.fecha_medicion.desc())
+        .limit(500)
+        .all()
+    )
+
+    # Enrich with plant code
+    planta_map = {p.id_planta: p.codigo for p in plantas}
+    result = []
+    for m in mediciones:
+        d = {c.name: getattr(m, c.name) for c in m.__table__.columns}
+        d["planta_codigo"] = planta_map.get(m.id_planta, f"PLT-{m.id_planta}")
+        result.append(d)
+    return result
+
+
+# ── Eliminar lote ─────────────────────────────────────────────────────────
+@router.delete("/{id}")
+def delete_inventario(
+    id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Delete a lote. Only allowed if no movements have been registered (pristine lote)."""
+    lote = db.get(InventarioVivero, id)
+    if not lote:
+        raise HTTPException(status_code=404, detail="Lote no encontrado")
+    movs = db.query(MovimientoInventario).filter(MovimientoInventario.id_inventario == id).count()
+    if movs > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede eliminar: el lote tiene {movs} movimiento(s) registrados. Cambie su estado a 'baja' en su lugar.",
+        )
+    db.delete(lote)
+    db.commit()
+    return {"detail": "Lote eliminado"}
 
 
 # ── Guias de despacho ──────────────────────────────────────────────────────

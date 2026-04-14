@@ -22,8 +22,8 @@ const MOV_TIPOS = [
   { value: "INGRESO", label: "Ingreso" },
   { value: "RETIRO", label: "Retiro" },
   { value: "AJUSTE", label: "Ajuste" },
-  { value: "PLANTACION", label: "Plantacion" },
-  { value: "DEVOLUCION", label: "Devolucion" },
+  { value: "PLANTACION", label: "Plantación" },
+  { value: "DEVOLUCION", label: "Devolución" },
   { value: "DESPACHO", label: "Despacho" },
 ];
 
@@ -305,7 +305,7 @@ export function LoteDetailPage() {
           <p className="font-medium">{lote.tipo_planta || "-"}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">Injertacion</span>
+          <span className="text-muted-foreground">Injertación</span>
           <p className="font-medium">{lote.tipo_injertacion || "-"}</p>
         </div>
       </div>

@@ -105,7 +105,7 @@ export function FenologiaPage() {
   const registerMut = useMutation({
     mutationFn: (data: Record<string, unknown>) => laboresService.registroFenologico(data),
     onSuccess: (res) => {
-      toast.success(`Registro fenologico creado (${res.created} posiciones)`);
+      toast.success(`Registro fenológico creado (${res.created} posiciones)`);
       queryClient.invalidateQueries({ queryKey: ["historial-fenologico"] });
       setRegisterOpen(false);
       setRegEstadoId(null);
@@ -213,7 +213,7 @@ export function FenologiaPage() {
         temporada,
       });
     } catch (err) {
-      toast.error("Error al registrar estado fenologico");
+      toast.error("Error al registrar estado fenológico");
     }
   };
 
@@ -222,9 +222,9 @@ export function FenologiaPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-garces-cherry">Fenologia</h2>
+          <h2 className="text-xl font-bold text-garces-cherry">Fenología</h2>
           <p className="text-sm text-muted-foreground">
-            Estados fenologicos integrados con el flujo de labores
+            Estados fenológicos integrados con el flujo de labores
           </p>
         </div>
         <div className="flex gap-2">
@@ -241,9 +241,9 @@ export function FenologiaPage() {
       {/* Info banner */}
       <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
         <p className="text-sm text-purple-800">
-          <strong>Los estados fenologicos se registran como parte del flujo de labores.</strong> En la seccion
-          Labores → tab "Pauta por Especie" puedes planificar y registrar hitos fenologicos junto con las labores
-          agronomicas. Aqui puedes ver la referencia y el historial.
+          <strong>Los estados fenológicos se registran como parte del flujo de labores.</strong> En la sección
+          Labores → tab "Pauta por Especie" puedes planificar y registrar hitos fenológicos junto con las labores
+          agronómicas. Aquí puedes ver la referencia y el historial.
         </p>
       </div>
 
@@ -278,9 +278,9 @@ export function FenologiaPage() {
       {selectedEspecieId && estadosEspecie.length > 0 && (
         <div className="bg-white rounded-lg border">
           <div className="px-5 py-3 border-b bg-muted/30">
-            <h3 className="font-semibold text-sm">Ciclo Fenologico: {selectedEspecieName}</h3>
+            <h3 className="font-semibold text-sm">Ciclo Fenológico: {selectedEspecieName}</h3>
             <p className="text-xs text-muted-foreground">
-              {estadosEspecie.length} estados fenologicos registrados
+              {estadosEspecie.length} estados fenológicos registrados
             </p>
           </div>
 
@@ -341,10 +341,10 @@ export function FenologiaPage() {
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-8 text-center">
           <AlertTriangle className="h-10 w-10 text-amber-400 mx-auto mb-3" />
           <p className="text-sm font-semibold text-amber-800">
-            Sin estados fenologicos configurados para {selectedEspecieName}
+            Sin estados fenológicos configurados para {selectedEspecieName}
           </p>
           <p className="text-xs text-muted-foreground mt-1 mb-4">
-            No hay estados fenologicos registrados para esta especie.
+            No hay estados fenológicos registrados para esta especie.
             Un administrador puede configurarlos desde el Mantenedor o ejecutando el seed de datos demo.
           </p>
           <div className="flex gap-2 justify-center">
@@ -367,14 +367,14 @@ export function FenologiaPage() {
       {!selectedEspecieId && (
         <div className="bg-white rounded-lg border p-8 text-center">
           <Flower2 className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-sm font-semibold">Selecciona una especie para ver su ciclo fenologico</p>
+          <p className="text-sm font-semibold">Selecciona una especie para ver su ciclo fenológico</p>
         </div>
       )}
 
       {/* Registros fenologicos recientes */}
       <div className="bg-white rounded-lg border">
         <div className="px-5 py-3 border-b flex items-center justify-between">
-          <h3 className="font-semibold text-sm">Registros Fenologicos Recientes</h3>
+          <h3 className="font-semibold text-sm">Registros Fenológicos Recientes</h3>
           <div className="flex gap-2 items-center">
             <select
               className="rounded-md border text-xs px-2 py-1.5"
@@ -395,7 +395,7 @@ export function FenologiaPage() {
           <div className="p-8 text-center">
             <Calendar className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">
-              No hay registros fenologicos aun. Los hitos fenologicos se registran desde el modulo de Labores.
+              No hay registros fenológicos aún. Los hitos fenológicos se registran desde el módulo de Labores.
             </p>
             <Button variant="link" size="sm" className="mt-2 text-garces-cherry" onClick={() => navigate("/labores")}>
               Ir a Labores para registrar
@@ -455,7 +455,7 @@ export function FenologiaPage() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Compara las fechas reales de cada estado fenologico entre dos temporadas para anticipar labores.
+          Compara las fechas reales de cada estado fenológico entre dos temporadas para anticipar labores.
         </p>
 
         <div className="flex gap-3 flex-wrap items-end">
@@ -500,7 +500,7 @@ export function FenologiaPage() {
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
             <div className="flex items-center gap-2 mb-1">
               <Clock className="h-4 w-4 text-blue-600" />
-              <h4 className="text-sm font-semibold text-blue-800">Proximos estados esperados</h4>
+              <h4 className="text-sm font-semibold text-blue-800">Próximos estados esperados</h4>
             </div>
             <div className="space-y-1.5">
               {predicciones.slice(0, 8).map((pred, i) => (
@@ -512,7 +512,7 @@ export function FenologiaPage() {
                   <span className="font-medium text-blue-900">{pred.estado}</span>
                   <span className="text-blue-600">({pred.variedad})</span>
                   <span className="text-blue-700 ml-auto">
-                    esperado en ~{pred.dias_estimados} dias
+                    esperado en ~{pred.dias_estimados} días
                   </span>
                   <span className="text-blue-400 text-[10px]">
                     (ant: {formatDate(pred.fecha_anterior)})
@@ -638,7 +638,7 @@ export function FenologiaPage() {
                               {est.diferencia_dias != null ? (
                                 <span className={`inline-flex items-center gap-1 font-medium ${est.diferencia_dias < 0 ? "text-green-600" : est.diferencia_dias > 0 ? "text-orange-600" : "text-muted-foreground"}`}>
                                   {est.diferencia_dias < 0 ? <TrendingUp className="h-3 w-3" /> : est.diferencia_dias > 0 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
-                                  {est.diferencia_dias > 0 ? "+" : ""}{est.diferencia_dias} dias
+                                  {est.diferencia_dias > 0 ? "+" : ""}{est.diferencia_dias} días
                                 </span>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
@@ -656,7 +656,7 @@ export function FenologiaPage() {
         ) : (
           <div className="text-center py-8 text-muted-foreground text-sm">
             {selectedEspecieId
-              ? "No hay registros fenologicos para comparar en estas temporadas. Registre estados desde los TestBlocks."
+              ? "No hay registros fenológicos para comparar en estas temporadas. Registre estados desde los TestBlocks."
               : "Seleccione una especie arriba para ver la comparativa."}
           </div>
         )}
@@ -666,7 +666,7 @@ export function FenologiaPage() {
       <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Registrar Estado Fenologico</DialogTitle>
+            <DialogTitle>Registrar Estado Fenológico</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {regEstadoId && (

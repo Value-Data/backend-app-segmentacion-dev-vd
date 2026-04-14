@@ -12,7 +12,7 @@ const columns = [
   { accessorKey: "id_log", header: "ID" },
   { accessorKey: "tabla", header: "Tabla" },
   { accessorKey: "registro_id", header: "Registro" },
-  { accessorKey: "accion", header: "Accion" },
+  { accessorKey: "accion", header: "Acción" },
   { accessorKey: "usuario", header: "Usuario" },
   { accessorKey: "ip_address", header: "IP" },
   { accessorKey: "fecha", header: "Fecha", cell: ({ getValue }: any) => formatDate(getValue() as string) },

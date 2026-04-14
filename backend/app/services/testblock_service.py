@@ -524,6 +524,7 @@ def get_grilla(db: Session, tb_id: int) -> dict:
             data["planta_portainjerto"] = planta.id_portainjerto
             data["planta_especie"] = planta.id_especie
             data["planta_condicion"] = planta.condicion
+            data["etapa"] = planta.etapa or "formacion"
             data["ano_plantacion"] = planta.ano_plantacion
         result.append(data)
 

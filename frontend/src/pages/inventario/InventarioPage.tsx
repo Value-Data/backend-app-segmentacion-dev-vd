@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle, Eye, QrCode, Filter, X, CheckSquare, FileDown } from "lucide-react";
+import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle, Eye, QrCode, Filter, X, CheckSquare, FileDown, ArrowUpRight, ArrowDownRight, ArrowLeft, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -19,23 +19,43 @@ import { useTestblocks } from "@/hooks/useTestblock";
 import { useAuthStore } from "@/stores/authStore";
 import { formatNumber, formatDate } from "@/lib/utils";
 import type { FieldDef } from "@/types";
-import type { InventarioVivero, GuiaDespacho } from "@/types/inventario";
+import type { InventarioVivero, GuiaDespacho, MovimientoInventario } from "@/types/inventario";
+
+const TIPO_ENTRADA = new Set(["INGRESO", "DEVOLUCION"]);
+
+function KardexTipoBadge({ tipo }: { tipo: string }) {
+  const upper = tipo?.toUpperCase() || "";
+  if (TIPO_ENTRADA.has(upper)) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800">
+        <ArrowUpRight className="h-3 w-3" />
+        {tipo}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800">
+      <ArrowDownRight className="h-3 w-3" />
+      {tipo}
+    </span>
+  );
+}
 
 const TIPO_PLANTA_LABELS: Record<string, string> = {
-  TERMINADA_RAIZ_DESNUDA: "Terminada raiz desnuda",
+  TERMINADA_RAIZ_DESNUDA: "Terminada raíz desnuda",
   TERMINADA_MACETA_BOLSA: "Terminada maceta/bolsa",
-  INJERTACION_TERRENO: "Injertacion en terreno",
+  INJERTACION_TERRENO: "Injertación en terreno",
   PLANTA_TERMINADA: "Planta terminada",
   RAMILLAS: "Ramillas",
   // Legacy values (backwards compat for display)
-  "Raíz desnuda": "Raiz desnuda",
+  "Raíz desnuda": "Raíz desnuda",
   "Bolsa primavera": "Bolsa primavera",
   "Planta en bolsa o maceta": "Terminada maceta/bolsa",
-  "Planta terminada raiz desnuda": "Terminada raiz desnuda",
+  "Planta terminada raiz desnuda": "Terminada raíz desnuda",
 };
 
 const TIPO_INJERTACION_LABELS: Record<string, string> = {
-  INVIERNO_PUA: "Invierno (pua)",
+  INVIERNO_PUA: "Invierno (púa)",
   VERANO_YEMA: "Verano (yema)",
   OJO_VIVO: "Ojo vivo",
   OJO_DORMIDO: "Ojo dormido",
@@ -72,6 +92,8 @@ export function InventarioPage() {
   const [selectedBodega, setSelectedBodega] = useState<number | "todas">("todas");
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>("todos");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedLoteId, setSelectedLoteId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState("lotes");
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<{
     especie: string;
@@ -168,7 +190,7 @@ export function InventarioPage() {
     },
     {
       accessorKey: "tipo_injertacion",
-      header: "Injertacion",
+      header: "Injertación",
       cell: ({ getValue }: any) => {
         const v = getValue() as string | null;
         return v ? <span className="text-xs">{TIPO_INJERTACION_LABELS[v] || v}</span> : "-";
@@ -198,11 +220,18 @@ export function InventarioPage() {
     {
       id: "actions",
       header: "",
-      size: 60,
+      size: 90,
       cell: ({ row }: any) => {
         const lote = row.original as InventarioVivero;
         return (
           <div className="flex gap-1 justify-end">
+            <button
+              onClick={() => { setSelectedLoteId(lote.id_inventario); setActiveTab("movimientos"); }}
+              className="p-1 rounded hover:bg-muted transition-colors"
+              title="Ver Kardex"
+            >
+              <FileDown className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
             <button
               onClick={() => navigate(`/inventario/${lote.id_inventario}`)}
               className="p-1 rounded hover:bg-muted transition-colors"
@@ -229,6 +258,19 @@ export function InventarioPage() {
     queryKey: ["inventario"],
     queryFn: () => inventarioService.list(),
   });
+  const { data: plantasSinLote } = useQuery({
+    queryKey: ["inventario", "plantas-sin-lote"],
+    queryFn: () => inventarioService.plantasSinLote(),
+    staleTime: 60_000,
+  });
+  const [selectedPlantaIds, setSelectedPlantaIds] = useState<Set<number>>(new Set());
+  const [asignarLoteOpen, setAsignarLoteOpen] = useState(false);
+  // Mediciones for selected lote
+  const { data: loteMediciones, isLoading: medLoading } = useQuery({
+    queryKey: ["inventario", selectedLoteId, "mediciones"],
+    queryFn: () => inventarioService.mediciones(selectedLoteId!),
+    enabled: !!selectedLoteId,
+  });
   const { data: stats } = useQuery({
     queryKey: ["inventario", "stats"],
     queryFn: inventarioService.stats,
@@ -241,6 +283,18 @@ export function InventarioPage() {
     queryKey: ["guias-despacho"],
     queryFn: inventarioService.guias,
   });
+
+  // Kardex for selected lote
+  const { data: kardexData, isLoading: kardexLoading } = useQuery({
+    queryKey: ["inventario", selectedLoteId, "kardex"],
+    queryFn: () => inventarioService.kardex(selectedLoteId!),
+    enabled: !!selectedLoteId,
+  });
+
+  const selectedLote = useMemo(() => {
+    if (!selectedLoteId || !inventario) return null;
+    return (inventario as InventarioVivero[]).find((l) => l.id_inventario === selectedLoteId) || null;
+  }, [selectedLoteId, inventario]);
 
   // Compute stock bajo count (stock < 20% of initial)
   const stockBajoCount = useMemo(() => {
@@ -314,6 +368,25 @@ export function InventarioPage() {
       queryClient.invalidateQueries({ queryKey: ["inventario", "por-bodega"] });
       toast.success("Despacho creado correctamente");
       setDespachoOpen(false);
+    },
+  });
+
+  const asignarLoteMut = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      inventarioService.asignarLote(Number(data.id_lote), Array.from(selectedPlantaIds)),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["inventario"] });
+      toast.success(res.message);
+      setSelectedPlantaIds(new Set());
+      setAsignarLoteOpen(false);
+    },
+  });
+
+  const deleteLoteMut = useMutation({
+    mutationFn: (id: number) => inventarioService.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventario"] });
+      toast.success("Lote eliminado");
     },
   });
 
@@ -456,7 +529,7 @@ export function InventarioPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Injertacion</label>
+              <label className="text-xs text-muted-foreground mb-1 block">Injertación</label>
               <select
                 value={filters.tipo_injertacion}
                 onChange={(e) => setFilters((p) => ({ ...p, tipo_injertacion: e.target.value }))}
@@ -529,11 +602,14 @@ export function InventarioPage() {
       </div>
 
       {/* Main content tabs */}
-      <Tabs defaultValue="lotes">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="lotes">Lotes</TabsTrigger>
-          <TabsTrigger value="guias">Guias Despacho</TabsTrigger>
-          <TabsTrigger value="movimientos">Movimientos Recientes</TabsTrigger>
+          <TabsTrigger value="lotes">Lotes ({filteredInventario.length})</TabsTrigger>
+          <TabsTrigger value="sin-asignar">Plantas Sin Lote {plantasSinLote ? `(${plantasSinLote.length})` : ""}</TabsTrigger>
+          <TabsTrigger value="guias">Gu\u00edas Despacho</TabsTrigger>
+          <TabsTrigger value="movimientos">
+            Kardex {selectedLote ? `— ${selectedLote.codigo_lote}` : ""}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="lotes">
@@ -542,6 +618,7 @@ export function InventarioPage() {
             columns={columns as any}
             isLoading={isLoading}
             onEdit={(row) => navigate(`/inventario/${(row as any).id_inventario}`)}
+            onRowClick={(row) => { setSelectedLoteId((row as InventarioVivero).id_inventario); setActiveTab("movimientos"); }}
             searchPlaceholder="Buscar lote, variedad, especie..."
           />
         </TabsContent>
@@ -560,19 +637,220 @@ export function InventarioPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="movimientos">
-          <div className="bg-white rounded-lg border p-6">
-            <div className="flex flex-col items-center justify-center text-center py-8">
-              <Package className="h-12 w-12 text-muted-foreground/30 mb-3" />
-              <h4 className="font-semibold text-sm">Movimientos por Lote</h4>
-              <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                Seleccione un lote en la tabla de arriba para ver su Kardex completo con todos los movimientos (ingresos, despachos, ajustes).
+        <TabsContent value="sin-asignar">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Plantas activas en testblocks que fueron creadas sin lote de inventario (Alta Directa). Selecciona plantas para asignarles un lote.
               </p>
-              <p className="text-xs text-muted-foreground mt-3">
-                Cada lote tiene su propia linea de tiempo de movimientos en la vista de detalle.
-              </p>
+              {selectedPlantaIds.size > 0 && (
+                <Button size="sm" onClick={() => setAsignarLoteOpen(true)}>
+                  <Package className="h-4 w-4 mr-1" /> Asignar Lote ({selectedPlantaIds.size})
+                </Button>
+              )}
             </div>
+            <div className="bg-white rounded-lg border overflow-auto" style={{ maxHeight: "65vh" }}>
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr className="border-b bg-muted/50">
+                    <th className="h-9 px-2 w-8">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300"
+                        checked={plantasSinLote && plantasSinLote.length > 0 && selectedPlantaIds.size === plantasSinLote.length}
+                        onChange={() => {
+                          if (selectedPlantaIds.size === (plantasSinLote?.length || 0)) {
+                            setSelectedPlantaIds(new Set());
+                          } else {
+                            setSelectedPlantaIds(new Set((plantasSinLote || []).map((p: any) => p.id_planta)));
+                          }
+                        }}
+                      />
+                    </th>
+                    <th className="h-9 px-3 text-left font-medium text-muted-foreground">Planta</th>
+                    <th className="h-9 px-3 text-left font-medium text-muted-foreground">Variedad</th>
+                    <th className="h-9 px-3 text-left font-medium text-muted-foreground">Portainjerto</th>
+                    <th className="h-9 px-3 text-left font-medium text-muted-foreground">TestBlock</th>
+                    <th className="h-9 px-3 text-left font-medium text-muted-foreground">Posición</th>
+                    <th className="h-9 px-3 text-left font-medium text-muted-foreground">Etapa</th>
+                    <th className="h-9 px-3 text-left font-medium text-muted-foreground">Fecha Alta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(!plantasSinLote || plantasSinLote.length === 0) ? (
+                    <tr><td colSpan={8} className="h-24 text-center text-muted-foreground">Todas las plantas tienen lote asignado</td></tr>
+                  ) : (
+                    (plantasSinLote as any[]).map((pl) => (
+                      <tr key={pl.id_planta} className={`border-b hover:bg-muted/30 transition-colors cursor-pointer ${selectedPlantaIds.has(pl.id_planta) ? "bg-blue-50" : ""}`}
+                          onClick={() => {
+                            setSelectedPlantaIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(pl.id_planta)) next.delete(pl.id_planta); else next.add(pl.id_planta);
+                              return next;
+                            });
+                          }}>
+                        <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300"
+                            checked={selectedPlantaIds.has(pl.id_planta)}
+                            onChange={() => {
+                              setSelectedPlantaIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(pl.id_planta)) next.delete(pl.id_planta); else next.add(pl.id_planta);
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">{pl.codigo || `PLT-${pl.id_planta}`}</td>
+                        <td className="px-3 py-2 text-xs font-medium">{pl.variedad}</td>
+                        <td className="px-3 py-2 text-xs">{pl.portainjerto}</td>
+                        <td className="px-3 py-2 text-xs">
+                          {pl.id_testblock ? (
+                            <button className="text-blue-600 hover:underline" onClick={(e) => { e.stopPropagation(); navigate(`/testblocks/${pl.id_testblock}`); }}>
+                              {pl.testblock}
+                            </button>
+                          ) : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-xs font-mono">{pl.posicion}</td>
+                        <td className="px-3 py-2"><StatusBadge status={pl.etapa || "formacion"} /></td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">{pl.fecha_alta ? formatDate(pl.fecha_alta) : "-"}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              {plantasSinLote?.length ?? 0} plantas sin lote asignado
+            </p>
           </div>
+        </TabsContent>
+
+        <TabsContent value="movimientos">
+          {!selectedLote ? (
+            <div className="bg-white rounded-lg border p-6">
+              <div className="flex flex-col items-center justify-center text-center py-8">
+                <Package className="h-12 w-12 text-muted-foreground/30 mb-3" />
+                <h4 className="font-semibold text-sm">Movimientos por Lote</h4>
+                <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                  Haga click en el icono <FileDown className="h-3.5 w-3.5 inline text-muted-foreground" /> de un lote en la tabla para ver su Kardex.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg border">
+              <div className="flex items-center justify-between p-4 border-b">
+                <div className="flex items-center gap-3">
+                  <button onClick={() => { setSelectedLoteId(null); setActiveTab("lotes"); }} className="p-1 rounded hover:bg-muted">
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                  <div>
+                    <h3 className="font-semibold text-sm">Kardex — {selectedLote.codigo_lote}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {lk.variedad(selectedLote.id_variedad)} / {lk.portainjerto(selectedLote.id_portainjerto)} — Stock: {formatNumber(selectedLote.cantidad_actual)}/{formatNumber(selectedLote.cantidad_inicial)}
+                    </p>
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => navigate(`/inventario/${selectedLote.id_inventario}`)}>
+                  <Eye className="h-3.5 w-3.5 mr-1" /> Ver Detalle Completo
+                </Button>
+              </div>
+              <div className="overflow-auto">
+                {kardexLoading ? (
+                  <div className="p-8 text-center text-muted-foreground">Cargando movimientos...</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="h-10 px-3 text-left font-medium text-muted-foreground">Fecha</th>
+                        <th className="h-10 px-3 text-left font-medium text-muted-foreground">Tipo</th>
+                        <th className="h-10 px-3 text-right font-medium text-muted-foreground">Cantidad</th>
+                        <th className="h-10 px-3 text-center font-medium text-muted-foreground">Saldo Ant.</th>
+                        <th className="h-10 px-3 text-center font-medium text-muted-foreground"></th>
+                        <th className="h-10 px-3 text-center font-medium text-muted-foreground">Saldo Nuevo</th>
+                        <th className="h-10 px-3 text-left font-medium text-muted-foreground">Destino</th>
+                        <th className="h-10 px-3 text-left font-medium text-muted-foreground">Usuario</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(kardexData || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="h-24 text-center text-muted-foreground">
+                            Sin movimientos registrados
+                          </td>
+                        </tr>
+                      ) : (
+                        (kardexData || []).map((m: MovimientoInventario) => {
+                          const isEntrada = TIPO_ENTRADA.has(m.tipo?.toUpperCase());
+                          return (
+                            <tr key={m.id_movimiento} className="border-b hover:bg-muted/30 transition-colors">
+                              <td className="px-3 py-2 text-muted-foreground">{formatDate(m.fecha_movimiento)}</td>
+                              <td className="px-3 py-2"><KardexTipoBadge tipo={m.tipo} /></td>
+                              <td className={`px-3 py-2 text-right font-medium tabular-nums ${isEntrada ? "text-green-700" : "text-red-700"}`}>
+                                {isEntrada ? "+" : "-"}{formatNumber(m.cantidad)}
+                              </td>
+                              <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">
+                                {m.saldo_anterior != null ? formatNumber(m.saldo_anterior) : "-"}
+                              </td>
+                              <td className="px-3 py-2 text-center text-muted-foreground">→</td>
+                              <td className="px-3 py-2 text-center tabular-nums font-medium">
+                                {m.saldo_nuevo != null ? formatNumber(m.saldo_nuevo) : "-"}
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground">{m.referencia_destino || "-"}</td>
+                              <td className="px-3 py-2 text-muted-foreground text-xs">{m.usuario || "-"}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Mediciones section */}
+              <div className="border-t">
+                <div className="flex items-center justify-between p-3 bg-muted/30">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase">
+                    Mediciones de plantas de este lote ({loteMediciones?.length ?? 0})
+                  </h4>
+                </div>
+                {medLoading ? (
+                  <div className="p-6 text-center text-muted-foreground text-sm">Cargando mediciones...</div>
+                ) : !loteMediciones || loteMediciones.length === 0 ? (
+                  <div className="p-6 text-center text-muted-foreground text-sm">Sin mediciones registradas para plantas de este lote</div>
+                ) : (
+                  <div className="overflow-auto max-h-64">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50 sticky top-0">
+                          <th className="h-8 px-3 text-left text-xs font-medium text-muted-foreground">Planta</th>
+                          <th className="h-8 px-3 text-left text-xs font-medium text-muted-foreground">Fecha</th>
+                          <th className="h-8 px-3 text-right text-xs font-medium text-muted-foreground">Brix</th>
+                          <th className="h-8 px-3 text-right text-xs font-medium text-muted-foreground">Firmeza</th>
+                          <th className="h-8 px-3 text-right text-xs font-medium text-muted-foreground">Calibre</th>
+                          <th className="h-8 px-3 text-right text-xs font-medium text-muted-foreground">Peso</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {loteMediciones.slice(0, 100).map((m: any, i: number) => (
+                          <tr key={m.id_medicion || i} className="border-b hover:bg-muted/30">
+                            <td className="px-3 py-1.5 text-xs font-mono">{m.planta_codigo || `PLT-${m.id_planta}`}</td>
+                            <td className="px-3 py-1.5 text-xs text-muted-foreground">{m.fecha_medicion ? formatDate(m.fecha_medicion) : "-"}</td>
+                            <td className="px-3 py-1.5 text-xs text-right tabular-nums">{m.brix != null ? formatNumber(m.brix, 1) : "-"}</td>
+                            <td className="px-3 py-1.5 text-xs text-right tabular-nums">{m.firmeza != null ? formatNumber(m.firmeza, 1) : "-"}</td>
+                            <td className="px-3 py-1.5 text-xs text-right tabular-nums">{m.calibre != null ? formatNumber(m.calibre, 1) : "-"}</td>
+                            <td className="px-3 py-1.5 text-xs text-right tabular-nums">{m.peso != null ? formatNumber(m.peso, 1) : "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -665,6 +943,24 @@ export function InventarioPage() {
         fields={despachoFields}
         title="Nuevo Despacho a TestBlock"
         isLoading={despachoMut.isPending}
+      />
+
+      <CrudForm
+        open={asignarLoteOpen}
+        onClose={() => setAsignarLoteOpen(false)}
+        onSubmit={async (data) => { await asignarLoteMut.mutateAsync(data); }}
+        fields={[
+          {
+            key: "id_lote",
+            label: "Lote de Inventario",
+            type: "select",
+            required: true,
+            options: loteOpts,
+            placeholder: "Seleccionar lote",
+          },
+        ]}
+        title={`Asignar Lote a ${selectedPlantaIds.size} planta${selectedPlantaIds.size !== 1 ? "s" : ""}`}
+        isLoading={asignarLoteMut.isPending}
       />
     </div>
   );

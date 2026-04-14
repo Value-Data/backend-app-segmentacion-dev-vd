@@ -463,11 +463,11 @@ export function LaboratorioPage() {
         setLastClasificacion(response.clasificacion);
         const c = response.clasificacion;
         toast.success(
-          `Medicion registrada - Cluster ${c.cluster} (${c.cluster_label})`,
+          `Medición registrada - Cluster ${c.cluster} (${c.cluster_label})`,
           { duration: 5000 }
         );
       } else {
-        toast.success("Medicion registrada");
+        toast.success("Medición registrada");
       }
     },
   });
@@ -597,7 +597,7 @@ export function LaboratorioPage() {
             className="bg-violet-600 hover:bg-violet-700 text-white text-xs"
           >
             <WandSparkles className="h-3.5 w-3.5 mr-1.5" />
-            Nueva Medicion
+            Nueva Medición
           </Button>
           <Link to="/laboratorio/analisis">
             <Button
@@ -813,7 +813,7 @@ export function LaboratorioPage() {
          * ═══════════════════════════════════════════════════════════════════ */}
         <TabsContent value="poscosecha" className="mt-4">
           <p className="text-sm text-muted-foreground mb-3">
-            Evaluaciones despues de almacenamiento en frio. Filtre por periodo de almacenaje.
+            Evaluaciones después de almacenamiento en frío. Filtre por período de almacenaje.
           </p>
 
           {/* Inline filters + dias range */}
@@ -921,12 +921,12 @@ export function LaboratorioPage() {
             </h3>
             <p className="text-sm text-muted-foreground max-w-md">
               Evaluaciones de comportamiento de fruta en condiciones ambientales
-              despues de N dias de almacenamiento. Este modulo estara disponible proximamente.
+              después de N días de almacenamiento. Este módulo estará disponible próximamente.
             </p>
             <div className="mt-6 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 px-6 py-3">
               <p className="text-xs text-amber-700">
                 Permite registrar y comparar mediciones de brix, firmeza y condicion
-                de fruta tras diferentes periodos de exposicion a temperatura ambiente.
+                de fruta tras diferentes períodos de exposición a temperatura ambiente.
               </p>
             </div>
           </div>
@@ -945,7 +945,7 @@ export function LaboratorioPage() {
                 </h4>
                 <p className="text-xs text-blue-700">
                   Datos de calidad provistos por laboratorios externos, viveros de origen
-                  o programas de mejoramiento genetico (PMG). Estos datos complementan las
+                  o programas de mejoramiento genético (PMG). Estos datos complementan las
                   evaluaciones internas y permiten comparar resultados con fuentes externas.
                 </p>
               </div>
@@ -1006,7 +1006,7 @@ export function LaboratorioPage() {
           className="inline-flex items-center gap-1.5 text-garces-cherry hover:text-garces-cherry/80 font-medium hover:underline"
         >
           <Microscope className="h-3.5 w-3.5" />
-          Ver Analisis de Calidad
+          Ver Análisis de Calidad
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
         <span className="text-border">|</span>
@@ -1446,11 +1446,11 @@ function NuevaMedicionDialog({
         <DialogHeader>
           <DialogTitle className="text-garces-cherry flex items-center gap-2">
             <FlaskConical className="h-5 w-5" />
-            Nueva Medicion de Laboratorio
+            Nueva Medición de Laboratorio
           </DialogTitle>
           <DialogDescription>
             {especieNombre
-              ? `Formulario adaptado para ${especieNombre}. Los campos varian segun la especie.`
+              ? `Formulario adaptado para ${especieNombre}. Los campos varían según la especie.`
               : "Seleccione la especie primero para adaptar el formulario."}
           </DialogDescription>
         </DialogHeader>
@@ -1648,12 +1648,12 @@ function NuevaMedicionDialog({
             {/* Optional: id_posicion / id_planta for advanced users */}
             <details className="text-xs text-muted-foreground">
               <summary className="cursor-pointer hover:text-foreground">
-                Avanzado: ID Posicion / Planta
+                Avanzado: ID Posición / Planta
               </summary>
               <div className="grid grid-cols-2 gap-3 mt-2">
                 <div>
                   <Label htmlFor="id_posicion" className="text-xs">
-                    ID Posicion
+                    ID Posición
                   </Label>
                   <Input
                     id="id_posicion"
@@ -2362,7 +2362,7 @@ function NuevaMedicionDialog({
               className="bg-garces-cherry hover:bg-garces-cherry/90"
             >
               <Plus className="h-4 w-4 mr-1" />
-              {isLoading ? "Guardando..." : "Registrar Medicion"}
+              {isLoading ? "Guardando..." : "Registrar Medición"}
             </Button>
           </DialogFooter>
         </form>

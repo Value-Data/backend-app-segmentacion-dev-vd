@@ -27,7 +27,7 @@ import { withCurrentValue } from "@/lib/utils";
 type ViewMode = "cards" | "table";
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
   col("vigor", "Vigor"),
   col("origen", "Origen"),
@@ -85,7 +85,7 @@ export function PortainjertosPage() {
   });
 
   const fields: FieldDef[] = useMemo(() => [
-    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "codigo", label: "Código", type: "text", required: true },
     { key: "nombre", label: "Nombre", type: "text", required: true },
     { key: "vigor", label: "Vigor", type: "select", options: [
       { value: "bajo", label: "Bajo" },
@@ -94,7 +94,7 @@ export function PortainjertosPage() {
     ]},
     { key: "origen", label: "Pais de Origen", type: "select", options: withCurrentValue(stringOptions.paises, editRow?.origen) },
     { key: "cruce", label: "Cruce", type: "text" },
-    { key: "propagacion", label: "Propagacion", type: "text" },
+    { key: "propagacion", label: "Propagación", type: "text" },
     { key: "obtentor", label: "Obtentor", type: "text" },
     { key: "ventajas", label: "Ventajas", type: "textarea" },
     { key: "notas", label: "Notas", type: "textarea" },

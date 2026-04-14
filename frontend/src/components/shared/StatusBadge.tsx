@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn, humanize } from "@/lib/utils";
 
 const STATUS_STYLES: Record<string, string> = {
   alta: "bg-green-100 text-green-800",
@@ -32,6 +32,9 @@ const STATUS_STYLES: Record<string, string> = {
   demo_archived: "bg-gray-200 text-gray-500",
   formacion: "bg-amber-100 text-amber-800",
   produccion: "bg-green-100 text-green-800",
+  en_evaluacion: "bg-purple-100 text-purple-800",
+  comercial: "bg-green-100 text-green-800",
+  descartada: "bg-gray-200 text-gray-600",
 };
 
 interface StatusBadgeProps {
@@ -43,7 +46,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   const style = STATUS_STYLES[status?.toLowerCase()] || "bg-gray-100 text-gray-600";
   return (
     <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", style, className)}>
-      {status}
+      {humanize(status)}
     </span>
   );
 }

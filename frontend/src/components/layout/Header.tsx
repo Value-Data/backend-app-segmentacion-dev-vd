@@ -9,18 +9,18 @@ import { useSidebarStore } from "@/stores/sidebarStore";
 
 const titleMap: Record<string, string> = {
   "/": "Dashboard",
-  "/catalogos": "Catalogos",
+  "/catalogos": "Catálogos",
   "/inventario": "Inventario Bodega",
   "/testblocks": "TestBlocks",
   "/laboratorio": "Mediciones Lab",
-  "/laboratorio/analisis": "Analisis de Calidad",
+  "/laboratorio/analisis": "Análisis de Calidad",
   "/labores": "Labores",
-  "/fenologia": "Fenologia",
-  "/analisis": "Analisis",
+  "/fenologia": "Fenología",
+  "/analisis": "Análisis",
   "/reportes": "Reportes",
   "/alertas": "Centro de Alertas",
   "/sistema/usuarios": "Usuarios",
-  "/sistema/audit-log": "Log de Auditoria",
+  "/sistema/audit-log": "Log de Auditoría",
 };
 
 const catalogoTitles: Record<string, string> = {
@@ -34,9 +34,9 @@ const catalogoTitles: Record<string, string> = {
   susceptibilidades: "Susceptibilidades",
   "tipos-labor": "Tipos de Labor",
   "estados-planta": "Estados Planta",
-  "estados-fenologicos": "Estados Fenologicos",
-  paises: "Paises",
-  origenes: "Origenes",
+  "estados-fenologicos": "Estados Fenológicos",
+  paises: "Países",
+  origenes: "Orígenes",
   temporadas: "Temporadas",
   bodegas: "Bodegas",
   regiones: "Regiones",
@@ -44,7 +44,7 @@ const catalogoTitles: Record<string, string> = {
 };
 
 const parentMap: Record<string, { to: string; label: string }> = {
-  "/catalogos": { to: "/catalogos", label: "Catalogos" },
+  "/catalogos": { to: "/catalogos", label: "Catálogos" },
   "/inventario": { to: "/inventario", label: "Inventario" },
   "/testblocks": { to: "/testblocks", label: "TestBlocks" },
   "/laboratorio": { to: "/laboratorio", label: "Laboratorio" },
@@ -61,7 +61,7 @@ function getBreadcrumbs(path: string): { label: string; to?: string }[] {
 
   const catalogoMatch = path.match(/^\/catalogos\/(.+)/);
   if (catalogoMatch) {
-    crumbs.push({ label: "Catalogos", to: "/catalogos" });
+    crumbs.push({ label: "Catálogos", to: "/catalogos" });
     crumbs.push({ label: catalogoTitles[catalogoMatch[1]] || catalogoMatch[1] });
     return crumbs;
   }

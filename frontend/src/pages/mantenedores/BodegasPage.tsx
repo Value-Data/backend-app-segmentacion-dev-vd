@@ -2,16 +2,16 @@ import { GenericMantenedorPage, col } from "./GenericMantenedorPage";
 import type { FieldDef } from "@/types";
 
 const fields: FieldDef[] = [
-  { key: "codigo", label: "Codigo", type: "text" },
+  { key: "codigo", label: "Código", type: "text" },
   { key: "nombre", label: "Nombre", type: "text" },
-  { key: "ubicacion", label: "Ubicacion", type: "text" },
+  { key: "ubicacion", label: "Ubicación", type: "text" },
   { key: "responsable", label: "Responsable", type: "text" },
 ];
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
-  col("ubicacion", "Ubicacion"),
+  col("ubicacion", "Ubicación"),
   col("responsable", "Responsable"),
 ];
 

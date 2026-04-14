@@ -840,7 +840,7 @@ export function IngresoRapidoTab() {
                   className="bg-garces-cherry hover:bg-garces-cherry/90"
                 >
                   <BarChart3 className="h-4 w-4 mr-1.5" />
-                  Ver Analisis de Calidad
+                  Ver Análisis de Calidad
                 </Button>
                 <Button
                   variant="ghost"

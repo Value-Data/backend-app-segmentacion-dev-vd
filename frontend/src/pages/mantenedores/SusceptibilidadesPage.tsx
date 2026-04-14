@@ -2,7 +2,7 @@ import { GenericMantenedorPage, col, statusCol } from "./GenericMantenedorPage";
 import type { FieldDef } from "@/types";
 
 const fields: FieldDef[] = [
-  { key: "codigo", label: "Codigo", type: "text", required: true },
+  { key: "codigo", label: "Código", type: "text", required: true },
   { key: "nombre", label: "Nombre", type: "text", required: true },
   { key: "nombre_en", label: "Nombre (EN)", type: "text" },
   { key: "categoria", label: "Categoria", type: "text" },
@@ -12,11 +12,11 @@ const fields: FieldDef[] = [
     { value: "alta", label: "Alta" },
   ]},
   { key: "orden", label: "Orden", type: "number" },
-  { key: "descripcion", label: "Descripcion", type: "textarea" },
+  { key: "descripcion", label: "Descripción", type: "textarea" },
 ];
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
   col("categoria", "Categoria"),
   statusCol("severidad", "Severidad"),

@@ -9,7 +9,7 @@ const fields: FieldDef[] = [
 ];
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
   col("nombre_en", "Nombre (EN)"),
   col("orden", "Orden"),

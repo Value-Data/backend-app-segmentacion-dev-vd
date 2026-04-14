@@ -137,6 +137,8 @@ class DetalleLabor(SQLModel, table=True):
 
 class EjecucionLabor(SQLModel, table=True):
     __tablename__ = "ejecucion_labores"
+    __table_args__ = {"extend_existing": True}
+
     id_ejecucion: Optional[int] = Field(default=None, primary_key=True)
     id_posicion: Optional[int] = Field(default=None, foreign_key="posiciones_testblock.id_posicion")
     id_planta: Optional[int] = Field(default=None, foreign_key="plantas.id_planta")
@@ -148,5 +150,7 @@ class EjecucionLabor(SQLModel, table=True):
     ejecutor: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
     duracion_min: Optional[int] = Field(default=None)
     observaciones: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(None)))
+    id_orden_trabajo: Optional[int] = Field(default=None, foreign_key="ordenes_trabajo.id")
+    id_lote: Optional[int] = Field(default=None, foreign_key="inventario_vivero.id_inventario")
     usuario_registro: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(50)))
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)

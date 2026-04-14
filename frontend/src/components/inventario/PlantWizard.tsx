@@ -540,9 +540,9 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
                     <SelectValue placeholder="Seleccionar tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TERMINADA_RAIZ_DESNUDA">Terminada raiz desnuda</SelectItem>
+                    <SelectItem value="TERMINADA_RAIZ_DESNUDA">Terminada raíz desnuda</SelectItem>
                     <SelectItem value="TERMINADA_MACETA_BOLSA">Terminada maceta/bolsa</SelectItem>
-                    <SelectItem value="INJERTACION_TERRENO">Injertacion en terreno</SelectItem>
+                    <SelectItem value="INJERTACION_TERRENO">Injertación en terreno</SelectItem>
                     <SelectItem value="PLANTA_TERMINADA">Planta terminada</SelectItem>
                     <SelectItem value="RAMILLAS">Ramillas</SelectItem>
                   </SelectContent>

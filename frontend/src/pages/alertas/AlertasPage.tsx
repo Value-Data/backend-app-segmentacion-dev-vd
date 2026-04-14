@@ -33,7 +33,7 @@ const alertaColumns = [
   { accessorKey: "tipo_alerta", header: "Tipo" },
   {
     accessorKey: "id_posicion",
-    header: "Posicion",
+    header: "Posición",
     cell: ({ getValue }: any) => {
       const v = getValue();
       return v != null ? `Pos #${v}` : "-";
@@ -51,7 +51,7 @@ const alertaColumns = [
 
 const reglaColumns = [
   { accessorKey: "id_regla", header: "ID" },
-  { accessorKey: "codigo", header: "Codigo" },
+  { accessorKey: "codigo", header: "Código" },
   { accessorKey: "nombre", header: "Nombre" },
   { accessorKey: "tipo", header: "Tipo" },
   { accessorKey: "prioridad_resultado", header: "Prioridad" },
@@ -67,9 +67,9 @@ const resolverFields: FieldDef[] = [
 ];
 
 const reglaFields: FieldDef[] = [
-  { key: "codigo", label: "Codigo", type: "text", required: true },
+  { key: "codigo", label: "Código", type: "text", required: true },
   { key: "nombre", label: "Nombre", type: "text", required: true },
-  { key: "descripcion", label: "Descripcion", type: "textarea" },
+  { key: "descripcion", label: "Descripción", type: "textarea" },
   { key: "tipo", label: "Tipo", type: "text" },
   { key: "condicion", label: "Condicion (SQL/expresion)", type: "textarea" },
   {

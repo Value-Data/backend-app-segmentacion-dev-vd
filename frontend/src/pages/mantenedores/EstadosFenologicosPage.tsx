@@ -146,10 +146,10 @@ export function EstadosFenologicosPage() {
       required: true,
       options: especieOpts,
     },
-    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "codigo", label: "Código", type: "text", required: true },
     { key: "nombre", label: "Nombre", type: "text", required: true },
     { key: "orden", label: "Orden", type: "number", required: true },
-    { key: "descripcion", label: "Descripcion", type: "textarea" },
+    { key: "descripcion", label: "Descripción", type: "textarea" },
     {
       key: "color_hex",
       label: "Color (hex)",

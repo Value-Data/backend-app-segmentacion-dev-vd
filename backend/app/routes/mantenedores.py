@@ -387,9 +387,21 @@ def get_variedad_susceptibilidades(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
-    return db.query(VariedadSusceptibilidad).filter(
+    """Get susceptibilidades assigned to a variedad, enriched with name/grupo."""
+    rows = db.query(VariedadSusceptibilidad).filter(
         VariedadSusceptibilidad.id_variedad == id
     ).all()
+    suscept_ids = [r.id_suscept for r in rows]
+    suscept_map = {}
+    if suscept_ids:
+        for s in db.query(Susceptibilidad).filter(Susceptibilidad.id_suscept.in_(suscept_ids)).all():
+            suscept_map[s.id_suscept] = {"nombre": s.nombre, "nombre_en": s.nombre_en, "grupo": s.grupo, "codigo": s.codigo}
+    result = []
+    for r in rows:
+        d = {c: getattr(r, c) for c in r.__class__.model_fields}
+        d.update(suscept_map.get(r.id_suscept, {}))
+        result.append(d)
+    return result
 
 
 @router.post("/variedades/{id}/susceptibilidades", status_code=201)
@@ -400,11 +412,117 @@ def add_variedad_susceptibilidad(
     user: Usuario = Depends(require_role("admin")),
 ):
     data.id_variedad = id
+    # Prevent duplicates
+    existing = db.query(VariedadSusceptibilidad).filter(
+        VariedadSusceptibilidad.id_variedad == id,
+        VariedadSusceptibilidad.id_suscept == data.id_suscept,
+    ).first()
+    if existing:
+        return existing
     vs = VariedadSusceptibilidad(**data.model_dump())
     db.add(vs)
     db.commit()
     db.refresh(vs)
     return vs
+
+
+@router.delete("/variedades/{id}/susceptibilidades/{id_vs}")
+def delete_variedad_susceptibilidad(
+    id: int,
+    id_vs: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    vs = db.get(VariedadSusceptibilidad, id_vs)
+    if not vs or vs.id_variedad != id:
+        raise HTTPException(status_code=404, detail="No encontrado")
+    db.delete(vs)
+    db.commit()
+    return {"detail": "Eliminado"}
+
+
+# ── SPECIAL: vivero-pmg (N:M) ────────────────────────────────────────────
+from app.models.maestras import ViveroPmg, Vivero, Pmg
+
+
+@router.get("/pmg/{id_pmg}/viveros")
+def get_pmg_viveros(
+    id_pmg: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Get viveros that supply a PMG, enriched with vivero name."""
+    rows = db.query(ViveroPmg).filter(ViveroPmg.id_pmg == id_pmg, ViveroPmg.activo == True).all()
+    viv_ids = [r.id_vivero for r in rows]
+    viv_map = {}
+    if viv_ids:
+        for v in db.query(Vivero).filter(Vivero.id_vivero.in_(viv_ids)).all():
+            viv_map[v.id_vivero] = v.nombre
+    return [
+        {"id_vp": r.id_vp, "id_vivero": r.id_vivero, "id_pmg": r.id_pmg,
+         "vivero_nombre": viv_map.get(r.id_vivero, f"Vivero #{r.id_vivero}")}
+        for r in rows
+    ]
+
+
+@router.post("/pmg/{id_pmg}/viveros", status_code=201)
+def add_pmg_vivero(
+    id_pmg: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    id_vivero = data.get("id_vivero")
+    if not id_vivero:
+        raise HTTPException(status_code=400, detail="Se requiere id_vivero")
+    existing = db.query(ViveroPmg).filter(
+        ViveroPmg.id_pmg == id_pmg, ViveroPmg.id_vivero == id_vivero, ViveroPmg.activo == True
+    ).first()
+    if existing:
+        return {"id_vp": existing.id_vp, "id_vivero": existing.id_vivero, "id_pmg": existing.id_pmg,
+                "vivero_nombre": db.get(Vivero, id_vivero).nombre if db.get(Vivero, id_vivero) else "-"}
+    vp = ViveroPmg(id_pmg=id_pmg, id_vivero=id_vivero)
+    db.add(vp)
+    db.commit()
+    db.refresh(vp)
+    v = db.get(Vivero, id_vivero)
+    return {"id_vp": vp.id_vp, "id_vivero": vp.id_vivero, "id_pmg": vp.id_pmg,
+            "vivero_nombre": v.nombre if v else "-"}
+
+
+@router.delete("/pmg/{id_pmg}/viveros/{id_vp}")
+def delete_pmg_vivero(
+    id_pmg: int,
+    id_vp: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    vp = db.get(ViveroPmg, id_vp)
+    if not vp or vp.id_pmg != id_pmg:
+        raise HTTPException(status_code=404, detail="No encontrado")
+    vp.activo = False
+    db.commit()
+    return {"detail": "Eliminado"}
+
+
+@router.get("/viveros/{id_vivero}/pmgs")
+def get_vivero_pmgs(
+    id_vivero: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Get PMGs supplied by a vivero."""
+    rows = db.query(ViveroPmg).filter(ViveroPmg.id_vivero == id_vivero, ViveroPmg.activo == True).all()
+    pmg_ids = [r.id_pmg for r in rows]
+    pmg_map = {}
+    if pmg_ids:
+        for p in db.query(Pmg).filter(Pmg.id_pmg.in_(pmg_ids)).all():
+            pmg_map[p.id_pmg] = p.nombre
+    return [
+        {"id_vp": r.id_vp, "id_vivero": r.id_vivero, "id_pmg": r.id_pmg,
+         "pmg_nombre": pmg_map.get(r.id_pmg, f"PMG #{r.id_pmg}")}
+        for r in rows
+    ]
 
 
 # ── SPECIAL: variedades bitacora ─────────────────────────────────────────

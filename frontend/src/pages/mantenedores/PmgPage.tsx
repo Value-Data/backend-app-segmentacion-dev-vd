@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { RelationshipChips, type ChipOption } from "@/components/shared/RelationshipChips";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCrud } from "@/hooks/useCrud";
-import { usePmgEspecies } from "@/hooks/useRelaciones";
+import { usePmgEspecies, usePmgViveros } from "@/hooks/useRelaciones";
 import { useLookups } from "@/hooks/useLookups";
 import { get } from "@/services/api";
 import {
@@ -28,10 +28,10 @@ import { MergeDialog } from "@/components/shared/MergeDialog";
 type ViewMode = "cards" | "table";
 
 const columns = [
-  col("codigo", "Codigo"),
+  col("codigo", "Código"),
   col("nombre", "Nombre"),
   col("licenciante", "Licenciante"),
-  col("pais_origen", "Pais"),
+  col("pais_origen", "País"),
   col("contacto", "Contacto"),
 ];
 
@@ -62,6 +62,49 @@ function PmgEspeciesChips({ pmgId }: { pmgId: number }) {
   );
 }
 
+function PmgViverosChips({ pmgId }: { pmgId: number }) {
+  const { data, add, remove, isSaving } = usePmgViveros(pmgId);
+  const { options } = useLookups();
+  const [adding, setAdding] = useState(false);
+
+  const assignedIds = new Set(data.map((d) => d.id_vivero));
+  const available = options.viveros.filter((v) => !assignedIds.has(v.value as number));
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className="text-[10px] text-muted-foreground font-medium">Viveros:</span>
+        {data.length === 0 && !adding && (
+          <span className="text-[10px] text-muted-foreground italic">Sin viveros</span>
+        )}
+        {data.map((vp) => (
+          <span key={vp.id_vp} className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 text-[10px] font-medium">
+            {vp.vivero_nombre}
+            <button onClick={() => remove(vp.id_vp)} className="ml-0.5 hover:text-red-600" disabled={isSaving}>×</button>
+          </span>
+        ))}
+        {!adding && (
+          <button onClick={() => setAdding(true)} className="text-[10px] text-blue-600 hover:underline">+ Agregar</button>
+        )}
+      </div>
+      {adding && (
+        <select
+          className="text-xs border rounded px-2 py-1 w-full"
+          defaultValue=""
+          onChange={(e) => { if (e.target.value) { add(Number(e.target.value)); setAdding(false); } }}
+          autoFocus
+          onBlur={() => setAdding(false)}
+        >
+          <option value="">Seleccionar vivero...</option>
+          {available.map((v) => (
+            <option key={v.value} value={v.value}>{v.label}</option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
 export function PmgPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -83,15 +126,15 @@ export function PmgPage() {
   const paisOpts = stringOptions.paises;
 
   const fields: FieldDef[] = useMemo(() => [
-    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "codigo", label: "Código", type: "text", required: true },
     { key: "nombre", label: "Nombre", type: "text", required: true },
     { key: "licenciante", label: "Licenciante", type: "text" },
     { key: "pais_origen", label: "Pais Origen", type: "select", options: withCurrentValue(paisOpts, editRow?.pais_origen) },
     { key: "pais", label: "Pais Sede", type: "select", options: withCurrentValue(paisOpts, editRow?.pais) },
     { key: "ciudad", label: "Ciudad", type: "text" },
     { key: "email", label: "Email", type: "text" },
-    { key: "telefono", label: "Telefono", type: "text" },
-    { key: "direccion", label: "Direccion", type: "text" },
+    { key: "telefono", label: "Teléfono", type: "text" },
+    { key: "direccion", label: "Dirección", type: "text" },
     { key: "contacto", label: "Contacto", type: "text" },
     { key: "viveros_chile", label: "Viveros Chile", type: "text" },
     { key: "notas", label: "Notas", type: "textarea" },
@@ -210,6 +253,8 @@ export function PmgPage() {
 
                       {/* Especies chips */}
                       <PmgEspeciesChips pmgId={row.id_pmg as number} />
+                      {/* Viveros chips */}
+                      <PmgViverosChips pmgId={row.id_pmg as number} />
 
                       {/* Detail fields */}
                       <div className="space-y-1">

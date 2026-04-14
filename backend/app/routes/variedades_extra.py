@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
@@ -20,8 +20,6 @@ from app.models.variedades_extra import (
 )
 
 router = APIRouter(tags=["Variedades Extra"])
-
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "variedades")
 
 
 # ── Polinizantes ──────────────────────────────────────────────────────────
@@ -90,18 +88,45 @@ def delete_polinizante(
 
 # ── Fotos ─────────────────────────────────────────────────────────────────
 
+@router.get("/fotos-principales")
+def fotos_principales(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Return a map {id_variedad: foto_id} for all principal photos."""
+    rows = (
+        db.query(VariedadFoto.id_variedad, VariedadFoto.id)
+        .filter(VariedadFoto.es_principal == True)
+        .all()
+    )
+    return {r[0]: r[1] for r in rows}
+
+
 @router.get("/variedades/{id_variedad}/fotos")
 def list_fotos(
     id_variedad: int,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
-    return (
+    rows = (
         db.query(VariedadFoto)
         .filter(VariedadFoto.id_variedad == id_variedad)
         .order_by(desc(VariedadFoto.fecha_creacion))
         .all()
     )
+    # No enviar bytes binarios en el JSON — solo metadatos
+    return [
+        {
+            "id": f.id,
+            "id_variedad": f.id_variedad,
+            "filename": f.filename,
+            "descripcion": f.descripcion,
+            "es_principal": f.es_principal,
+            "content_type": f.content_type,
+            "fecha_creacion": f.fecha_creacion,
+        }
+        for f in rows
+    ]
 
 
 @router.post("/variedades/{id_variedad}/fotos")
@@ -116,25 +141,29 @@ def upload_foto(
     if not var:
         raise HTTPException(status_code=404, detail="Variedad no encontrada")
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    ext = os.path.splitext(file.filename or "img.jpg")[1]
-    safe_name = f"{id_variedad}_{uuid.uuid4().hex[:8]}{ext}"
-    filepath = os.path.join(UPLOAD_DIR, safe_name)
-
-    with open(filepath, "wb") as f:
-        content = file.file.read()
-        f.write(content)
+    content = file.file.read()
+    content_type = file.content_type or "image/jpeg"
 
     foto = VariedadFoto(
         id_variedad=id_variedad,
-        filename=file.filename or safe_name,
-        filepath=filepath,
+        filename=file.filename or f"{id_variedad}_{uuid.uuid4().hex[:8]}.jpg",
+        filepath="db",  # stored in database, not on disk
+        content_type=content_type,
+        data=content,
         descripcion=descripcion,
     )
     db.add(foto)
     db.commit()
     db.refresh(foto)
-    return foto
+    return {
+        "id": foto.id,
+        "id_variedad": foto.id_variedad,
+        "filename": foto.filename,
+        "descripcion": foto.descripcion,
+        "es_principal": foto.es_principal,
+        "content_type": foto.content_type,
+        "fecha_creacion": foto.fecha_creacion,
+    }
 
 
 @router.delete("/variedades/{id_variedad}/fotos/{fid}")
@@ -147,20 +176,21 @@ def delete_foto(
     foto = db.get(VariedadFoto, fid)
     if not foto or foto.id_variedad != id_variedad:
         raise HTTPException(status_code=404, detail="Foto no encontrada")
-    if os.path.exists(foto.filepath):
+    # Clean up legacy disk file if it exists
+    if foto.filepath and foto.filepath != "db" and os.path.exists(foto.filepath):
         os.remove(foto.filepath)
     db.delete(foto)
     db.commit()
     return {"detail": "Foto eliminada"}
 
 
-@router.get("/variedades/fotos/{fid}/file")
+@router.get("/files/fotos/{fid}")
 def serve_foto(
     fid: int,
     token: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Serve foto file. Accepts token via query param for use in <img src>."""
+    """Serve foto from DB (or legacy disk). Accepts token via query param for <img src>."""
     if not token:
         raise HTTPException(status_code=401, detail="Token requerido")
     from app.core.security import decode_access_token
@@ -170,9 +200,24 @@ def serve_foto(
     foto = db.get(VariedadFoto, fid)
     if not foto:
         raise HTTPException(status_code=404, detail="Foto no encontrada")
-    if not os.path.exists(foto.filepath):
-        raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
-    return FileResponse(foto.filepath, media_type="image/jpeg", filename=foto.filename)
+
+    # Serve from DB binary
+    if foto.data:
+        return Response(
+            content=foto.data,
+            media_type=foto.content_type or "image/jpeg",
+            headers={
+                "Content-Disposition": f'inline; filename="{foto.filename}"',
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
+
+    # Fallback: legacy disk file
+    if foto.filepath and foto.filepath != "db" and os.path.exists(foto.filepath):
+        from fastapi.responses import FileResponse
+        return FileResponse(foto.filepath, media_type="image/jpeg", filename=foto.filename)
+
+    raise HTTPException(status_code=404, detail="Imagen no disponible")
 
 
 @router.put("/variedades/{id_variedad}/fotos/{fid}/principal")
@@ -195,7 +240,15 @@ def set_foto_principal(
         f.es_principal = (f.id == fid)
     db.commit()
     db.refresh(foto)
-    return foto
+    return {
+        "id": foto.id,
+        "id_variedad": foto.id_variedad,
+        "filename": foto.filename,
+        "descripcion": foto.descripcion,
+        "es_principal": foto.es_principal,
+        "content_type": foto.content_type,
+        "fecha_creacion": foto.fecha_creacion,
+    }
 
 
 # ── Bitacora Portainjertos ────────────────────────────────────────────────

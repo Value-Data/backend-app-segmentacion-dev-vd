@@ -58,9 +58,15 @@ export const testblockService = {
 
   historial: (posicionId: number) =>
     get<HistorialPosicion[]>(`/posiciones/${posicionId}/historial`),
+  historialTestblock: (tbId: number) =>
+    get<(HistorialPosicion & { codigo_posicion?: string })[]>(`/testblocks/${tbId}/historial`),
 
   updateObservaciones: (posicionId: number, observaciones: string | null) =>
     patch<{ ok: boolean; observaciones: string | null }>(`/posiciones/${posicionId}/observaciones`, { observaciones }),
+  updatePosicion: (posicionId: number, data: Record<string, unknown>) =>
+    put<PosicionTestBlock>(`/posiciones/${posicionId}`, data),
+  deletePosicion: (posicionId: number) =>
+    del<{ detail: string }>(`/posiciones/${posicionId}`),
 
   getMapa: (id: number) =>
     get<MapaTestBlockData>(`/testblocks/${id}/mapa`),
@@ -76,6 +82,9 @@ export const testblockService = {
     post<{ lotes_creados: number; plantas_vinculadas: number; detalles: unknown[]; message: string }>(
       `/testblocks/demo/seed-lotes`,
     ),
+  cambiarEtapa: (id: number, data: { etapa: string; posicion_ids?: number[]; id_lote?: number }) =>
+    put<{ updated: number; etapa: string; message: string }>(`/testblocks/${id}/etapa`, data),
+
   lotesTestblock: (id: number) =>
     get<{
       id_inventario: number; codigo_lote: string; id_variedad: number | null;

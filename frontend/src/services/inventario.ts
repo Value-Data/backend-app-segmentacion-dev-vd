@@ -1,4 +1,4 @@
-import { get, post, put } from "./api";
+import { get, post, put, del } from "./api";
 import type { InventarioVivero, MovimientoInventario, InventarioStats, GuiaDespacho } from "@/types/inventario";
 
 export interface BodegaStock {
@@ -39,10 +39,20 @@ export const inventarioService = {
     get<GuiaDespacho>(`/guias-despacho/${id}`),
   destinos: (id: number) =>
     get<any[]>(`/inventario/${id}/destinos`),
+  sinTestblock: () =>
+    get<InventarioVivero[]>("/inventario/sin-testblock"),
+  mediciones: (id: number) =>
+    get<any[]>(`/inventario/${id}/mediciones`),
+  remove: (id: number) =>
+    del<{ detail: string }>(`/inventario/${id}`),
   qrUrl: (id: number) => {
     const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
     return `${base}/inventario/${id}/qr`;
   },
   qrBatch: (ids: number[]) =>
     post<Blob>("/inventario/qr-batch", ids),
+  plantasSinLote: () =>
+    get<any[]>("/inventario/plantas-sin-lote"),
+  asignarLote: (id_lote: number, planta_ids: number[]) =>
+    post<{ updated: number; message: string }>("/inventario/asignar-lote", { id_lote, planta_ids }),
 };

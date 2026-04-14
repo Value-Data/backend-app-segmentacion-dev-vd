@@ -101,7 +101,7 @@ export function HomePage() {
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-garces-cherry">Garces Fruit</h2>
-        <p className="text-sm text-muted-foreground">Sistema de Segmentacion de Nuevas Especies — Flujo de Proceso</p>
+        <p className="text-sm text-muted-foreground">Sistema de Segmentaci\u00f3n de Nuevas Especies — Flujo de Proceso</p>
       </div>
 
       {/* Process Pipeline */}
@@ -109,7 +109,8 @@ export function HomePage() {
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
           Flujo de Proceso
         </h3>
-        <div className="flex items-start overflow-x-auto pb-2 gap-0">
+        <div className="relative">
+        <div className="flex items-start overflow-x-auto pb-2 gap-0 scroll-smooth" style={{ scrollbarWidth: "thin" }}>
           <PipelineStep
             icon={Warehouse}
             title="Bodega / Vivero"
@@ -166,7 +167,7 @@ export function HomePage() {
           />
           <PipelineStep
             icon={BarChart3}
-            title="Analisis"
+            title="An\u00e1lisis"
             value={Object.keys(dashboard?.cluster_distribution || {}).length}
             subtitle="clusters identificados"
             color="text-garces-cherry"
@@ -174,6 +175,9 @@ export function HomePage() {
             to="/analisis"
             isLast
           />
+        </div>
+        {/* Scroll fade indicator */}
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent" />
         </div>
       </div>
 
@@ -256,7 +260,7 @@ export function HomePage() {
                     />
                   </div>
                   <span className="text-sm font-medium w-16 text-right text-foreground">
-                    {value != null ? `${formatNumber(value as number, 1)}${unit}` : "-"}
+                    {value != null ? `${formatNumber(value as number, 1)}${unit}` : "Sin datos"}
                   </span>
                 </div>
               </div>

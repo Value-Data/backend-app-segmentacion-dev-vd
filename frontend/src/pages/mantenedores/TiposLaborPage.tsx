@@ -41,16 +41,16 @@ interface DetalleLabor {
 /* ─── Fields for tipos_labor form ─────────────────────────────────── */
 
 const laborFields: FieldDef[] = [
-  { key: "codigo", label: "Codigo", type: "text", required: true },
+  { key: "codigo", label: "Código", type: "text", required: true },
   { key: "nombre", label: "Nombre", type: "text", required: true },
   { key: "categoria", label: "Categoria", type: "select", options: [
     { value: "manejo", label: "Manejo" },
     { value: "fitosanidad", label: "Fitosanidad" },
     { value: "riego", label: "Riego" },
     { value: "cosecha", label: "Cosecha" },
-    { value: "fenologia", label: "Fenologia" },
+    { value: "fenologia", label: "Fenología" },
     { value: "poda", label: "Poda" },
-    { value: "fertilizacion", label: "Fertilizacion" },
+    { value: "fertilizacion", label: "Fertilización" },
   ]},
   { key: "aplica_a", label: "Aplica a", type: "select", options: [
     { value: "planta", label: "Planta" },
@@ -59,11 +59,11 @@ const laborFields: FieldDef[] = [
   ]},
   { key: "aplica_especies", label: "Aplica Especies", type: "text" },
   { key: "frecuencia", label: "Frecuencia", type: "text" },
-  { key: "descripcion", label: "Descripcion", type: "textarea" },
+  { key: "descripcion", label: "Descripción", type: "textarea" },
 ];
 
 const detalleFields: FieldDef[] = [
-  { key: "descripcion", label: "Descripcion / Instruccion", type: "textarea", required: true },
+  { key: "descripcion", label: "Descripción / Instrucción", type: "textarea", required: true },
   { key: "aplica_especie", label: "Aplica a especie", type: "text" },
   { key: "orden", label: "Orden", type: "number" },
   { key: "es_checklist", label: "Es checklist", type: "boolean" },

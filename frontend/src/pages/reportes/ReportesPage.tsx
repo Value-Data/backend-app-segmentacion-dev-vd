@@ -219,9 +219,9 @@ function FilterBar({
 /* ─── AI Analysis Card ─────────────────────────────────────────────────── */
 
 const DETAIL_LEVELS = [
-  { value: "ejecutivo", label: "Resumen Ejecutivo", desc: "3-5 lineas con conclusion y recomendacion clave" },
-  { value: "estandar", label: "Informe Estandar", desc: "Evaluacion completa con datos y recomendaciones" },
-  { value: "detallado", label: "Informe Detallado", desc: "Analisis profundo con comparaciones y tendencias" },
+  { value: "ejecutivo", label: "Resumen Ejecutivo", desc: "3-5 líneas con conclusión y recomendación clave" },
+  { value: "estandar", label: "Informe Estándar", desc: "Evaluación completa con datos y recomendaciones" },
+  { value: "detallado", label: "Informe Detallado", desc: "Análisis profundo con comparaciones y tendencias" },
 ] as const;
 
 const DETAIL_PROMPTS: Record<string, string> = {
@@ -327,7 +327,7 @@ function AIAnalysisCard({
         <div className="mt-4 rounded-lg border border-garces-cherry/20 bg-gradient-to-br from-garces-cherry-pale/30 to-white p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-3 text-garces-cherry">
             <Sparkles className="h-5 w-5" />
-            <span className="font-semibold text-sm">Analisis Agronomico IA</span>
+            <span className="font-semibold text-sm">Análisis Agronómico IA</span>
           </div>
           <div className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
             {mutation.data.analisis}
@@ -373,7 +373,7 @@ function TabVariedad({ filters }: { filters: ReportFilters }) {
 
   // Columns for the summary list table
   const variedadListColumns = [
-    { accessorKey: "codigo", header: "Codigo" },
+    { accessorKey: "codigo", header: "Código" },
     { accessorKey: "nombre", header: "Nombre" },
     {
       accessorKey: "id_especie",
@@ -434,7 +434,7 @@ function TabVariedad({ filters }: { filters: ReportFilters }) {
   ];
 
   const plantacionesColumns = [
-    { accessorKey: "codigo_unico", header: "Posicion" },
+    { accessorKey: "codigo_unico", header: "Posición" },
     { accessorKey: "testblock_nombre", header: "TestBlock" },
     { accessorKey: "hilera", header: "Hilera" },
     { accessorKey: "posicion", header: "Pos" },
@@ -800,7 +800,7 @@ function TabLote({ filters }: { filters: ReportFilters }) {
   ];
 
   const plantasColumns = [
-    { accessorKey: "codigo", header: "Codigo" },
+    { accessorKey: "codigo", header: "Código" },
     {
       accessorKey: "id_variedad",
       header: "Variedad",
@@ -811,7 +811,7 @@ function TabLote({ filters }: { filters: ReportFilters }) {
       header: "Portainjerto",
       cell: ({ getValue }: any) => lk.portainjerto(getValue()),
     },
-    { accessorKey: "condicion", header: "Condicion" },
+    { accessorKey: "condicion", header: "Condición" },
     {
       accessorKey: "activa",
       header: "Activa",
@@ -1047,7 +1047,7 @@ function TabTestBlock({ filters }: { filters: ReportFilters }) {
 
   // Columns for the summary list table
   const tbListColumns = [
-    { accessorKey: "codigo", header: "Codigo" },
+    { accessorKey: "codigo", header: "Código" },
     { accessorKey: "nombre", header: "Nombre" },
     {
       accessorKey: "id_campo",
@@ -1505,7 +1505,7 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
             <div className="bg-gray-50 border rounded-lg p-4 prose prose-sm max-w-none">
               <div className="flex items-center gap-2 mb-2">
                 <Sparkles className="h-4 w-4 text-purple-500" />
-                <span className="font-semibold text-xs text-purple-600">Analisis IA</span>
+                <span className="font-semibold text-xs text-purple-600">Análisis IA</span>
               </div>
               <div className="whitespace-pre-wrap text-sm">{aiResponse}</div>
             </div>
@@ -1550,9 +1550,9 @@ export function ReportesPage() {
           <FileText className="h-5 w-5 text-garces-cherry" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-garces-cherry">Reportes y Gestion</h2>
+          <h2 className="text-xl font-bold text-garces-cherry">Reportes y Gestión</h2>
           <p className="text-sm text-muted-foreground">
-            Reportes cruzados con analisis AI integrado — combine filtros para acotar resultados
+            Reportes cruzados con análisis AI integrado — combine filtros para acotar resultados
           </p>
         </div>
       </div>

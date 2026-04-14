@@ -88,6 +88,38 @@ def _resolve(entidad: str):
     return entry
 
 
+# ── AUTO-CODE GENERATION ──────────────────────────────────────────────────
+_CODE_PREFIXES = {
+    "campos": "CAM",
+    "viveros": "VIV",
+    "pmg": "PMG",
+    "portainjertos": "PI",
+    "origenes": "ORI",
+    "especies": "ESP",
+    "bodegas": "BOD",
+    "temporadas": "TMP",
+}
+
+
+@router.get("/{entidad}/next-code")
+def next_code(
+    entidad: str,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    prefix = _CODE_PREFIXES.get(entidad)
+    if not prefix:
+        raise HTTPException(status_code=400, detail=f"Auto-codigo no soportado para '{entidad}'")
+    model, _, _ = _resolve(entidad)
+    from sqlalchemy import text
+    result = db.execute(text(
+        f"SELECT MAX(CAST(SUBSTRING(codigo, {len(prefix) + 2}, LEN(codigo) - {len(prefix)}) AS INT)) "
+        f"FROM [{model.__tablename__}] WHERE codigo LIKE '{prefix}-%'"
+    )).scalar()
+    seq = (result or 0) + 1
+    return {"codigo": f"{prefix}-{seq:04d}"}
+
+
 # ── VARIEDADES BY PMG ──────────────────────────────────────────────────────
 @router.get("/variedades/by-pmg/{pmg_id}")
 def variedades_by_pmg(
@@ -431,6 +463,21 @@ def update_variedad_bitacora(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.delete("/variedades/{id}/bitacora/{bid}")
+def delete_variedad_bitacora(
+    id: int,
+    bid: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    entry = db.get(BitacoraVariedad, bid)
+    if not entry or entry.id_variedad != id:
+        raise HTTPException(status_code=404, detail="Entrada de bitacora no encontrada")
+    db.delete(entry)
+    db.commit()
+    return {"detail": "Entrada eliminada"}
 
 
 # ── SPECIAL: variedades log (change history) ─────────────────────────────

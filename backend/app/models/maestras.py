@@ -261,15 +261,21 @@ class Color(SQLModel, table=True):
 
 # ── susceptibilidades ──────────────────────────────────────────────────────
 class Susceptibilidad(SQLModel, table=True):
+    """Catálogo de susceptibilidades por especie.
+    Extraídas de PDFs 'Regla de Defectos' V001.
+    Grupos: Daños y Heridas, Pudriciones y Blando, Calidad, Condición.
+    """
     __tablename__ = "susceptibilidades"
     id_suscept: Optional[int] = Field(default=None, primary_key=True)
     codigo: str = Field(sa_column=Column(sa.String(20), unique=True, nullable=False))
     nombre: str = Field(sa_column=Column(sa.NVARCHAR(100), nullable=False))
-    nombre_en: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
-    descripcion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(200)))
+    nombre_en: Optional[str] = Field(default=None, sa_column=Column(sa.String(100)))
+    id_especie: Optional[int] = Field(default=None, foreign_key="especies.id_especie")
+    grupo: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(50)))
+    descripcion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(500)))
     categoria: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(50)))
     severidad: Optional[str] = Field(default=None, sa_column=Column(sa.String(20)))
-    orden: Optional[int] = Field(default=0)
+    orden: Optional[int] = Field(default=None)
     activo: Optional[bool] = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
     usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))

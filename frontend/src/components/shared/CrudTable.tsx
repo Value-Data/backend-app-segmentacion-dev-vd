@@ -30,6 +30,7 @@ interface CrudTableProps {
   onEdit?: (row: any) => void;
   onDelete?: (row: any) => void;
   onCreate?: () => void;
+  onRowClick?: (row: any) => void;
   createLabel?: string;
   searchPlaceholder?: string;
   pageSize?: number;
@@ -69,6 +70,7 @@ export function CrudTable({
   onEdit,
   onDelete,
   onCreate,
+  onRowClick,
   createLabel = "Nuevo",
   searchPlaceholder = "Buscar...",
   pageSize = 15,
@@ -211,7 +213,11 @@ export function CrudTable({
               </tr>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b hover:bg-muted/30 transition-colors">
+                <tr
+                  key={row.id}
+                  className={cn("border-b hover:bg-muted/30 transition-colors", onRowClick && "cursor-pointer")}
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-3 py-2">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

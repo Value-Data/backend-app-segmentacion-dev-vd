@@ -49,6 +49,7 @@ from app.routes.seed_geo import router as seed_geo_router
 from app.routes.relaciones import router as relaciones_router
 from app.routes.variedades_extra import router as variedades_extra_router
 from app.routes.testblock_grupo import router as testblock_grupo_router
+from app.routes.ordenes_trabajo import router as ordenes_trabajo_router
 
 settings = get_settings()
 
@@ -71,6 +72,13 @@ async def lifespan(app: FastAPI):
         with engine.connect() as conn:
             for stmt in [
                 "IF COL_LENGTH('variedades_fotos', 'es_principal') IS NULL ALTER TABLE variedades_fotos ADD es_principal BIT DEFAULT 0",
+                "IF COL_LENGTH('variedades_fotos', 'content_type') IS NULL ALTER TABLE variedades_fotos ADD content_type NVARCHAR(100) DEFAULT 'image/jpeg'",
+                "IF COL_LENGTH('variedades_fotos', 'data') IS NULL ALTER TABLE variedades_fotos ADD data VARBINARY(MAX) NULL",
+                "IF COL_LENGTH('plantas', 'etapa') IS NULL ALTER TABLE plantas ADD etapa VARCHAR(20) DEFAULT 'formacion'",
+                "IF COL_LENGTH('ejecucion_labores', 'id_orden_trabajo') IS NULL ALTER TABLE ejecucion_labores ADD id_orden_trabajo INT NULL",
+                "IF COL_LENGTH('ejecucion_labores', 'id_lote') IS NULL ALTER TABLE ejecucion_labores ADD id_lote INT NULL",
+                "IF COL_LENGTH('susceptibilidades', 'id_especie') IS NULL ALTER TABLE susceptibilidades ADD id_especie INT NULL",
+                "IF COL_LENGTH('susceptibilidades', 'grupo') IS NULL ALTER TABLE susceptibilidades ADD grupo NVARCHAR(50) NULL",
             ]:
                 try:
                     conn.execute(text(stmt))
@@ -145,6 +153,7 @@ app.include_router(seed_geo_router, prefix=API_PREFIX)
 app.include_router(relaciones_router, prefix=API_PREFIX)
 app.include_router(variedades_extra_router, prefix=API_PREFIX)
 app.include_router(testblock_grupo_router, prefix=API_PREFIX)
+app.include_router(ordenes_trabajo_router, prefix=API_PREFIX)
 
 
 # ---------------------------------------------------------------------------

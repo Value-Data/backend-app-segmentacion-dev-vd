@@ -56,6 +56,7 @@ export interface PosicionTestBlock {
   planta_portainjerto?: number | null;
   planta_especie?: number | null;
   planta_condicion?: string | null;
+  etapa?: string | null; // formacion | produccion (from active plant)
   ano_plantacion?: number | null;
   tipo_injertacion?: string | null;
 }

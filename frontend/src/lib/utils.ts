@@ -30,3 +30,21 @@ export function withCurrentValue(
   if (options.some((o) => o.value === str)) return options;
   return [{ value: str, label: str }, ...options];
 }
+
+/**
+ * Converts snake_case, SCREAMING_SNAKE, camelCase to human-readable text.
+ * "en_transito" → "En transito", "MUY_TEMPRANA" → "Muy temprana"
+ */
+export function humanize(s: string | null | undefined): string {
+  if (!s) return "-";
+  if (s.includes(" ") && s[0] === s[0].toUpperCase() && s[1] === s[1]?.toLowerCase()) return s;
+  const words = s
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(" ")
+    .filter(Boolean);
+  if (words.length === 0) return s;
+  words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1);
+  return words.join(" ");
+}

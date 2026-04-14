@@ -2,6 +2,7 @@
 
 import io
 import json
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.models.sistema import Usuario
-from app.models.testblock import TestBlock, PosicionTestBlock, HistorialPosicion
+from app.models.testblock import TestBlock, PosicionTestBlock, Planta, HistorialPosicion
 from app.models.inventario import InventarioVivero, InventarioTestBlock
 from app.schemas.testblock import (
     TestBlockCreate, TestBlockUpdate,
@@ -294,12 +295,29 @@ def list_posiciones(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
-    return (
+    posiciones = (
         db.query(PosicionTestBlock)
         .filter(PosicionTestBlock.id_testblock == id)
         .order_by(PosicionTestBlock.hilera, PosicionTestBlock.posicion)
         .all()
     )
+    # Enrich with etapa from active plant
+    pos_ids = [p.id_posicion for p in posiciones if p.estado in ("alta", "replante")]
+    etapa_map: dict[int, str] = {}
+    if pos_ids:
+        plantas = (
+            db.query(Planta.id_posicion, Planta.etapa)
+            .filter(Planta.id_posicion.in_(pos_ids), Planta.activa == True)
+            .all()
+        )
+        etapa_map = {p.id_posicion: (p.etapa or "formacion") for p in plantas}
+
+    result = []
+    for pos in posiciones:
+        d = {c.name: getattr(pos, c.name) for c in pos.__table__.columns}
+        d["etapa"] = etapa_map.get(pos.id_posicion)
+        result.append(d)
+    return result
 
 
 @router.get("/{id}/grilla")
@@ -490,6 +508,117 @@ def api_replante(
     return replante_planta(db, id, data, usuario=user.username)
 
 
+# ── Historial global del testblock ────────────────────────────────────────
+@router.get("/{id}/historial")
+def api_historial_testblock(
+    id: int,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Return recent history across ALL positions of this testblock."""
+    pos_ids = [
+        p.id_posicion
+        for p in db.query(PosicionTestBlock.id_posicion)
+        .filter(PosicionTestBlock.id_testblock == id)
+        .all()
+    ]
+    if not pos_ids:
+        return []
+    rows = (
+        db.query(HistorialPosicion)
+        .filter(HistorialPosicion.id_posicion.in_(pos_ids))
+        .order_by(HistorialPosicion.fecha.desc())
+        .limit(limit)
+        .all()
+    )
+    # Enrich with codigo_unico for each position
+    pos_map = {
+        p.id_posicion: p.codigo_unico
+        for p in db.query(PosicionTestBlock)
+        .filter(PosicionTestBlock.id_posicion.in_([r.id_posicion for r in rows]))
+        .all()
+    }
+    result = []
+    for r in rows:
+        d = {c.name: getattr(r, c.name) for c in r.__table__.columns}
+        d["codigo_posicion"] = pos_map.get(r.id_posicion, f"POS-{r.id_posicion}")
+        result.append(d)
+    return result
+
+
+# ── Etapa (formacion / produccion) por planta ─────────────────────────────
+@router.put("/{id}/etapa")
+def api_cambiar_etapa(
+    id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Cambiar etapa de plantas por posicion_ids o por id_lote.
+
+    Body: { etapa: "formacion"|"produccion", posicion_ids: [int] }
+       o: { etapa: "formacion"|"produccion", id_lote: int }
+    """
+    etapa = data.get("etapa")
+    if etapa not in ("formacion", "produccion"):
+        raise HTTPException(status_code=400, detail="etapa debe ser 'formacion' o 'produccion'")
+
+    tb = db.query(TestBlock).filter(TestBlock.id_testblock == id).first()
+    if not tb:
+        raise HTTPException(status_code=404, detail="TestBlock no encontrado")
+
+    pos_ids = data.get("posicion_ids", [])
+    id_lote = data.get("id_lote")
+
+    if id_lote and not pos_ids:
+        # Buscar posiciones del lote en este testblock
+        posiciones = (
+            db.query(PosicionTestBlock)
+            .filter(
+                PosicionTestBlock.id_testblock == id,
+                PosicionTestBlock.id_lote == id_lote,
+                PosicionTestBlock.estado.in_(["alta", "replante"]),
+            )
+            .all()
+        )
+        pos_ids = [p.id_posicion for p in posiciones]
+    elif not pos_ids:
+        raise HTTPException(status_code=400, detail="Debe indicar posicion_ids o id_lote")
+
+    # Actualizar etapa de las plantas asociadas
+    updated = 0
+    for pos_id in pos_ids:
+        pos = db.get(PosicionTestBlock, pos_id)
+        if not pos or pos.id_testblock != id or pos.estado not in ("alta", "replante"):
+            continue
+        planta = (
+            db.query(Planta)
+            .filter(Planta.id_posicion == pos_id, Planta.activa == True)
+            .first()
+        )
+        if planta:
+            old_etapa = planta.etapa or "formacion"
+            planta.etapa = etapa
+            planta.fecha_modificacion = datetime.utcnow()
+            planta.usuario_modificacion = user.username
+            updated += 1
+            # Register in historial
+            hist = HistorialPosicion(
+                id_posicion=pos_id,
+                id_planta=planta.id_planta,
+                accion="etapa",
+                estado_anterior=old_etapa,
+                estado_nuevo=etapa,
+                motivo=f"Cambio etapa {old_etapa} → {etapa}",
+                usuario=user.username,
+            )
+            db.add(hist)
+
+    db.commit()
+    return {"updated": updated, "etapa": etapa, "message": f"{updated} plantas actualizadas a {etapa}"}
+
+
 # ── Configuracion ──────────────────────────────────────────────────────────
 @router.post("/{id}/agregar-hilera")
 def api_agregar_hilera(
@@ -666,6 +795,146 @@ def api_update_observaciones(
     db.commit()
     db.refresh(pos)
     return {"ok": True, "observaciones": pos.observaciones}
+
+
+# ── Editar posicion ────────────────────────────────────────────────────────
+@posiciones_router.put("/{id}")
+def api_update_posicion(
+    id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Update editable fields on a position and its active plant."""
+    pos = db.get(PosicionTestBlock, id)
+    if not pos:
+        raise HTTPException(status_code=404, detail="Posicion no encontrada")
+
+    # Fields editable on the position itself
+    POS_FIELDS = ("conduccion", "marco_plantacion", "observaciones", "protegida")
+    for f in POS_FIELDS:
+        if f in data:
+            setattr(pos, f, data[f])
+    pos.fecha_modificacion = datetime.utcnow()
+
+    # If there's an active plant, also update plant-level fields
+    planta = (
+        db.query(Planta)
+        .filter(Planta.id_posicion == id, Planta.activa == True)
+        .first()
+    )
+    if planta:
+        PLANTA_FIELDS = ("conduccion", "marco_plantacion", "ano_plantacion",
+                         "metodo_injertacion", "tipo_patron", "observaciones")
+        for f in PLANTA_FIELDS:
+            if f in data:
+                setattr(planta, f, data[f])
+        planta.fecha_modificacion = datetime.utcnow()
+        planta.usuario_modificacion = user.username
+
+    db.commit()
+    db.refresh(pos)
+    return {c.name: getattr(pos, c.name) for c in pos.__table__.columns}
+
+
+# ── Eliminar posicion ─────────────────────────────────────────────────────
+@posiciones_router.delete("/{id}")
+def api_delete_posicion(
+    id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Delete a position. Only allowed if estado is vacia or baja (no active plant)."""
+    pos = db.get(PosicionTestBlock, id)
+    if not pos:
+        raise HTTPException(status_code=404, detail="Posicion no encontrada")
+    if pos.estado == "alta":
+        raise HTTPException(status_code=400, detail="No se puede eliminar una posicion con planta activa. Primero dar de baja.")
+    # Delete any historial
+    db.query(HistorialPosicion).filter(HistorialPosicion.id_posicion == id).delete()
+    db.delete(pos)
+    db.commit()
+    return {"detail": "Posicion eliminada"}
+
+
+# ── Evidencia (foto) para posicion ─────────────────────────────────────────
+@posiciones_router.post("/{id}/evidencia", status_code=201)
+def api_add_evidencia_posicion(
+    id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo", "operador")),
+):
+    """Add photo evidence to a position (for any action: alta, baja, fenologia, etc.)."""
+    pos = db.get(PosicionTestBlock, id)
+    if not pos:
+        raise HTTPException(status_code=404, detail="Posicion no encontrada")
+
+    # Store in historial as a special "evidencia" entry
+    hist = HistorialPosicion(
+        id_posicion=id,
+        id_planta=data.get("id_planta"),
+        accion="evidencia",
+        estado_anterior=pos.estado,
+        estado_nuevo=pos.estado,
+        motivo=data.get("descripcion", "Foto de evidencia"),
+        usuario=user.username,
+    )
+    db.add(hist)
+    db.flush()
+
+    # Also store the image if using EvidenciaLabor model
+    # For simplicity, store base64 in the historial motivo or as a separate record
+    imagen = data.get("imagen_base64")
+    if imagen:
+        from app.models.evidencia import EvidenciaLabor
+        # Find linked labor if any
+        id_ejecucion = data.get("id_ejecucion")
+        if not id_ejecucion:
+            # Try to find a pending labor for this position
+            from app.models.laboratorio import EjecucionLabor
+            labor = (
+                db.query(EjecucionLabor)
+                .filter(EjecucionLabor.id_posicion == id, EjecucionLabor.estado == "planificada")
+                .first()
+            )
+            id_ejecucion = labor.id_ejecucion if labor else None
+
+        if id_ejecucion:
+            ev = EvidenciaLabor(
+                id_ejecucion=id_ejecucion,
+                tipo="foto",
+                descripcion=data.get("descripcion", "Foto de campo"),
+                imagen_base64=imagen,
+                usuario=user.username,
+            )
+            db.add(ev)
+
+    db.commit()
+    return {"detail": "Evidencia registrada", "id_historial": hist.id_historial}
+
+
+@posiciones_router.get("/{id}/evidencias")
+def api_get_evidencias_posicion(
+    id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Get evidence photos linked to labores of this position."""
+    from app.models.evidencia import EvidenciaLabor
+    from app.models.laboratorio import EjecucionLabor
+
+    ejecuciones = db.query(EjecucionLabor.id_ejecucion).filter(EjecucionLabor.id_posicion == id).all()
+    ejec_ids = [e[0] for e in ejecuciones]
+    if not ejec_ids:
+        return []
+    return (
+        db.query(EvidenciaLabor)
+        .filter(EvidenciaLabor.id_ejecucion.in_(ejec_ids))
+        .order_by(EvidenciaLabor.fecha_creacion.desc())
+        .limit(20)
+        .all()
+    )
 
 
 # ── QR ─────────────────────────────────────────────────────────────────────

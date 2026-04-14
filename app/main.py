@@ -66,6 +66,20 @@ async def lifespan(app: FastAPI):
         import app.models  # noqa: F401
         _SQLModel.metadata.create_all(engine, checkfirst=True)
         logger.info("Database tables verified")
+        # Add new columns to existing tables (safe: IF NOT EXISTS / try-except)
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            for stmt in [
+                "IF COL_LENGTH('variedades_fotos', 'es_principal') IS NULL ALTER TABLE variedades_fotos ADD es_principal BIT DEFAULT 0",
+                "IF COL_LENGTH('variedades_fotos', 'content_type') IS NULL ALTER TABLE variedades_fotos ADD content_type NVARCHAR(100) DEFAULT 'image/jpeg'",
+                "IF COL_LENGTH('variedades_fotos', 'data') IS NULL ALTER TABLE variedades_fotos ADD data VARBINARY(MAX) NULL",
+                "IF COL_LENGTH('plantas', 'etapa') IS NULL ALTER TABLE plantas ADD etapa VARCHAR(20) DEFAULT 'formacion'",
+            ]:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
     except Exception as e:
         logger.warning(f"create_tables skipped: {e}")
     yield

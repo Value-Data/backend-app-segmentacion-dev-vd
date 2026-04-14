@@ -2,6 +2,7 @@
 
 import io
 import json
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.models.sistema import Usuario
-from app.models.testblock import TestBlock, PosicionTestBlock, HistorialPosicion
+from app.models.testblock import TestBlock, PosicionTestBlock, Planta, HistorialPosicion
 from app.models.inventario import InventarioVivero, InventarioTestBlock
 from app.schemas.testblock import (
     TestBlockCreate, TestBlockUpdate,
@@ -294,12 +295,29 @@ def list_posiciones(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
-    return (
+    posiciones = (
         db.query(PosicionTestBlock)
         .filter(PosicionTestBlock.id_testblock == id)
         .order_by(PosicionTestBlock.hilera, PosicionTestBlock.posicion)
         .all()
     )
+    # Enrich with etapa from active plant
+    pos_ids = [p.id_posicion for p in posiciones if p.estado in ("alta", "replante")]
+    etapa_map: dict[int, str] = {}
+    if pos_ids:
+        plantas = (
+            db.query(Planta.id_posicion, Planta.etapa)
+            .filter(Planta.id_posicion.in_(pos_ids), Planta.activa == True)
+            .all()
+        )
+        etapa_map = {p.id_posicion: (p.etapa or "formacion") for p in plantas}
+
+    result = []
+    for pos in posiciones:
+        d = {c.name: getattr(pos, c.name) for c in pos.__table__.columns}
+        d["etapa"] = etapa_map.get(pos.id_posicion)
+        result.append(d)
+    return result
 
 
 @router.get("/{id}/grilla")
@@ -488,6 +506,66 @@ def api_replante(
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
     return replante_planta(db, id, data, usuario=user.username)
+
+
+# ── Etapa (formacion / produccion) por planta ─────────────────────────────
+@router.put("/{id}/etapa")
+def api_cambiar_etapa(
+    id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Cambiar etapa de plantas por posicion_ids o por id_lote.
+
+    Body: { etapa: "formacion"|"produccion", posicion_ids: [int] }
+       o: { etapa: "formacion"|"produccion", id_lote: int }
+    """
+    etapa = data.get("etapa")
+    if etapa not in ("formacion", "produccion"):
+        raise HTTPException(status_code=400, detail="etapa debe ser 'formacion' o 'produccion'")
+
+    tb = db.query(TestBlock).filter(TestBlock.id_testblock == id).first()
+    if not tb:
+        raise HTTPException(status_code=404, detail="TestBlock no encontrado")
+
+    pos_ids = data.get("posicion_ids", [])
+    id_lote = data.get("id_lote")
+
+    if id_lote and not pos_ids:
+        # Buscar posiciones del lote en este testblock
+        posiciones = (
+            db.query(PosicionTestBlock)
+            .filter(
+                PosicionTestBlock.id_testblock == id,
+                PosicionTestBlock.id_lote == id_lote,
+                PosicionTestBlock.estado.in_(["alta", "replante"]),
+            )
+            .all()
+        )
+        pos_ids = [p.id_posicion for p in posiciones]
+    elif not pos_ids:
+        raise HTTPException(status_code=400, detail="Debe indicar posicion_ids o id_lote")
+
+    # Actualizar etapa de las plantas asociadas
+    updated = 0
+    for pos_id in pos_ids:
+        pos = db.get(PosicionTestBlock, pos_id)
+        if not pos or pos.id_testblock != id or pos.estado not in ("alta", "replante"):
+            continue
+        planta = (
+            db.query(Planta)
+            .filter(Planta.id_posicion == pos_id, Planta.activa == True)
+            .first()
+        )
+        if planta:
+            planta.etapa = etapa
+            planta.fecha_modificacion = datetime.utcnow()
+            planta.usuario_modificacion = user.username
+            updated += 1
+
+    db.commit()
+    return {"updated": updated, "etapa": etapa, "message": f"{updated} plantas actualizadas a {etapa}"}
 
 
 # ── Configuracion ──────────────────────────────────────────────────────────

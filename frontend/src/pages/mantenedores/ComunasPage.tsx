@@ -10,7 +10,7 @@ export function ComunasPage() {
     { key: "nombre", label: "Nombre", type: "text", required: true },
     {
       key: "id_region",
-      label: "Region",
+      label: "Región",
       type: "select",
       required: true,
       options: options.regiones,
@@ -20,7 +20,7 @@ export function ComunasPage() {
 
   const columns = useMemo(() => [
     col("nombre", "Nombre"),
-    col("id_region", "Region", {
+    col("id_region", "Región", {
       cell: ({ getValue }) => {
         const val = getValue() as number;
         return region(val);

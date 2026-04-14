@@ -17,7 +17,7 @@ const CLUSTER_COLORS = ["#4ade80", "#60a5fa", "#f59e0b", "#f87171", "#a78bfa"];
 
 const clusterColumns = [
   { accessorKey: "id_clasificacion", header: "ID" },
-  { accessorKey: "id_medicion", header: "Medicion" },
+  { accessorKey: "id_medicion", header: "Medición" },
   { accessorKey: "cluster", header: "Cluster" },
   { accessorKey: "banda_brix", header: "Banda Brix" },
   { accessorKey: "banda_firmeza", header: "Banda Firmeza" },
@@ -72,7 +72,7 @@ export function AnalisisPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-garces-cherry">Analisis y Paquetes Tecnologicos</h2>
+      <h2 className="text-xl font-bold text-garces-cherry">Análisis y Paquetes Tecnológicos</h2>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

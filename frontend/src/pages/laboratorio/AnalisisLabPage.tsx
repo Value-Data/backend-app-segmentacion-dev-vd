@@ -162,7 +162,7 @@ export function AnalisisLabPage() {
       {/* Header */}
       <h2 className="text-xl font-bold text-garces-cherry flex items-center gap-2">
         <Microscope className="h-5 w-5" />
-        Analisis de Laboratorio
+        Análisis de Laboratorio
       </h2>
 
       {/* Filters */}

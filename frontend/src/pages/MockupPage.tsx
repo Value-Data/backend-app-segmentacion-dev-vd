@@ -128,7 +128,7 @@ const MockSidebar = ({ activeScreen, setActiveScreen }: any) => (
     </div>
     <div style={{ padding: "8px 0", flex: 1 }}>
       <SidebarItem icon="H" label="Inicio" active={activeScreen === "home"} />
-      <SidebarSection label="Catalogos" />
+      <SidebarSection label="Catálogos" />
       <SidebarItem icon="E" label="Especies" indent />
       <SidebarItem icon="V" label="Variedades" indent />
       <SidebarItem icon="P" label="Portainjertos" indent />
@@ -139,10 +139,10 @@ const MockSidebar = ({ activeScreen, setActiveScreen }: any) => (
       <SidebarSection label="Operaciones" />
       <SidebarItem icon="T" label="TestBlocks" active={activeScreen === "testblock"} />
       <SidebarItem icon="L" label="Labores" active={activeScreen === "labores"} badge="15" />
-      <SidebarItem icon="F" label="Fenologia" active={activeScreen === "fenologia"} />
+      <SidebarItem icon="F" label="Fenología" active={activeScreen === "fenologia"} />
       <SidebarSection label="Calidad" />
       <SidebarItem icon="M" label="Mediciones Lab" active={activeScreen === "mediciones"} />
-      <SidebarItem icon="A" label="Analisis" />
+      <SidebarItem icon="A" label="Análisis" />
       <SidebarItem icon="R" label="Reportes" />
       <SidebarSection label="" />
       <SidebarItem icon="!" label="Alertas" badge="4" />
@@ -198,7 +198,7 @@ const LaboresScreen = () => {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Gestion de Labores</h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Gestión de Labores</h2>
           <p style={{ margin: 0, fontSize: 12, color: COLORS.textMuted }}>Labores y registro fenologico integrado</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
