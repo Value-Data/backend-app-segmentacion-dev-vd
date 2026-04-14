@@ -1,4 +1,4 @@
-import { get, post, uploadFile } from "./api";
+import { get, post, put, uploadFile } from "./api";
 import type {
   MedicionLaboratorio,
   PaginatedMediciones,
@@ -74,4 +74,42 @@ export const laboratorioService = {
     const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
     return `${base}/reportes/lote/${idInventario}/pdf`;
   },
+
+  // ── Reglas de Cluster ──────────────────────────────────────────────
+  reglasCluster: () =>
+    get<ReglaCluster[]>("/laboratorio/reglas-cluster"),
+  reglaCluster: (id: number) =>
+    get<ReglaCluster>(`/laboratorio/reglas-cluster/${id}`),
+  updateReglaCluster: (id: number, data: Partial<ReglaCluster>) =>
+    put<ReglaCluster>(`/laboratorio/reglas-cluster/${id}`, data),
+  seedReglasCluster: () =>
+    post<{ created: number }>("/laboratorio/reglas-cluster/seed-from-hardcoded"),
 };
+
+// ── Types for Reglas de Cluster ────────────────────────────────────────
+export interface ReglaCluster {
+  id: number;
+  codigo_regla: string;
+  nombre: string;
+  id_especie: number | null;
+  brix_b1: number | null;
+  brix_b2: number | null;
+  brix_b3: number | null;
+  mejillas_b1: number | null;
+  mejillas_b2: number | null;
+  mejillas_b3: number | null;
+  punto_b1: number | null;
+  punto_b2: number | null;
+  punto_b3: number | null;
+  acidez_b1: number | null;
+  acidez_b2: number | null;
+  acidez_b3: number | null;
+  cluster1_max: number | null;
+  cluster2_max: number | null;
+  cluster3_max: number | null;
+  activo: boolean;
+  notas: string | null;
+  fecha_creacion: string | null;
+  fecha_modificacion: string | null;
+  usuario_modificacion: string | null;
+}

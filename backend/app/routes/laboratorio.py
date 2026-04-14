@@ -59,6 +59,163 @@ class ClasificarRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Reglas de Cluster (configuracion de umbrales)
+# ---------------------------------------------------------------------------
+
+from app.models.regla_cluster import ReglaCluster
+
+
+class ReglaClusterUpdate(BaseModel):
+    """Campos editables de una regla de cluster."""
+    nombre: Optional[str] = None
+    brix_b1: Optional[float] = None
+    brix_b2: Optional[float] = None
+    brix_b3: Optional[float] = None
+    mejillas_b1: Optional[float] = None
+    mejillas_b2: Optional[float] = None
+    mejillas_b3: Optional[float] = None
+    punto_b1: Optional[float] = None
+    punto_b2: Optional[float] = None
+    punto_b3: Optional[float] = None
+    acidez_b1: Optional[float] = None
+    acidez_b2: Optional[float] = None
+    acidez_b3: Optional[float] = None
+    cluster1_max: Optional[int] = None
+    cluster2_max: Optional[int] = None
+    cluster3_max: Optional[int] = None
+    notas: Optional[str] = None
+
+
+@router.get("/reglas-cluster")
+def list_reglas_cluster(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Lista todas las reglas de clustering activas."""
+    return (
+        db.query(ReglaCluster)
+        .filter(ReglaCluster.activo == True)
+        .order_by(ReglaCluster.codigo_regla)
+        .all()
+    )
+
+
+@router.get("/reglas-cluster/as-dict")
+def reglas_as_dict(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Retorna reglas en el mismo formato que el dict RULES hardcodeado.
+
+    Util para que el motor de clustering pueda usar reglas de BD.
+    """
+    reglas = db.query(ReglaCluster).filter(ReglaCluster.activo == True).all()
+    result = {}
+    for r in reglas:
+        result[r.codigo_regla] = {
+            "brix": [float(r.brix_b1 or 0), float(r.brix_b2 or 0), float(r.brix_b3 or 0)],
+            "mejillas": [float(r.mejillas_b1 or 0), float(r.mejillas_b2 or 0), float(r.mejillas_b3 or 0)],
+            "punto": [float(r.punto_b1 or 0), float(r.punto_b2 or 0), float(r.punto_b3 or 0)],
+            "acidez": [float(r.acidez_b1 or 0), float(r.acidez_b2 or 0), float(r.acidez_b3 or 0)],
+        }
+    return result
+
+
+@router.post("/reglas-cluster/seed-from-hardcoded")
+def seed_reglas_from_hardcoded(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Pobla la tabla reglas_cluster desde el dict RULES hardcodeado.
+
+    Solo crea reglas que no existan aun (por codigo_regla).
+    """
+    from app.services.clustering_service import RULES
+
+    NAMES = {
+        "ciruela_candy": "Ciruela Candy (>60g)",
+        "ciruela_cherry": "Ciruela Cherry (<=60g)",
+        "nectarina_amarilla_muy_temprana": "Nectarina Amarilla Muy Temprana",
+        "nectarina_amarilla_temprana": "Nectarina Amarilla Temprana",
+        "nectarina_amarilla_tardia": u"Nectarina Amarilla Tard\u00eda",
+        "nectarina_blanca_muy_temprana": "Nectarina Blanca Muy Temprana",
+        "nectarina_blanca_temprana": "Nectarina Blanca Temprana",
+        "nectarina_blanca_tardia": u"Nectarina Blanca Tard\u00eda",
+        "durazno_amarillo_muy_temprana": "Durazno Amarillo Muy Temprana",
+        "durazno_amarillo_temprana": "Durazno Amarillo Temprana",
+        "durazno_amarillo_tardia": u"Durazno Amarillo Tard\u00eda",
+        "durazno_blanco_muy_temprana": "Durazno Blanco Muy Temprana",
+        "durazno_blanco_temprana": "Durazno Blanco Temprana",
+        "durazno_blanco_tardia": u"Durazno Blanco Tard\u00eda",
+        "paraguayo_default": "Paraguayo",
+        "platerina_default": "Platerina",
+        "damasco_default": "Damasco",
+    }
+
+    created = 0
+    for code, thresholds in RULES.items():
+        existing = db.query(ReglaCluster).filter(ReglaCluster.codigo_regla == code).first()
+        if existing:
+            continue
+        regla = ReglaCluster(
+            codigo_regla=code,
+            nombre=NAMES.get(code, code),
+            brix_b1=thresholds["brix"][0],
+            brix_b2=thresholds["brix"][1],
+            brix_b3=thresholds["brix"][2],
+            mejillas_b1=thresholds["mejillas"][0],
+            mejillas_b2=thresholds["mejillas"][1],
+            mejillas_b3=thresholds["mejillas"][2],
+            punto_b1=thresholds["punto"][0],
+            punto_b2=thresholds["punto"][1],
+            punto_b3=thresholds["punto"][2],
+            acidez_b1=thresholds["acidez"][0],
+            acidez_b2=thresholds["acidez"][1],
+            acidez_b3=thresholds["acidez"][2],
+        )
+        db.add(regla)
+        created += 1
+    db.commit()
+    return {"created": created}
+
+
+@router.get("/reglas-cluster/{regla_id}")
+def get_regla_cluster(
+    regla_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Obtiene una regla de cluster por ID."""
+    regla = db.get(ReglaCluster, regla_id)
+    if not regla:
+        raise HTTPException(status_code=404, detail="Regla de cluster no encontrada")
+    return regla
+
+
+@router.put("/reglas-cluster/{regla_id}")
+def update_regla_cluster(
+    regla_id: int,
+    data: ReglaClusterUpdate,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Actualiza los umbrales de una regla de cluster."""
+    regla = db.get(ReglaCluster, regla_id)
+    if not regla:
+        raise HTTPException(status_code=404, detail="Regla de cluster no encontrada")
+
+    update_data = data.model_dump(exclude_none=True)
+    for field, value in update_data.items():
+        setattr(regla, field, value)
+
+    regla.fecha_modificacion = datetime.utcnow()
+    regla.usuario_modificacion = user.username
+    db.commit()
+    db.refresh(regla)
+    return regla
+
+
+# ---------------------------------------------------------------------------
 # Plantas para seleccion en laboratorio
 # ---------------------------------------------------------------------------
 

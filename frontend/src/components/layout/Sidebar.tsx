@@ -53,6 +53,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     items: [
       { to: "/laboratorio", label: "Mediciones Lab", icon: FlaskConical },
       { to: "/laboratorio/analisis", label: "Clasificaci\u00f3n Calidad", icon: Microscope },
+      { to: "/laboratorio/reglas-cluster", label: "Reglas Cluster", icon: Settings },
     ],
   },
   {

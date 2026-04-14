@@ -38,6 +38,7 @@ const TestblockDetailPage = lazy(() => import("@/pages/testblocks/TestblockDetai
 // Laboratorio
 const LaboratorioPage = lazy(() => import("@/pages/laboratorio/LaboratorioPage").then(m => ({ default: m.LaboratorioPage })));
 const AnalisisLabPage = lazy(() => import("@/pages/laboratorio/AnalisisLabPage").then(m => ({ default: m.AnalisisLabPage })));
+const ReglasClusterPage = lazy(() => import("@/pages/laboratorio/ReglasClusterPage").then(m => ({ default: m.ReglasClusterPage })));
 
 // Labores
 const LaboresPage = lazy(() => import("@/pages/labores/LaboresPage").then(m => ({ default: m.LaboresPage })));
@@ -108,6 +109,7 @@ export function App() {
         {/* Laboratorio */}
         <Route path="laboratorio" element={<LaboratorioPage />} />
         <Route path="laboratorio/analisis" element={<AnalisisLabPage />} />
+        <Route path="laboratorio/reglas-cluster" element={<ReglasClusterPage />} />
 
         {/* Labores */}
         <Route path="labores" element={<LaboresPage />} />

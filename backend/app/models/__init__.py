@@ -27,6 +27,7 @@ from app.models.bitacora import BitacoraVariedad  # noqa: F401
 from app.models.evidencia import EvidenciaLabor  # noqa: F401
 from app.models.sistema import Usuario, Rol, AuditLog  # noqa: F401
 from app.models.orden_trabajo import OrdenTrabajo  # noqa: F401
+from app.models.regla_cluster import ReglaCluster  # noqa: F401
 from app.models.variedades_extra import (  # noqa: F401
     VariedadPolinizante, VariedadFoto, BitacoraPortainjerto, TestblockEvento,
 )
