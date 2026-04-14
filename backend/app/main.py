@@ -79,6 +79,7 @@ async def lifespan(app: FastAPI):
                 "IF COL_LENGTH('ejecucion_labores', 'id_lote') IS NULL ALTER TABLE ejecucion_labores ADD id_lote INT NULL",
                 "IF COL_LENGTH('susceptibilidades', 'id_especie') IS NULL ALTER TABLE susceptibilidades ADD id_especie INT NULL",
                 "IF COL_LENGTH('susceptibilidades', 'grupo') IS NULL ALTER TABLE susceptibilidades ADD grupo NVARCHAR(50) NULL",
+                "IF COL_LENGTH('movimientos_inventario', 'id_evento') IS NULL ALTER TABLE movimientos_inventario ADD id_evento INT NULL",
             ]:
                 try:
                     conn.execute(text(stmt))

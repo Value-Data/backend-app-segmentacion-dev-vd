@@ -725,6 +725,80 @@ def agregar_posiciones(db: Session, tb_id: int, hilera: int, cantidad: int, usua
     return count
 
 
+def sync_posicion_from_planta(pos, planta):
+    """Sync position cache fields from active plant."""
+    if planta and planta.activa:
+        pos.id_variedad = planta.id_variedad
+        pos.id_portainjerto = planta.id_portainjerto
+        pos.id_pmg = planta.id_pmg
+        pos.id_lote = planta.id_lote_origen
+    elif pos.estado == "vacia":
+        pos.id_variedad = None
+        pos.id_portainjerto = None
+        pos.id_pmg = None
+        pos.id_lote = None
+
+
+def plantar_en_posicion(db, pos, *, id_variedad, id_portainjerto=None, id_especie=None, id_pmg=None, id_lote=None, accion="alta", usuario="sistema"):
+    """Plant ONE plant in ONE position. Atomic — caller must commit.
+
+    Handles: deactivate old plant, create new, sync position, create history.
+    """
+    from app.core.utils import utcnow
+    from datetime import date
+
+    # Deactivate old plants
+    old_plantas = db.query(Planta).filter(Planta.id_posicion == pos.id_posicion).all()
+    for old_p in old_plantas:
+        if old_p.activa:
+            old_p.activa = False
+            old_p.fecha_baja = date.today()
+            old_p.motivo_baja = f"Reemplazo por {accion}"
+            old_p.usuario_modificacion = usuario
+        if old_p.codigo == pos.codigo_unico:
+            old_p.codigo = f"{pos.codigo_unico}_prev_{old_p.id_planta}"
+    db.flush()
+
+    # Create new plant
+    planta = Planta(
+        codigo=pos.codigo_unico,
+        id_posicion=pos.id_posicion,
+        id_variedad=id_variedad,
+        id_portainjerto=id_portainjerto,
+        id_especie=id_especie,
+        id_pmg=id_pmg,
+        id_lote_origen=id_lote,
+        condicion="EN_EVALUACION",
+        activa=True,
+        fecha_alta=date.today(),
+        ano_plantacion=date.today().year,
+        usuario_creacion=usuario,
+    )
+    db.add(planta)
+    db.flush()
+
+    # Sync position
+    estado_anterior = pos.estado or "vacia"
+    pos.estado = "replante" if accion == "replante" else "alta"
+    sync_posicion_from_planta(pos, planta)
+    pos.fecha_alta = date.today()
+    pos.fecha_plantacion = date.today()
+    pos.usuario_alta = usuario
+
+    # History
+    hist = HistorialPosicion(
+        id_posicion=pos.id_posicion,
+        id_planta=planta.id_planta,
+        accion=accion,
+        estado_anterior=estado_anterior,
+        estado_nuevo=pos.estado,
+        usuario=usuario,
+    )
+    db.add(hist)
+
+    return planta
+
+
 def get_inventario_testblock(db: Session, tb_id: int) -> list[dict]:
     """Return inventario_testblock records for a testblock, joined with lote info."""
     from app.models.variedades import Variedad

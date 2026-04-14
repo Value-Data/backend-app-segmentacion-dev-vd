@@ -547,6 +547,109 @@ def api_historial_testblock(
     return result
 
 
+# ── Carga mixta (multi-variedad en un testblock) ────────────────────────
+@router.post("/{id}/carga-mixta", status_code=201)
+def carga_mixta(
+    id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Mixed load: create one lot per variety/rootstock group and plant positions.
+    Body: { grupos: [{id_variedad, id_portainjerto?, posicion_ids}], id_especie?, id_pmg?, ... }
+    """
+    from app.services.testblock_service import plantar_en_posicion
+    from app.models.inventario import InventarioVivero, MovimientoInventario
+    from app.routes.inventario import _generar_codigo_lote
+    from datetime import date
+
+    tb = db.query(TestBlock).filter(TestBlock.id_testblock == id).first()
+    if not tb:
+        raise HTTPException(status_code=404, detail="TestBlock no encontrado")
+
+    grupos = data.get("grupos", [])
+    if not grupos:
+        raise HTTPException(status_code=400, detail="Se requiere al menos un grupo")
+
+    resultados = []
+    total = 0
+
+    for grupo in grupos:
+        gvar = grupo.get("id_variedad")
+        gpi = grupo.get("id_portainjerto")
+        gpos_ids = grupo.get("posicion_ids", [])
+        if not gvar or not gpos_ids:
+            continue
+
+        posiciones = (
+            db.query(PosicionTestBlock)
+            .filter(PosicionTestBlock.id_posicion.in_(gpos_ids), PosicionTestBlock.id_testblock == id)
+            .all()
+        )
+        if not posiciones:
+            continue
+
+        cantidad = len(posiciones)
+
+        # Generate lot code
+        class _D:
+            pass
+        fd = _D()
+        fd.id_especie = data.get("id_especie")
+        fd.id_variedad = gvar
+        fd.id_portainjerto = gpi
+        codigo = _generar_codigo_lote(db, fd)
+
+        lote = InventarioVivero(
+            codigo_lote=codigo,
+            id_variedad=gvar,
+            id_portainjerto=gpi,
+            id_especie=data.get("id_especie"),
+            id_pmg=data.get("id_pmg"),
+            tipo_planta=data.get("tipo_planta"),
+            tipo_injertacion=data.get("tipo_injertacion"),
+            cantidad_inicial=cantidad,
+            cantidad_actual=0,
+            cantidad_minima=0,
+            fecha_ingreso=date.today(),
+            ano_plantacion=data.get("ano_plantacion") or date.today().year,
+            estado="plantado",
+            observaciones=data.get("observaciones") or f"Carga mixta TB {tb.codigo}",
+        )
+        db.add(lote)
+        db.flush()
+
+        for pos in posiciones:
+            plantar_en_posicion(
+                db, pos,
+                id_variedad=gvar,
+                id_portainjerto=gpi,
+                id_especie=data.get("id_especie"),
+                id_pmg=data.get("id_pmg"),
+                id_lote=lote.id_inventario,
+                accion="carga_inicial",
+                usuario=user.username,
+            )
+
+        mov = MovimientoInventario(
+            id_inventario=lote.id_inventario,
+            tipo="CARGA_INICIAL",
+            cantidad=cantidad,
+            saldo_anterior=cantidad,
+            saldo_nuevo=0,
+            motivo=f"Carga mixta TB {tb.codigo}",
+            referencia_destino=tb.codigo,
+            usuario=user.username,
+        )
+        db.add(mov)
+
+        resultados.append({"codigo_lote": codigo, "variedad": gvar, "portainjerto": gpi, "plantas": cantidad})
+        total += cantidad
+
+    db.commit()
+    return {"testblock": tb.codigo, "grupos": len(resultados), "total_plantas": total, "detalle": resultados}
+
+
 # ── Etapa (formacion / produccion) por planta ─────────────────────────────
 @router.put("/{id}/etapa")
 def api_cambiar_etapa(

@@ -15,7 +15,7 @@ from app.models.inventario import (
 from app.models.maestras import Correlativo
 from app.schemas.inventario import MovimientoCreate, DespachoCreate
 
-VALID_TIPOS = {"INGRESO", "RETIRO", "AJUSTE", "PLANTACION", "DEVOLUCION", "DESPACHO"}
+VALID_TIPOS = {"INGRESO", "RETIRO", "AJUSTE", "PLANTACION", "DEVOLUCION", "DESPACHO", "CARGA_INICIAL"}
 
 
 def registrar_movimiento(

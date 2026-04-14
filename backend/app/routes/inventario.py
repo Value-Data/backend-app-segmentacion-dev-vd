@@ -345,6 +345,113 @@ def asignar_lote_a_plantas(
     return {"updated": updated, "message": f"{updated} plantas asignadas al lote {lote.codigo_lote}"}
 
 
+# ── Carga inicial (lote + plantacion directa sin guia) ──────────────────
+@router.post("/carga-inicial", status_code=201)
+def carga_inicial(
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Carga inicial: create lot + plant positions in one operation.
+    No dispatch guides, no inventario_testblock.
+    """
+    from app.models.testblock import TestBlock, PosicionTestBlock, Planta, HistorialPosicion
+    from app.services.testblock_service import plantar_en_posicion
+    from datetime import date
+
+    id_testblock = data.get("id_testblock")
+    posicion_ids = data.get("posicion_ids", [])
+    id_variedad = data.get("id_variedad")
+    id_portainjerto = data.get("id_portainjerto")
+    id_especie = data.get("id_especie")
+    id_pmg = data.get("id_pmg")
+
+    if not id_testblock or not posicion_ids or not id_variedad:
+        raise HTTPException(status_code=400, detail="Se requiere id_testblock, posicion_ids, id_variedad")
+
+    tb = db.query(TestBlock).filter(TestBlock.id_testblock == id_testblock).first()
+    if not tb:
+        raise HTTPException(status_code=404, detail="TestBlock no encontrado")
+
+    posiciones = (
+        db.query(PosicionTestBlock)
+        .filter(
+            PosicionTestBlock.id_posicion.in_(posicion_ids),
+            PosicionTestBlock.id_testblock == id_testblock,
+        )
+        .all()
+    )
+    if not posiciones:
+        raise HTTPException(status_code=400, detail="No hay posiciones validas")
+
+    cantidad = len(posiciones)
+
+    # Generate lot code using new format
+    class _FakeData:
+        pass
+    fd = _FakeData()
+    fd.id_especie = id_especie
+    fd.id_variedad = id_variedad
+    fd.id_portainjerto = id_portainjerto
+    codigo_lote = _generar_codigo_lote(db, fd)
+
+    # Create lot (already planted)
+    lote = InventarioVivero(
+        codigo_lote=codigo_lote,
+        id_variedad=id_variedad,
+        id_portainjerto=id_portainjerto,
+        id_especie=id_especie,
+        id_pmg=id_pmg,
+        tipo_planta=data.get("tipo_planta"),
+        tipo_injertacion=data.get("tipo_injertacion"),
+        cantidad_inicial=cantidad,
+        cantidad_actual=0,
+        cantidad_minima=0,
+        fecha_ingreso=date.today(),
+        ano_plantacion=data.get("ano_plantacion") or date.today().year,
+        estado="plantado",
+        observaciones=data.get("observaciones") or f"Carga inicial TB {tb.codigo}",
+    )
+    db.add(lote)
+    db.flush()
+
+    # Plant each position
+    plantas_creadas = 0
+    for pos in posiciones:
+        plantar_en_posicion(
+            db, pos,
+            id_variedad=id_variedad,
+            id_portainjerto=id_portainjerto,
+            id_especie=id_especie,
+            id_pmg=id_pmg,
+            id_lote=lote.id_inventario,
+            accion="carga_inicial",
+            usuario=user.username,
+        )
+        plantas_creadas += 1
+
+    # Single movement record
+    mov = MovimientoInventario(
+        id_inventario=lote.id_inventario,
+        tipo="CARGA_INICIAL",
+        cantidad=cantidad,
+        saldo_anterior=cantidad,
+        saldo_nuevo=0,
+        motivo=f"Carga inicial a TB {tb.codigo}",
+        referencia_destino=tb.codigo,
+        usuario=user.username,
+    )
+    db.add(mov)
+
+    db.commit()
+    return {
+        "lote_id": lote.id_inventario,
+        "codigo_lote": codigo_lote,
+        "plantas_creadas": plantas_creadas,
+        "testblock": tb.codigo,
+    }
+
+
 @router.get("/{id}")
 def get_inventario(
     id: int,
@@ -362,19 +469,53 @@ def create_inventario(
 ):
     # Auto-generate codigo_lote if not provided
     if not data.codigo_lote:
-        data.codigo_lote = _generar_codigo_lote(db)
+        data.codigo_lote = _generar_codigo_lote(db, data)
     return crud.create(db, InventarioVivero, data, usuario=user.username)
 
 
-def _generar_codigo_lote(db: Session) -> str:
-    """Generate the next sequential lote code: INV-00001, INV-00002, ..."""
+def _generar_codigo_lote(db: Session, data=None) -> str:
+    """Generate descriptive lot code: LOT-{ESP}-{VAR}-{PI}-{YEAR}-{SEQ}"""
+    from app.models.maestras import Especie, Portainjerto
+    from app.models.variedades import Variedad
     from sqlalchemy import text
-    result = db.execute(text(
-        "SELECT MAX(CAST(SUBSTRING(codigo_lote, 5, LEN(codigo_lote) - 4) AS INT)) "
-        "FROM inventario_vivero WHERE codigo_lote LIKE 'INV-%'"
-    )).scalar()
-    seq = (result or 0) + 1
-    return f"INV-{seq:05d}"
+    from datetime import date
+
+    esp_code = "XXX"
+    var_code = "000"
+    pi_code = "SPI"
+    anio = str(date.today().year)
+
+    id_especie = getattr(data, "id_especie", None) if data else None
+    id_variedad = getattr(data, "id_variedad", None) if data else None
+    id_portainjerto = getattr(data, "id_portainjerto", None) if data else None
+
+    if id_especie:
+        esp = db.query(Especie).filter(Especie.id_especie == id_especie).first()
+        if esp:
+            esp_code = esp.codigo[:3].upper()
+
+    if id_variedad:
+        var = db.query(Variedad).filter(Variedad.id_variedad == id_variedad).first()
+        if var and var.codigo:
+            parts = var.codigo.split("-")
+            var_code = parts[-1][:3] if len(parts) > 1 else var.codigo[:3]
+
+    if id_portainjerto:
+        pi = db.query(Portainjerto).filter(Portainjerto.id_portainjerto == id_portainjerto).first()
+        if pi:
+            abbrevs = {"GXN": "GXN", "Nemaguard": "NEMA", "Noga": "NOGA", "H41": "H41", "H43": "H43"}
+            pi_code = abbrevs.get(pi.nombre, pi.codigo[:4].upper() if pi.codigo else "PI")
+
+    prefix = f"LOT-{esp_code}-{var_code}-{pi_code}-{anio}-"
+    try:
+        result = db.execute(text(
+            "SELECT MAX(CAST(RIGHT(codigo_lote, 3) AS INT)) FROM inventario_vivero WHERE codigo_lote LIKE :p"
+        ), {"p": prefix + "%"}).scalar()
+        seq = (result or 0) + 1
+    except Exception:
+        seq = 1
+
+    return f"{prefix}{seq:03d}"
 
 
 @router.put("/{id}")

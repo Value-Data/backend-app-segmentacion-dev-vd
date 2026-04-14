@@ -44,6 +44,7 @@ class MovimientoInventario(SQLModel, table=True):
     saldo_nuevo: Optional[int] = Field(default=None)
     motivo: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(200)))
     referencia_destino: Optional[str] = Field(default=None, sa_column=Column(sa.String(50)))
+    id_evento: Optional[int] = Field(default=None)
     usuario: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(50)))
     fecha_movimiento: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
