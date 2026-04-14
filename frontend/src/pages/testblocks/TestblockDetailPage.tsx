@@ -121,6 +121,7 @@ export function TestblockDetailPage() {
   const [addHileraOpen, setAddHileraOpen] = useState(false);
   const [addPosOpen, setAddPosOpen] = useState(false);
   const [delHileraOpen, setDelHileraOpen] = useState(false);
+  const [reestructurarOpen, setReestructurarOpen] = useState(false);
   const [fenologiaConfirmOpen, setFenologiaConfirmOpen] = useState(false);
   const [etapaConfirmOpen, setEtapaConfirmOpen] = useState(false);
   const [etapaTarget, setEtapaTarget] = useState<"formacion" | "produccion">("produccion");
@@ -300,6 +301,16 @@ export function TestblockDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
       toast.success("TestBlock actualizado");
       setEditTbOpen(false);
+    },
+  });
+
+  const reestructurarMut = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      testblockService.reestructurar(tbId, Number(data.num_hileras), Number(data.posiciones_por_hilera)),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+      toast.success(`Reestructurado: ${res.posiciones_redistribuidas} redistribuidas, ${res.posiciones_nuevas} nuevas. Total: ${res.total}`);
+      setReestructurarOpen(false);
     },
   });
 
@@ -1452,27 +1463,7 @@ export function TestblockDetailPage() {
                     <Trash2 className="h-3.5 w-3.5" /> -Posiciones
                   </Button>
                   <span className="border-l mx-1" />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const input = prompt(
-                        `Reestructurar grilla (actualmente ${hileras}×${maxPos} = ${total} posiciones).\n\nIngrese nuevo layout como "hileras x posiciones".\nEjemplo: 6x21 para 6 hileras de 21 posiciones.\n\nLas posiciones existentes se redistribuyen automaticamente.`,
-                        `${hileras}x${maxPos}`
-                      );
-                      if (!input) return;
-                      const match = input.match(/^(\d+)\s*[xX×]\s*(\d+)$/);
-                      if (!match) { toast.error("Formato invalido. Use: 6x21"); return; }
-                      const nh = Number(match[1]);
-                      const np = Number(match[2]);
-                      if (nh < 1 || np < 1) { toast.error("Valores deben ser > 0"); return; }
-                      if (!confirm(`Reestructurar a ${nh} hileras × ${np} posiciones?\nTotal: ${nh * np} slots (${total} posiciones actuales se redistribuiran)`)) return;
-                      testblockService.reestructurar(tbId, nh, np).then((res) => {
-                        toast.success(`Reestructurado: ${res.posiciones_redistribuidas} redistribuidas, ${res.posiciones_nuevas} nuevas`);
-                        queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
-                      }).catch((e) => toast.error(e.message));
-                    }}
-                  >
+                  <Button size="sm" variant="outline" onClick={() => setReestructurarOpen(true)}>
                     <Settings2 className="h-3.5 w-3.5" /> Reestructurar
                   </Button>
                 </div>
@@ -2555,6 +2546,20 @@ export function TestblockDetailPage() {
           longitud: tb?.longitud,
           notas: tb?.notas,
         }}
+      />
+
+      {/* Reestructurar grilla dialog */}
+      <CrudForm
+        open={reestructurarOpen}
+        onClose={() => setReestructurarOpen(false)}
+        onSubmit={async (data) => { reestructurarMut.mutate(data); }}
+        fields={[
+          { key: "num_hileras", label: "Numero de Hileras", type: "number", required: true, placeholder: "Ej: 6" },
+          { key: "posiciones_por_hilera", label: "Posiciones por Hilera", type: "number", required: true, placeholder: "Ej: 21" },
+        ]}
+        title={`Reestructurar Grilla (actual: ${hileras}×${maxPos} = ${total} posiciones)`}
+        isLoading={reestructurarMut.isPending}
+        initialData={{ num_hileras: hileras, posiciones_por_hilera: maxPos }}
       />
 
       {/* Grupo Labores dialog */}
