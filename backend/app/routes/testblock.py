@@ -262,6 +262,102 @@ def update_testblock(
     return crud.update(db, TestBlock, id, data, usuario=user.username)
 
 
+@router.post("/{id}/reestructurar")
+def reestructurar_testblock(
+    id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Reorganize existing positions into a new grid layout.
+
+    Takes all positions from the testblock and redistributes them into
+    the specified num_hileras × posiciones_por_hilera grid.
+
+    Body: { num_hileras: int, posiciones_por_hilera: int }
+
+    Example: 124 positions currently in 124×1 → reestructurar to 6×21 (126 slots, 124 filled + 2 empty)
+    """
+    num_hileras = data.get("num_hileras")
+    pos_por_hilera = data.get("posiciones_por_hilera")
+    if not num_hileras or not pos_por_hilera:
+        raise HTTPException(status_code=400, detail="Se requiere num_hileras y posiciones_por_hilera")
+
+    tb = db.query(TestBlock).filter(TestBlock.id_testblock == id).first()
+    if not tb:
+        raise HTTPException(status_code=404, detail="TestBlock no encontrado")
+
+    # Get all existing positions ordered by hilera, posicion
+    posiciones = (
+        db.query(PosicionTestBlock)
+        .filter(PosicionTestBlock.id_testblock == id)
+        .order_by(PosicionTestBlock.hilera, PosicionTestBlock.posicion)
+        .all()
+    )
+
+    total_slots = num_hileras * pos_por_hilera
+    total_existing = len(posiciones)
+
+    # Redistribute: assign new hilera/posicion to each existing position
+    reassigned = 0
+    for i, pos in enumerate(posiciones):
+        new_hilera = (i // pos_por_hilera) + 1
+        new_posicion = (i % pos_por_hilera) + 1
+
+        if new_hilera > num_hileras:
+            # More positions than slots — put extras in last hilera
+            new_hilera = num_hileras
+            new_posicion = pos_por_hilera + (i - (num_hileras * pos_por_hilera)) + 1
+
+        if pos.hilera != new_hilera or pos.posicion != new_posicion:
+            pos.hilera = new_hilera
+            pos.posicion = new_posicion
+            # Update codigo_unico
+            cuartel_code = pos.codigo_unico.split("-H")[0] if "-H" in pos.codigo_unico else tb.codigo
+            pos.codigo_unico = f"{cuartel_code}-H{new_hilera}-P{new_posicion}"
+            # Also update plant codigo if exists
+            planta = db.query(Planta).filter(Planta.id_posicion == pos.id_posicion, Planta.activa == True).first()
+            if planta:
+                planta.codigo = pos.codigo_unico
+            reassigned += 1
+
+    # Create new empty positions if total_slots > total_existing
+    created = 0
+    if total_slots > total_existing:
+        existing_coords = {(p.hilera, p.posicion) for p in posiciones}
+        cuartel = db.query(Cuartel).filter(Cuartel.id_cuartel == tb.id_cuartel).first() if tb.id_cuartel else None
+        base_code = cuartel.codigo if cuartel else tb.codigo
+
+        for h in range(1, num_hileras + 1):
+            for p in range(1, pos_por_hilera + 1):
+                if (h, p) not in existing_coords:
+                    new_pos = PosicionTestBlock(
+                        codigo_unico=f"{base_code}-H{h}-P{p}",
+                        id_cuartel=tb.id_cuartel,
+                        id_testblock=id,
+                        hilera=h,
+                        posicion=p,
+                        estado="vacia",
+                    )
+                    db.add(new_pos)
+                    created += 1
+
+    # Update testblock metadata
+    tb.num_hileras = num_hileras
+    tb.posiciones_por_hilera = pos_por_hilera
+    tb.total_posiciones = total_existing + created
+
+    db.commit()
+
+    return {
+        "testblock": tb.codigo,
+        "layout": f"{num_hileras} hileras × {pos_por_hilera} posiciones",
+        "posiciones_redistribuidas": reassigned,
+        "posiciones_nuevas": created,
+        "total": total_existing + created,
+    }
+
+
 @router.delete("/{id}")
 def delete_testblock(
     id: int,

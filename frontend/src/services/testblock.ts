@@ -44,6 +44,11 @@ export const testblockService = {
   agregarPosiciones: (id: number, hilera: number, cantidad: number) =>
     post<{ count: number }>(`/testblocks/${id}/agregar-posiciones`, { hilera, cantidad }),
 
+  reestructurar: (id: number, num_hileras: number, posiciones_por_hilera: number) =>
+    post<{ posiciones_redistribuidas: number; posiciones_nuevas: number; total: number }>(
+      `/testblocks/${id}/reestructurar`, { num_hileras, posiciones_por_hilera }
+    ),
+
   eliminarHilera: (id: number, hilera: number) =>
     del<{ deleted: number; hilera: number }>(`/testblocks/${id}/eliminar-hilera/${hilera}`),
   eliminarPosiciones: (id: number, ids_posiciones: number[]) =>

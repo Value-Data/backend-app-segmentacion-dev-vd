@@ -508,8 +508,10 @@ export function TestblockDetailPage() {
 
   const editTbFields: FieldDef[] = useMemo(() => [
     { key: "nombre", label: "Nombre", type: "text", required: true },
-    { key: "codigo", label: "Código", type: "text", required: true },
+    { key: "codigo", label: "Codigo", type: "text", required: true },
     { key: "id_campo", label: "Campo", type: "select", options: lk.options.campos },
+    { key: "num_hileras", label: "Num. Hileras", type: "number", placeholder: "Ej: 6" },
+    { key: "posiciones_por_hilera", label: "Posiciones por Hilera", type: "number", placeholder: "Ej: 20" },
     { key: "temporada_inicio", label: "Temporada Inicio", type: "text", placeholder: "Ej: 2024-2025" },
     { key: "latitud", label: "Latitud", type: "number", placeholder: "Ej: -34.1234567" },
     { key: "longitud", label: "Longitud", type: "number", placeholder: "Ej: -70.1234567" },
@@ -1448,6 +1450,30 @@ export function TestblockDetailPage() {
                   </Button>
                   <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => enterSelectionMode("eliminar")} disabled={hileras === 0}>
                     <Trash2 className="h-3.5 w-3.5" /> -Posiciones
+                  </Button>
+                  <span className="border-l mx-1" />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const input = prompt(
+                        `Reestructurar grilla (actualmente ${hileras}×${maxPos} = ${total} posiciones).\n\nIngrese nuevo layout como "hileras x posiciones".\nEjemplo: 6x21 para 6 hileras de 21 posiciones.\n\nLas posiciones existentes se redistribuyen automaticamente.`,
+                        `${hileras}x${maxPos}`
+                      );
+                      if (!input) return;
+                      const match = input.match(/^(\d+)\s*[xX×]\s*(\d+)$/);
+                      if (!match) { toast.error("Formato invalido. Use: 6x21"); return; }
+                      const nh = Number(match[1]);
+                      const np = Number(match[2]);
+                      if (nh < 1 || np < 1) { toast.error("Valores deben ser > 0"); return; }
+                      if (!confirm(`Reestructurar a ${nh} hileras × ${np} posiciones?\nTotal: ${nh * np} slots (${total} posiciones actuales se redistribuiran)`)) return;
+                      testblockService.reestructurar(tbId, nh, np).then((res) => {
+                        toast.success(`Reestructurado: ${res.posiciones_redistribuidas} redistribuidas, ${res.posiciones_nuevas} nuevas`);
+                        queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
+                      }).catch((e) => toast.error(e.message));
+                    }}
+                  >
+                    <Settings2 className="h-3.5 w-3.5" /> Reestructurar
                   </Button>
                 </div>
 
