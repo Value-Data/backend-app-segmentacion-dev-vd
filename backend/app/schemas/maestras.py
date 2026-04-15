@@ -291,6 +291,8 @@ class TipoLaborCreate(BaseModel):
     aplica_especies: Optional[str] = None
     aplica_a: Optional[str] = None
     frecuencia: Optional[str] = None
+    meses_sugeridos: Optional[str] = None  # "7,8,9" = Jul-Ago-Sep
+    etapa: Optional[str] = None  # formacion, produccion, ambas
 
 class TipoLaborUpdate(BaseModel):
     codigo: Optional[str] = None
@@ -300,6 +302,8 @@ class TipoLaborUpdate(BaseModel):
     aplica_especies: Optional[str] = None
     aplica_a: Optional[str] = None
     frecuencia: Optional[str] = None
+    meses_sugeridos: Optional[str] = None
+    etapa: Optional[str] = None
     activo: Optional[bool] = None
 
 

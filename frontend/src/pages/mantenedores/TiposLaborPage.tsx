@@ -40,6 +40,8 @@ interface DetalleLabor {
 
 /* ─── Fields for tipos_labor form ─────────────────────────────────── */
 
+const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
 const laborFields: FieldDef[] = [
   { key: "codigo", label: "Código", type: "text", required: true },
   { key: "nombre", label: "Nombre", type: "text", required: true },
@@ -52,13 +54,19 @@ const laborFields: FieldDef[] = [
     { value: "poda", label: "Poda" },
     { value: "fertilizacion", label: "Fertilización" },
   ]},
+  { key: "etapa", label: "Etapa", type: "select", options: [
+    { value: "formacion", label: "Formación" },
+    { value: "produccion", label: "Producción" },
+    { value: "ambas", label: "Ambas" },
+  ]},
   { key: "aplica_a", label: "Aplica a", type: "select", options: [
     { value: "planta", label: "Planta" },
     { value: "hilera", label: "Hilera" },
     { value: "testblock", label: "TestBlock" },
   ]},
-  { key: "aplica_especies", label: "Aplica Especies", type: "text" },
-  { key: "frecuencia", label: "Frecuencia", type: "text" },
+  { key: "aplica_especies", label: "Aplica Especies", type: "text", placeholder: "Ej: Cerezo, Ciruela" },
+  { key: "meses_sugeridos", label: "Meses sugeridos", type: "text", placeholder: "Ej: 7,8,9 (Jul-Ago-Sep)" },
+  { key: "frecuencia", label: "Frecuencia", type: "text", placeholder: "Ej: mensual, según demanda" },
   { key: "descripcion", label: "Descripción", type: "textarea" },
 ];
 
@@ -242,15 +250,23 @@ export function TiposLaborPage() {
                     {labor.descripcion && (
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">{labor.descripcion}</p>
                     )}
-                    {labor.aplica_especies && (
-                      <div className="flex gap-1 mt-1">
-                        {labor.aplica_especies.split(",").map((e) => (
-                          <span key={e} className="text-[10px] bg-muted px-1.5 py-0.5 rounded">
-                            {e.trim()}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {labor.aplica_especies && labor.aplica_especies.split(",").map((e) => (
+                        <span key={e} className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
+                          {e.trim()}
+                        </span>
+                      ))}
+                      {(labor as any).etapa && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${(labor as any).etapa === "produccion" ? "bg-green-50 text-green-700" : (labor as any).etapa === "formacion" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
+                          {(labor as any).etapa === "ambas" ? "Form+Prod" : (labor as any).etapa}
+                        </span>
+                      )}
+                      {(labor as any).meses_sugeridos && (
+                        <span className="text-[10px] text-muted-foreground">
+                          📅 {(labor as any).meses_sugeridos.split(",").map((m: string) => MESES[Number(m.trim()) - 1] || m).join(", ")}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>

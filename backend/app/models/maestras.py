@@ -294,6 +294,8 @@ class TipoLabor(SQLModel, table=True):
     aplica_especies: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(200)))
     aplica_a: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
     frecuencia: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(50)))
+    meses_sugeridos: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))  # "7,8,9" = Jul-Ago-Sep
+    etapa: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(30)))  # formacion, produccion, ambas
     activo: Optional[bool] = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
     usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
