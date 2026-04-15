@@ -123,7 +123,7 @@ export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, 
                       {field.options.length === 0 ? (
                         <SelectItem value="__empty__" disabled>Sin opciones disponibles</SelectItem>
                       ) : (
-                        field.options.map((opt) => (
+                        field.options.filter((opt) => opt.value != null && String(opt.value) !== "").map((opt) => (
                           <SelectItem key={String(opt.value)} value={String(opt.value)}>
                             {opt.label}
                           </SelectItem>
