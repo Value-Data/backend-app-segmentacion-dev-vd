@@ -81,13 +81,27 @@ export function VariedadesPage() {
     const idParam = searchParams.get("id");
     if (!idParam) return;
     if (!data || (data as any[]).length === 0) return;
+
+    // Try to find in loaded data first
     const found = (data as Record<string, unknown>[]).find((v) => String(v.id_variedad) === idParam);
     if (found) {
       urlIdHandled.current = true;
       setSelectedVar(found);
-      // Clean URL
       window.history.replaceState({}, "", window.location.pathname);
+      return;
     }
+
+    // Not in loaded data (limit=1000) — fetch directly by ID
+    urlIdHandled.current = true;
+    get<Record<string, unknown>>(`/mantenedores/variedades/${idParam}`)
+      .then((v) => {
+        setSelectedVar(v);
+        window.history.replaceState({}, "", window.location.pathname);
+      })
+      .catch(() => {
+        toast.error(`Variedad #${idParam} no encontrada`);
+        window.history.replaceState({}, "", window.location.pathname);
+      });
   }, [data, searchParams]);
   const [bitacoraOpen, setBitacoraOpen] = useState(false);
   const [editingBitacora, setEditingBitacora] = useState<BitacoraEntry | null>(null);
