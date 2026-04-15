@@ -43,11 +43,11 @@ export interface KanbanData {
 
 export const ordenesTrabajoService = {
   list: (params?: Record<string, any>) =>
-    get<OrdenTrabajo[]>("/ordenes-trabajo", params),
+    get<OrdenTrabajo[]>("/ordenes-trabajo/", params),
   getById: (id: number) =>
     get<OrdenTrabajo>(`/ordenes-trabajo/${id}`),
   create: (data: Record<string, unknown>) =>
-    post<OrdenTrabajo>("/ordenes-trabajo", data),
+    post<OrdenTrabajo>("/ordenes-trabajo/", data),
   update: (id: number, data: Record<string, unknown>) =>
     put<OrdenTrabajo>(`/ordenes-trabajo/${id}`, data),
   ejecutar: (id: number, data: Record<string, unknown>) =>

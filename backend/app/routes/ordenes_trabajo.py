@@ -150,6 +150,7 @@ def _iso_week_to_dates(iso_week: str) -> tuple[date, date]:
 # 1. POST / — Create work order
 # ---------------------------------------------------------------------------
 
+@router.post("", status_code=201)
 @router.post("/", status_code=201)
 def create_orden_trabajo(
     body: OrdenTrabajoCreate,
@@ -670,6 +671,7 @@ def vista_desviaciones(
 # 2. GET / — List with filters
 # ---------------------------------------------------------------------------
 
+@router.get("")
 @router.get("/")
 def list_ordenes_trabajo(
     testblock: Optional[int] = None,
