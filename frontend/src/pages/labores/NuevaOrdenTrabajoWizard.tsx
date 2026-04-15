@@ -36,9 +36,9 @@ interface WizardProps {
 
 interface Usuario {
   id_usuario: number;
-  nombre: string;
-  apellido?: string;
-  email?: string;
+  nombre_completo: string;
+  username: string;
+  rol: string;
 }
 
 type Alcance = "todas" | "lote" | "personalizado";
@@ -152,7 +152,7 @@ export function NuevaOrdenTrabajoWizard({ open, onClose, onSuccess }: WizardProp
   const responsableNombre = useMemo(() => {
     if (!form.id_responsable || !usuarios) return "-";
     const u = usuarios.find((us) => String(us.id_usuario) === form.id_responsable);
-    return u ? `${u.nombre}${u.apellido ? ` ${u.apellido}` : ""}` : "-";
+    return u ? u.nombre_completo || u.username : "-";
   }, [form.id_responsable, usuarios]);
 
   const loteNombre = useMemo(() => {
@@ -384,9 +384,9 @@ export function NuevaOrdenTrabajoWizard({ open, onClose, onSuccess }: WizardProp
                   <SelectValue placeholder="Seleccionar responsable" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(usuarios || []).map((u) => (
+                  {(usuarios || []).filter((u) => u.id_usuario).map((u) => (
                     <SelectItem key={u.id_usuario} value={String(u.id_usuario)}>
-                      {u.nombre}{u.apellido ? ` ${u.apellido}` : ""} {u.email ? `(${u.email})` : ""}
+                      {u.nombre_completo || u.username} ({u.rol})
                     </SelectItem>
                   ))}
                 </SelectContent>

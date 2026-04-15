@@ -36,8 +36,10 @@ interface Props {
 
 interface Usuario {
   id_usuario: number;
-  nombre: string;
-  apellido?: string;
+  nombre_completo: string;
+  nombre?: string;
+  username: string;
+  rol: string;
 }
 
 type Resultado = "segun_plan" | "parcial" | "no_realizada" | "reprogramar";
@@ -139,7 +141,7 @@ export function RegistrarEjecucionDialog({ open, onClose, ot, onSuccess }: Props
     const payload: Record<string, unknown> = {
       cumplimiento: resultado,
       fecha_ejecucion_real: fechaEjecucion || null,
-      ejecutor_real: ejecutor || null,
+      ejecutor_real: ejecutor ? ((usuarios || []).find((u) => String(u.id_usuario) === ejecutor)?.nombre_completo || ejecutor) : null,
       duracion_real_min: duracion ? Number(duracion) : null,
       observaciones_ejecucion: observaciones || null,
     };
@@ -344,9 +346,9 @@ export function RegistrarEjecucionDialog({ open, onClose, ot, onSuccess }: Props
                   <SelectValue placeholder="Seleccionar ejecutor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(usuarios || []).map((u) => (
+                  {(usuarios || []).filter((u) => u.id_usuario).map((u) => (
                     <SelectItem key={u.id_usuario} value={String(u.id_usuario)}>
-                      {u.nombre}{u.apellido ? ` ${u.apellido}` : ""}
+                      {u.nombre_completo || u.username}
                     </SelectItem>
                   ))}
                 </SelectContent>
