@@ -4,7 +4,7 @@ import {
   Hammer, CheckCircle2, Clock, AlertTriangle, Plus, CalendarDays,
   TrendingUp, QrCode, Camera, FileText, Download, X, Image as ImageIcon,
   Calendar, MoreHorizontal, Leaf, Scissors, ChevronDown, ChevronRight, ListChecks,
-  ClipboardList, Play, Pencil, Trash2,
+  ClipboardList, Play, Pencil, Trash2, MapPin, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -132,6 +132,7 @@ export function LaboresPage() {
   const especiesRaw = (lk.rawData.especies || []) as { id_especie: number; nombre: string }[];
 
   // --- state ---
+  const [campoFilter, setCampoFilter] = useState<string>("");
   const [tbFilter, setTbFilter] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
   const [planTbOpen, setPlanTbOpen] = useState(false);
@@ -259,7 +260,28 @@ export function LaboresPage() {
     return laborMap.get(id as number) || `#${id}`;
   };
 
-  const tbOpts = (testblocks || []).map((tb) => ({
+  // Group testblocks by campo for hierarchical navigation
+  const campoGroups = useMemo(() => {
+    const groups: Record<string, { id: string; nombre: string; testblocks: any[] }> = {};
+    for (const tb of testblocks || []) {
+      const cid = String(tb.id_campo || "sin-campo");
+      const cname = (tb as any).campo_nombre || `Campo #${tb.id_campo || "?"}`;
+      if (!groups[cid]) groups[cid] = { id: cid, nombre: cname, testblocks: [] };
+      groups[cid].testblocks.push(tb);
+    }
+    return Object.values(groups).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [testblocks]);
+
+  // Testblocks filtered by selected campo
+  const filteredTbs = useMemo(() => {
+    if (!campoFilter || campoFilter === "all") return testblocks || [];
+    return (testblocks || []).filter((tb) => String(tb.id_campo) === campoFilter);
+  }, [testblocks, campoFilter]);
+
+  const selectedCampoName = campoGroups.find((g) => g.id === campoFilter)?.nombre;
+  const selectedTbName = (testblocks || []).find((tb) => String(tb.id_testblock) === tbFilter)?.nombre;
+
+  const tbOpts = filteredTbs.map((tb) => ({
     value: tb.id_testblock,
     label: `${tb.nombre} (${tb.codigo})`,
   }));
@@ -621,60 +643,132 @@ export function LaboresPage() {
         />
       </div>
 
-      {/* ==================== TB FILTER ==================== */}
-      <div className="flex items-center gap-3">
-        <label className="text-sm text-muted-foreground">Filtrar por TestBlock:</label>
-        <Select value={tbFilter} onValueChange={setTbFilter}>
-          <SelectTrigger className="w-64">
-            <SelectValue placeholder="Todos los testblocks" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            {tbOpts.map((o) => (
-              <SelectItem key={String(o.value)} value={String(o.value)}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {tbFilter && tbFilter !== "all" && (
-          <Button variant="ghost" size="sm" onClick={() => setTbFilter("")}>Limpiar</Button>
-        )}
+      {/* ==================== HIERARCHICAL FILTER: Campo → TestBlock ==================== */}
+      <div className="bg-white border rounded-lg p-3 space-y-2">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Building2 className="h-3.5 w-3.5" />
+          <button
+            className={`hover:text-garces-cherry transition-colors ${!campoFilter ? "font-semibold text-foreground" : "underline cursor-pointer"}`}
+            onClick={() => { setCampoFilter(""); setTbFilter(""); }}
+          >
+            Todos los campos
+          </button>
+          {campoFilter && campoFilter !== "all" && (
+            <>
+              <ChevronRight className="h-3 w-3" />
+              <button
+                className={`hover:text-garces-cherry transition-colors ${!tbFilter ? "font-semibold text-foreground" : "underline cursor-pointer"}`}
+                onClick={() => setTbFilter("")}
+              >
+                {selectedCampoName}
+              </button>
+            </>
+          )}
+          {tbFilter && tbFilter !== "all" && (
+            <>
+              <ChevronRight className="h-3 w-3" />
+              <span className="font-semibold text-foreground">{selectedTbName}</span>
+            </>
+          )}
+        </div>
+
+        {/* Selectors row */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <Select value={campoFilter || "all"} onValueChange={(v) => { setCampoFilter(v === "all" ? "" : v); setTbFilter(""); }}>
+              <SelectTrigger className="w-56 h-9">
+                <SelectValue placeholder="Seleccionar campo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los campos</SelectItem>
+                {campoGroups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.nombre} ({g.testblocks.length} TB)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            <Hammer className="h-4 w-4 text-muted-foreground" />
+            <Select value={tbFilter || "all"} onValueChange={(v) => setTbFilter(v === "all" ? "" : v)}>
+              <SelectTrigger className="w-64 h-9">
+                <SelectValue placeholder="Seleccionar testblock" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  {campoFilter ? `Todos los TB de ${selectedCampoName}` : "Todos los testblocks"}
+                </SelectItem>
+                {tbOpts.map((o) => (
+                  <SelectItem key={String(o.value)} value={String(o.value)}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {(campoFilter || tbFilter) && (
+            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setCampoFilter(""); setTbFilter(""); }}>
+              <X className="h-3 w-3 mr-1" /> Limpiar filtros
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* ==================== TABS ==================== */}
       <Tabs defaultValue="hoy">
-        <TabsList>
-          <TabsTrigger value="hoy" className="gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Hoy
-          </TabsTrigger>
-          <TabsTrigger value="semana" className="gap-1">
-            <CalendarDays className="h-3.5 w-3.5" /> Semana
-          </TabsTrigger>
-          <TabsTrigger value="pauta" className="gap-1">
-            <Leaf className="h-3.5 w-3.5" /> Pauta por Especie
-          </TabsTrigger>
-          <TabsTrigger value="plan">Plan ({allLabores.length})</TabsTrigger>
-          <TabsTrigger value="calendario" className="gap-1">
-            <Calendar className="h-3.5 w-3.5" /> Calendario
-          </TabsTrigger>
-          <TabsTrigger
-            value="atrasadas"
-            className={atrasadas.length > 0 ? "text-red-600 gap-1" : "gap-1"}
-          >
-            Atrasadas
-            {atrasadas.length > 0 && (
-              <span className="ml-1 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1">
-                {atrasadas.length}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="ordenes" className="gap-1">
-            <ClipboardList className="h-3.5 w-3.5" /> Ordenes de Trabajo
-          </TabsTrigger>
-          <TabsTrigger value="kanban">Kanban</TabsTrigger>
-          <TabsTrigger value="por-persona">Por Persona</TabsTrigger>
-          <TabsTrigger value="cumplimiento">Cumplimiento</TabsTrigger>
-          <TabsTrigger value="desviaciones">Plan vs Real</TabsTrigger>
-        </TabsList>
+        {/* --- Two-row tab bar for clarity --- */}
+        <div className="space-y-1">
+          {/* Row 1: Labores del día a día */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold w-16 shrink-0">Labores</span>
+            <TabsList>
+              <TabsTrigger value="hoy" className="gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Hoy
+              </TabsTrigger>
+              <TabsTrigger value="semana" className="gap-1">
+                <CalendarDays className="h-3.5 w-3.5" /> Semana
+              </TabsTrigger>
+              <TabsTrigger value="pauta" className="gap-1">
+                <Leaf className="h-3.5 w-3.5" /> Pauta
+              </TabsTrigger>
+              <TabsTrigger value="plan">Plan ({allLabores.length})</TabsTrigger>
+              <TabsTrigger value="calendario" className="gap-1">
+                <Calendar className="h-3.5 w-3.5" /> Calendario
+              </TabsTrigger>
+              <TabsTrigger
+                value="atrasadas"
+                className={atrasadas.length > 0 ? "text-red-600 gap-1" : "gap-1"}
+              >
+                Atrasadas
+                {atrasadas.length > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1">
+                    {atrasadas.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          {/* Row 2: Ordenes de Trabajo & gestión */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold w-16 shrink-0">OT</span>
+            <TabsList>
+              <TabsTrigger value="ordenes" className="gap-1">
+                <ClipboardList className="h-3.5 w-3.5" /> Ordenes
+                {(ordenesTrabajo || []).length > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center rounded-full bg-garces-cherry text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1">
+                    {(ordenesTrabajo || []).length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="kanban" className="gap-1">Kanban</TabsTrigger>
+              <TabsTrigger value="por-persona" className="gap-1">Por Persona</TabsTrigger>
+              <TabsTrigger value="cumplimiento" className="gap-1">Cumplimiento</TabsTrigger>
+              <TabsTrigger value="desviaciones" className="gap-1">Plan vs Real</TabsTrigger>
+            </TabsList>
+          </div>
+        </div>
 
         {/* ==================== TAB: HOY ==================== */}
         <TabsContent value="hoy">
@@ -1166,161 +1260,271 @@ export function LaboresPage() {
           )}
         </TabsContent>
 
-        {/* ==================== TAB: ORDENES DE TRABAJO ==================== */}
+        {/* ==================== TAB: ORDENES DE TRABAJO (grouped) ==================== */}
         <TabsContent value="ordenes">
-          <div className="space-y-3">
+          <div className="space-y-4">
+            {/* Header with actions */}
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                {(ordenesTrabajo || []).length} ordenes de trabajo
-              </p>
-              <Button
-                size="sm"
-                className="bg-garces-cherry hover:bg-garces-cherry/90 gap-1"
-                onClick={() => setOtWizardOpen(true)}
-              >
-                <Plus className="h-3.5 w-3.5" /> Nueva Orden de Trabajo
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  if (!confirm("Auto-generar ordenes de trabajo para todas las labores pendientes de la temporada 2025-2026?\n\nSe creara una OT por cada combinacion TestBlock + Tipo Labor + Mes.")) return;
-                  try {
-                    const res = await ordenesTrabajoService.autoGenerar({ temporada: "2025-2026" });
-                    toast.success(res.message);
-                    queryClient.invalidateQueries({ queryKey: ["ordenes-trabajo"] });
-                  } catch (e: any) {
-                    toast.error(e.message || "Error al auto-generar");
-                  }
-                }}
-              >
-                Auto-generar OTs
-              </Button>
+              <div>
+                <h2 className="text-lg font-semibold">Ordenes de Trabajo</h2>
+                <p className="text-sm text-muted-foreground">
+                  {(ordenesTrabajo || []).length} OT agrupadas por TestBlock y Mes
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    if (!confirm("Auto-generar ordenes de trabajo para todas las labores pendientes de la temporada 2025-2026?\n\nSe creara una OT por cada combinacion TestBlock + Tipo Labor + Mes.")) return;
+                    try {
+                      const res = await ordenesTrabajoService.autoGenerar({ temporada: "2025-2026" });
+                      toast.success(res.message);
+                      queryClient.invalidateQueries({ queryKey: ["ordenes-trabajo"] });
+                    } catch (e: any) {
+                      toast.error(e.message || "Error al auto-generar");
+                    }
+                  }}
+                >
+                  Auto-generar OTs
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-garces-cherry hover:bg-garces-cherry/90 gap-1"
+                  onClick={() => setOtWizardOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Nueva OT
+                </Button>
+              </div>
             </div>
-            <CrudTable
-              data={ordenesTrabajo || []}
-              isLoading={loadingOts}
-              searchPlaceholder="Buscar ordenes..."
-              columns={[
-                {
-                  accessorKey: "codigo",
-                  header: "Codigo",
-                  cell: ({ row }: any) => (
-                    <span className="font-mono text-xs font-semibold">{row.original.codigo}</span>
-                  ),
-                },
-                {
-                  accessorKey: "tipo_labor_nombre",
-                  header: "Tipo Labor",
-                  cell: ({ row }: any) => (
-                    <span className="text-xs">{row.original.tipo_labor_nombre || `#${row.original.id_tipo_labor || "-"}`}</span>
-                  ),
-                },
-                {
-                  accessorKey: "testblock_nombre",
-                  header: "TestBlock",
-                  cell: ({ row }: any) => (
-                    <span className="text-xs">{row.original.testblock_nombre || `#${row.original.id_testblock || "-"}`}</span>
-                  ),
-                },
-                {
-                  accessorKey: "responsable_nombre",
-                  header: "Responsable",
-                  cell: ({ row }: any) => (
-                    <span className="text-xs">{row.original.responsable_nombre || "-"}</span>
-                  ),
-                },
-                {
-                  accessorKey: "fecha_plan_inicio",
-                  header: "Fechas",
-                  cell: ({ row }: any) => (
-                    <span className="text-xs">
-                      {formatDate(row.original.fecha_plan_inicio)} - {formatDate(row.original.fecha_plan_fin)}
-                    </span>
-                  ),
-                },
-                {
-                  accessorKey: "posiciones_total",
-                  header: "Posiciones",
-                  cell: ({ row }: any) => (
-                    <span className="text-xs">
-                      {row.original.posiciones_ejecutadas}/{row.original.posiciones_total}
-                    </span>
-                  ),
-                },
-                {
-                  accessorKey: "prioridad",
-                  header: "Prioridad",
-                  cell: ({ row }: any) => {
-                    const p = row.original.prioridad;
-                    const cls =
-                      p === "alta" ? "bg-red-100 text-red-800" :
-                      p === "media" ? "bg-amber-100 text-amber-800" :
-                      "bg-green-100 text-green-800";
+
+            {/* Summary counters */}
+            {(() => {
+              const ots = ordenesTrabajo || [];
+              const byEstado = {
+                planificada: ots.filter((o) => o.estado === "planificada").length,
+                en_progreso: ots.filter((o) => o.estado === "en_progreso").length,
+                completada: ots.filter((o) => o.estado === "completada").length,
+                parcial: ots.filter((o) => o.estado === "parcial").length,
+                no_realizada: ots.filter((o) => o.estado === "no_realizada").length,
+              };
+              return (
+                <div className="flex gap-3 flex-wrap">
+                  {byEstado.planificada > 0 && (
+                    <div className="flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-3 py-1">
+                      <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span className="text-xs font-medium text-blue-700">{byEstado.planificada} Planificadas</span>
+                    </div>
+                  )}
+                  {byEstado.en_progreso > 0 && (
+                    <div className="flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1">
+                      <div className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span className="text-xs font-medium text-amber-700">{byEstado.en_progreso} En Progreso</span>
+                    </div>
+                  )}
+                  {byEstado.completada > 0 && (
+                    <div className="flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1">
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-xs font-medium text-green-700">{byEstado.completada} Completadas</span>
+                    </div>
+                  )}
+                  {byEstado.parcial > 0 && (
+                    <div className="flex items-center gap-1.5 rounded-full bg-orange-50 border border-orange-200 px-3 py-1">
+                      <div className="w-2 h-2 rounded-full bg-orange-500" />
+                      <span className="text-xs font-medium text-orange-700">{byEstado.parcial} Parciales</span>
+                    </div>
+                  )}
+                  {byEstado.no_realizada > 0 && (
+                    <div className="flex items-center gap-1.5 rounded-full bg-gray-50 border border-gray-200 px-3 py-1">
+                      <div className="w-2 h-2 rounded-full bg-gray-400" />
+                      <span className="text-xs font-medium text-gray-600">{byEstado.no_realizada} No Realizadas</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Grouped by Campo → TestBlock → Month */}
+            {loadingOts ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">Cargando ordenes...</p>
+            ) : (ordenesTrabajo || []).length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No hay ordenes de trabajo</p>
+                <p className="text-xs mt-1">Usa "Auto-generar OTs" para crear ordenes desde labores planificadas</p>
+              </div>
+            ) : (() => {
+              const ots = ordenesTrabajo || [];
+              const MONTH_NAMES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+              const allTbs = testblocks || [];
+
+              // Resolve campo name for each OT via testblock lookup
+              const tbCampoMap: Record<number, { campo_id: string; campo_nombre: string }> = {};
+              for (const tb of allTbs) {
+                tbCampoMap[tb.id_testblock] = {
+                  campo_id: String(tb.id_campo || "sin-campo"),
+                  campo_nombre: (tb as any).campo_nombre || `Campo #${tb.id_campo || "?"}`,
+                };
+              }
+
+              // Group: Campo → TestBlock → Month
+              type CampoGroup = { nombre: string; testblocks: Record<string, OrdenTrabajo[]> };
+              const byCampo: Record<string, CampoGroup> = {};
+              for (const ot of ots) {
+                const info = ot.id_testblock ? tbCampoMap[ot.id_testblock] : null;
+                const campoKey = info?.campo_nombre || "Sin Campo";
+                const tbKey = ot.testblock_nombre || "Sin TestBlock";
+                if (!byCampo[campoKey]) byCampo[campoKey] = { nombre: campoKey, testblocks: {} };
+                if (!byCampo[campoKey].testblocks[tbKey]) byCampo[campoKey].testblocks[tbKey] = [];
+                byCampo[campoKey].testblocks[tbKey].push(ot);
+              }
+
+              return (
+                <div className="space-y-6">
+                  {Object.entries(byCampo).map(([campoName, campoData]) => {
+                    const campoOts = Object.values(campoData.testblocks).flat();
+                    const campoCompletadas = campoOts.filter((o) => o.estado === "completada").length;
+                    const campoPct = campoOts.length > 0 ? Math.round((campoCompletadas / campoOts.length) * 100) : 0;
                     return (
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>
-                        {p}
-                      </span>
-                    );
-                  },
-                },
-                {
-                  accessorKey: "estado",
-                  header: "Estado",
-                  cell: ({ row }: any) => <StatusBadge status={row.original.estado} />,
-                },
-                {
-                  id: "acciones",
-                  header: "Acciones",
-                  cell: ({ row }: any) => {
-                    const ot = row.original as OrdenTrabajo;
-                    return (
-                      <div className="flex gap-1">
-                        {ot.estado !== "completada" && ot.estado !== "no_realizada" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-2 text-xs gap-1"
-                            onClick={(e: React.MouseEvent) => {
-                              e.stopPropagation();
-                              setSelectedOt(ot);
-                              setOtEjecOpen(true);
-                            }}
-                          >
-                            <Play className="h-3 w-3" /> Ejecutar
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-muted-foreground"
-                          onClick={(e: React.MouseEvent) => {
-                            e.stopPropagation();
-                            toast.info("Edicion de OT pendiente de implementar");
-                          }}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                          onClick={(e: React.MouseEvent) => {
-                            e.stopPropagation();
-                            if (confirm(`Eliminar orden ${ot.codigo}?`)) {
-                              deleteOtMut.mutate(ot.id);
+                      <div key={campoName} className="space-y-3">
+                        {/* ── Campo header ── */}
+                        <div className="flex items-center gap-3 pb-2 border-b-2 border-garces-cherry/20">
+                          <div className="w-9 h-9 rounded-lg bg-garces-cherry/10 flex items-center justify-center">
+                            <MapPin className="h-5 w-5 text-garces-cherry" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="font-bold text-base text-garces-cherry">{campoName}</h3>
+                            <p className="text-xs text-muted-foreground">
+                              {Object.keys(campoData.testblocks).length} testblocks &middot; {campoOts.length} OT &middot; {campoCompletadas} completadas
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-28 bg-gray-100 rounded-full h-2.5">
+                              <div
+                                className={`h-2.5 rounded-full transition-all ${campoPct >= 80 ? "bg-green-500" : campoPct >= 50 ? "bg-amber-500" : "bg-red-400"}`}
+                                style={{ width: `${campoPct}%` }}
+                              />
+                            </div>
+                            <span className="text-sm font-semibold w-12 text-right">{campoPct}%</span>
+                          </div>
+                        </div>
+
+                        {/* ── TestBlocks within campo ── */}
+                        <div className="space-y-3 pl-4 border-l-2 border-garces-cherry/10">
+                          {Object.entries(campoData.testblocks).map(([tbName, tbOts]) => {
+                            const byMonth: Record<string, OrdenTrabajo[]> = {};
+                            for (const ot of tbOts) {
+                              const d = ot.fecha_plan_inicio ? new Date(ot.fecha_plan_inicio) : null;
+                              const monthKey = d ? `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}` : "Sin fecha";
+                              if (!byMonth[monthKey]) byMonth[monthKey] = [];
+                              byMonth[monthKey].push(ot);
                             }
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                            const tbCompletadas = tbOts.filter((o) => o.estado === "completada").length;
+                            const tbPct = tbOts.length > 0 ? Math.round((tbCompletadas / tbOts.length) * 100) : 0;
+                            return (
+                              <div key={tbName} className="border rounded-lg bg-white shadow-sm overflow-hidden">
+                                {/* TestBlock header */}
+                                <div className="bg-gradient-to-r from-blue-50 to-transparent border-b px-4 py-2.5 flex items-center justify-between">
+                                  <div className="flex items-center gap-2.5">
+                                    <Hammer className="h-4 w-4 text-blue-600" />
+                                    <div>
+                                      <h4 className="font-semibold text-sm">{tbName}</h4>
+                                      <p className="text-[11px] text-muted-foreground">{tbOts.length} OT &middot; {tbCompletadas} completadas</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-20 bg-gray-100 rounded-full h-1.5">
+                                      <div
+                                        className={`h-1.5 rounded-full ${tbPct >= 80 ? "bg-green-500" : tbPct >= 50 ? "bg-amber-500" : "bg-red-400"}`}
+                                        style={{ width: `${tbPct}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-medium text-muted-foreground w-8 text-right">{tbPct}%</span>
+                                  </div>
+                                </div>
+                                {/* Month groups within testblock */}
+                                <div className="divide-y">
+                                  {Object.entries(byMonth).map(([monthName, monthOts]) => (
+                                    <div key={monthName} className="px-4 py-3">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{monthName}</span>
+                                        <span className="text-[10px] bg-gray-100 rounded-full px-1.5 py-0.5 text-muted-foreground">{monthOts.length}</span>
+                                      </div>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                        {monthOts.map((ot) => {
+                                          const prioClass =
+                                            ot.prioridad === "alta" ? "border-l-red-500" :
+                                            ot.prioridad === "media" ? "border-l-amber-400" :
+                                            "border-l-green-400";
+                                          return (
+                                            <div
+                                              key={ot.id}
+                                              className={`border rounded-md p-3 bg-gray-50/50 hover:bg-gray-50 transition-colors border-l-4 ${prioClass}`}
+                                            >
+                                              <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="font-mono text-xs font-bold text-garces-cherry">{ot.codigo}</span>
+                                                    <StatusBadge status={ot.estado} />
+                                                  </div>
+                                                  <p className="text-sm font-medium mt-1 truncate">{ot.tipo_labor_nombre || `Tipo #${ot.id_tipo_labor || "-"}`}</p>
+                                                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                                                    <span>{formatDate(ot.fecha_plan_inicio)} - {formatDate(ot.fecha_plan_fin)}</span>
+                                                  </div>
+                                                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                                    {ot.responsable_nombre && <span>Resp: {ot.responsable_nombre}</span>}
+                                                    <span>Pos: {ot.posiciones_ejecutadas}/{ot.posiciones_total}</span>
+                                                  </div>
+                                                </div>
+                                                <div className="flex flex-col gap-1 shrink-0">
+                                                  {ot.estado !== "completada" && ot.estado !== "no_realizada" && (
+                                                    <Button
+                                                      variant="outline"
+                                                      size="sm"
+                                                      className="h-7 px-2 text-xs gap-1"
+                                                      onClick={() => { setSelectedOt(ot); setOtEjecOpen(true); }}
+                                                    >
+                                                      <Play className="h-3 w-3" /> Ejecutar
+                                                    </Button>
+                                                  )}
+                                                  <div className="flex gap-0.5 justify-end">
+                                                    <Button
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      className="h-6 w-6 p-0 text-muted-foreground"
+                                                      onClick={() => toast.info("Edicion de OT pendiente de implementar")}
+                                                    >
+                                                      <Pencil className="h-3 w-3" />
+                                                    </Button>
+                                                    <Button
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                                      onClick={() => { if (confirm(`Eliminar orden ${ot.codigo}?`)) deleteOtMut.mutate(ot.id); }}
+                                                    >
+                                                      <Trash2 className="h-3 w-3" />
+                                                    </Button>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     );
-                  },
-                },
-              ]}
-              exportFilename="ordenes_trabajo"
-            />
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </TabsContent>
 

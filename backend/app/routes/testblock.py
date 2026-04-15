@@ -182,11 +182,20 @@ def list_testblocks(
 ):
     from sqlalchemy import func, case
 
+    from app.models.maestras import Campo
+
     tbs = crud.list_all(db, TestBlock)
     if not tbs:
         return []
 
     tb_ids = [tb.id_testblock for tb in tbs]
+
+    # Resolve campo names in a single query
+    campo_ids = list({tb.id_campo for tb in tbs if tb.id_campo})
+    campo_map: dict[int, str] = {}
+    if campo_ids:
+        campos = db.query(Campo.id_campo, Campo.nombre).filter(Campo.id_campo.in_(campo_ids)).all()
+        campo_map = {c[0]: c[1] for c in campos}
 
     # Single GROUP BY query instead of N+1 per-testblock queries
     stats_q = (
@@ -206,6 +215,7 @@ def list_testblocks(
     result = []
     for tb in tbs:
         data = {c: getattr(tb, c) for c in tb.__class__.model_fields}
+        data["campo_nombre"] = campo_map.get(tb.id_campo, f"Campo #{tb.id_campo}")
         s = stats_map.get(tb.id_testblock)
         data["pos_alta"] = int(s[1]) if s else 0
         data["pos_baja"] = int(s[2]) if s else 0
