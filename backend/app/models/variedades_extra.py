@@ -53,8 +53,8 @@ class TestblockEvento(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    id_testblock: int
-    id_posicion: int
+    id_testblock: int = Field(foreign_key="testblocks.id_testblock")
+    id_posicion: int = Field(foreign_key="posiciones_testblock.id_posicion")
     tipo_evento: str = Field(sa_column=Column(sa.String(20), nullable=False))
     datos_antes: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(None)))
     datos_despues: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(None)))
