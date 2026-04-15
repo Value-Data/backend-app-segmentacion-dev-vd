@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2, Upload, Camera, History, X, Link2, Star, ShieldAlert } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -64,6 +64,7 @@ const bitacoraFields: FieldDef[] = [
 
 export function VariedadesPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { data, isLoading, create, update, remove, isCreating, isUpdating } = useCrud("variedades");
   const lk = useLookups();
@@ -72,6 +73,19 @@ export function VariedadesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [selectedVar, setSelectedVar] = useState<Record<string, unknown> | null>(null);
+
+  // Auto-select variedad from URL ?id=
+  useEffect(() => {
+    const idParam = searchParams.get("id");
+    if (idParam && data && data.length > 0 && !selectedVar) {
+      const found = (data as Record<string, unknown>[]).find((v) => String(v.id_variedad) === idParam);
+      if (found) {
+        setSelectedVar(found);
+        searchParams.delete("id");
+        setSearchParams(searchParams, { replace: true });
+      }
+    }
+  }, [searchParams, data, selectedVar, setSearchParams]);
   const [bitacoraOpen, setBitacoraOpen] = useState(false);
   const [editingBitacora, setEditingBitacora] = useState<BitacoraEntry | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "fotos" | "polinizantes" | "suscept" | "bitacora" | "log">("info");
