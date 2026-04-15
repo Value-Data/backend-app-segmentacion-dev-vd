@@ -249,6 +249,140 @@ def create_orden_trabajo(
 
 
 # ---------------------------------------------------------------------------
+# AUTO-GENERATE OTs from planned labors
+# ---------------------------------------------------------------------------
+
+@router.post("/auto-generar")
+def auto_generar_ots(
+    data: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin", "agronomo")),
+):
+    """Auto-generate work orders from existing planned labors.
+
+    Groups planificada labors by (testblock, tipo_labor, month) and creates
+    one OT per group. Skips groups that already have an OT.
+
+    Body: { temporada: "2025-2026", id_responsable?: int }
+    """
+    from app.models.testblock import TestBlock, PosicionTestBlock
+    from app.models.inventario import InventarioVivero
+
+    temporada = data.get("temporada", "2025-2026")
+    id_responsable = data.get("id_responsable")
+
+    # Get all planificada labors without OT for this temporada
+    labores = (
+        db.query(EjecucionLabor)
+        .filter(
+            EjecucionLabor.temporada == temporada,
+            EjecucionLabor.estado == "planificada",
+            (EjecucionLabor.id_orden_trabajo == None),
+        )
+        .all()
+    )
+
+    if not labores:
+        return {"created": 0, "message": "No hay labores pendientes sin OT"}
+
+    # Group by (testblock via posicion, tipo_labor, month)
+    groups: dict[tuple, list] = {}
+    for l in labores:
+        tb_id = None
+        if l.id_posicion:
+            pos = db.get(PosicionTestBlock, l.id_posicion)
+            if pos:
+                tb_id = pos.id_testblock
+        mes = l.fecha_programada.strftime("%Y-%m") if l.fecha_programada else "sin-fecha"
+        key = (tb_id, l.id_labor, mes)
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(l)
+
+    # Generate OT code sequence
+    year = date.today().year
+    max_seq_row = (
+        db.query(OrdenTrabajo)
+        .filter(OrdenTrabajo.codigo.like(f"OT-{year}-%"))
+        .order_by(OrdenTrabajo.id.desc())
+        .first()
+    )
+    if max_seq_row and max_seq_row.codigo:
+        try:
+            current_seq = int(max_seq_row.codigo.split("-")[-1])
+        except ValueError:
+            current_seq = 0
+    else:
+        current_seq = 0
+
+    created = 0
+    for (tb_id, id_labor, mes), labor_list in groups.items():
+        # Check if OT already exists for this group
+        existing = (
+            db.query(OrdenTrabajo)
+            .filter(
+                OrdenTrabajo.id_testblock == tb_id,
+                OrdenTrabajo.id_tipo_labor == id_labor,
+                OrdenTrabajo.temporada == temporada,
+            )
+            .first()
+        )
+        if existing:
+            # Link orphan labors to existing OT
+            for l in labor_list:
+                if not l.id_orden_trabajo:
+                    l.id_orden_trabajo = existing.id
+            continue
+
+        # Determine dates from month
+        if mes != "sin-fecha":
+            y, m = mes.split("-")
+            fecha_inicio = date(int(y), int(m), 1)
+            # Last day of month
+            if int(m) == 12:
+                fecha_fin = date(int(y) + 1, 1, 1) - timedelta(days=1)
+            else:
+                fecha_fin = date(int(y), int(m) + 1, 1) - timedelta(days=1)
+        else:
+            fecha_inicio = date.today()
+            fecha_fin = date.today() + timedelta(days=30)
+
+        current_seq += 1
+        codigo = f"OT-{year}-{current_seq:03d}"
+
+        ot = OrdenTrabajo(
+            codigo=codigo,
+            id_tipo_labor=id_labor,
+            id_testblock=tb_id,
+            temporada=temporada,
+            fecha_plan_inicio=fecha_inicio,
+            fecha_plan_fin=fecha_fin,
+            id_responsable=id_responsable,
+            prioridad="media",
+            estado="planificada",
+            posiciones_total=len(labor_list),
+            observaciones_plan=f"Auto-generada: {len(labor_list)} labores para {mes}",
+            usuario_creacion=user.username,
+        )
+        db.add(ot)
+        db.flush()
+
+        # Link labors to OT
+        for l in labor_list:
+            l.id_orden_trabajo = ot.id
+
+        created += 1
+
+    db.commit()
+    return {
+        "created": created,
+        "labores_vinculadas": len(labores),
+        "temporada": temporada,
+        "message": f"{created} órdenes de trabajo creadas para {len(labores)} labores",
+    }
+
+
+# ---------------------------------------------------------------------------
 # 8. GET /kanban — Kanban view grouped by estado
 # ---------------------------------------------------------------------------
 

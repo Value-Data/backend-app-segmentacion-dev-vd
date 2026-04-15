@@ -56,6 +56,8 @@ export const ordenesTrabajoService = {
     post<OrdenTrabajo>(`/ordenes-trabajo/${id}/reprogramar`, data),
   remove: (id: number) =>
     del<void>(`/ordenes-trabajo/${id}`),
+  autoGenerar: (data: Record<string, unknown>) =>
+    post<{ created: number; labores_vinculadas: number; message: string }>("/ordenes-trabajo/auto-generar", data),
   kanban: (params?: Record<string, any>) =>
     get<KanbanData>("/ordenes-trabajo/kanban", params),
   porPersona: (params?: Record<string, any>) =>

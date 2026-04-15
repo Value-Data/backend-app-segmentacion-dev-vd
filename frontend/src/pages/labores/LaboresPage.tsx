@@ -1180,6 +1180,22 @@ export function LaboresPage() {
               >
                 <Plus className="h-3.5 w-3.5" /> Nueva Orden de Trabajo
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  if (!confirm("Auto-generar ordenes de trabajo para todas las labores pendientes de la temporada 2025-2026?\n\nSe creara una OT por cada combinacion TestBlock + Tipo Labor + Mes.")) return;
+                  try {
+                    const res = await ordenesTrabajoService.autoGenerar({ temporada: "2025-2026" });
+                    toast.success(res.message);
+                    queryClient.invalidateQueries({ queryKey: ["ordenes-trabajo"] });
+                  } catch (e: any) {
+                    toast.error(e.message || "Error al auto-generar");
+                  }
+                }}
+              >
+                Auto-generar OTs
+              </Button>
             </div>
             <CrudTable
               data={ordenesTrabajo || []}
