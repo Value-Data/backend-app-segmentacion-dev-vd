@@ -38,6 +38,7 @@ import type { OrdenTrabajo } from "@/services/ordenesTrabajo";
 import { NuevaOrdenTrabajoWizard } from "@/pages/labores/NuevaOrdenTrabajoWizard";
 import { RegistrarEjecucionDialog } from "@/pages/labores/RegistrarEjecucionDialog";
 import { TabKanban } from "./TabKanban";
+import { TabPlanAgrupado } from "./TabPlanAgrupado";
 import { TabPorPersona } from "./TabPorPersona";
 import { TabCumplimientoTB } from "./TabCumplimientoTB";
 import { TabDesviaciones } from "./TabDesviaciones";
@@ -1056,14 +1057,9 @@ export function LaboresPage() {
           </div>
         </TabsContent>
 
-        {/* ==================== TAB: PLAN (existing CrudTable) ==================== */}
+        {/* ==================== TAB: PLAN (grouped by TB → Month → Type) ==================== */}
         <TabsContent value="plan">
-          <CrudTable
-            data={allLabores}
-            columns={planColumns as any}
-            isLoading={loadingPlan}
-            searchPlaceholder="Buscar labor..."
-          />
+          <TabPlanAgrupado testblockFilter={tbFilterNum} />
         </TabsContent>
 
         {/* ==================== TAB: CALENDARIO (existing LaborCalendar) ==================== */}
