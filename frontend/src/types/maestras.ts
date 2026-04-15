@@ -163,39 +163,6 @@ export interface Bodega extends BaseEntity {
   responsable?: string | null;
 }
 
-export interface Catalogo {
-  id: number;
-  tipo: string;
-  valor: string;
-  descripcion?: string | null;
-  orden: number;
-}
-
-export interface CentroCosto extends BaseEntity {
-  id: number;
-  codigo: string;
-  nombre: string;
-  descripcion?: string | null;
-  id_campo?: number | null;
-  responsable?: string | null;
-  presupuesto?: number | null;
-}
-
-export interface MarcoPlantacion extends BaseEntity {
-  id: number;
-  codigo: string;
-  nombre: string;
-  distancia_hilera?: string | null;
-  distancia_planta?: string | null;
-  sistema_conduccion?: string | null;
-  descripcion?: string | null;
-  dist_entre_hileras?: number | null;
-  dist_entre_plantas?: number | null;
-  plantas_hectarea?: number | null;
-  conduccion?: string | null;
-  especie_recomendada?: string | null;
-}
-
 export interface Variedad extends BaseEntity {
   id_variedad: number;
   id_especie?: number | null;
@@ -229,10 +196,3 @@ export interface Variedad extends BaseEntity {
   auto_fertil?: boolean | null;
 }
 
-export interface VariedadSusceptibilidad {
-  id_vs: number;
-  id_variedad: number;
-  id_suscept: number;
-  nivel?: string | null;
-  notas?: string | null;
-}

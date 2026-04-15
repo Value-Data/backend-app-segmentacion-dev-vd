@@ -14,7 +14,6 @@ from app.models.maestras import Especie, Portainjerto, Pmg, Campo, Vivero
 from app.models.inventario import InventarioVivero, MovimientoInventario, InventarioTestBlock
 from app.models.testblock import TestBlock, PosicionTestBlock, Planta
 from app.models.laboratorio import MedicionLaboratorio, ClasificacionCluster, EjecucionLabor
-from app.models.analisis import PaqueteTecnologico
 from app.models.bitacora import BitacoraVariedad
 from app.services.ai_service import get_ai_analysis
 

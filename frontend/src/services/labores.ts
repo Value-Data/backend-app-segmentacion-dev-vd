@@ -88,12 +88,8 @@ export const laboresService = {
   // Detalles labor
   detallesLabor: (idLabor: number, especie?: string) =>
     get<DetalleLabor[]>(`/labores/tipos-labor/${idLabor}/detalles`, especie ? { especie } : undefined),
-  seedDetallesLabor: () =>
-    post<{ message: string; created: number }>("/labores/seed-detalles-labor", {}),
   tiposLabor: () =>
     get<TipoLabor[]>("/labores/tipos-labor"),
-  seedTiposLabor: () =>
-    post<{ message: string; created: number }>("/labores/seed-tipos-labor", {}),
   estadosFenologicos: (params?: { especie?: number }) =>
     get<EstadoFenologico[]>("/mantenedores/estados-fenologicos", params),
   seedEstadosFenologicos: () =>
@@ -115,8 +111,6 @@ export const laboresService = {
   addEvidencia: (id: number, data: Record<string, unknown>) =>
     post<Evidencia>(`/labores/ejecucion/${id}/evidencias`, data),
   qrUrl: (id: number) => `${BASE_URL}/labores/ejecucion/${id}/qr`,
-  hoy: () =>
-    get<EjecucionLabor[]>("/labores/hoy"),
   ejecutarMasivo: (ids: number[], fecha_ejecucion?: string, ejecutor?: string) =>
     post<{ updated: number }>("/labores/ejecutar-masivo", { ids, fecha_ejecucion, ejecutor }),
   registroFenologico: (data: Record<string, unknown>) =>

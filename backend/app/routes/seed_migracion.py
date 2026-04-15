@@ -18,7 +18,7 @@ from app.models.sistema import Usuario
 from app.models.maestras import Campo, Cuartel, Especie, Portainjerto, Pmg
 from app.models.variedades import Variedad
 from app.models.inventario import InventarioVivero, MovimientoInventario
-from app.models.testblock import TestBlock, PosicionTestBlock, Planta, HistorialPosicion
+from app.models.testblock import TestBlock, PosicionTestBlock, Planta
 from app.models.laboratorio import MedicionLaboratorio, ClasificacionCluster
 from app.services.clustering_service import (
     clasificar_medicion as clasificar_bandas,

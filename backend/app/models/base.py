@@ -55,8 +55,6 @@ TABLE_PK_MAP: dict[str, str] = {
     "evidencia_labores": "id_evidencia",
     "variedades_log": "id_log",
     "defectos": "id",
-    "defectos_variedades": "id",
-    "asignaciones_testblock": "id_asignacion",
     "ordenes_trabajo": "id",
     "documentos_pdf": "id_documento",
     "reglas_cluster": "id",

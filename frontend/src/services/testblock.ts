@@ -54,8 +54,6 @@ export const testblockService = {
   eliminarPosiciones: (id: number, ids_posiciones: number[]) =>
     post<{ deleted: number }>(`/testblocks/${id}/eliminar-posiciones`, { ids_posiciones }),
 
-  pendientes: (id: number) =>
-    get<unknown[]>(`/testblocks/${id}/pendientes`),
   inventarioDisponible: (id: number) =>
     get<InventarioVivero[]>(`/testblocks/${id}/inventario-disponible`),
   inventarioTestblock: (id: number) =>

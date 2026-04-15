@@ -10,7 +10,7 @@ from app.models.maestras import (  # noqa: F401
 )
 from app.models.variedades import (  # noqa: F401
     Variedad, VariedadSusceptibilidad, VariedadLog,
-    Defecto, DefectoVariedad, AsignacionTestBlock,
+    Defecto,
 )
 from app.models.inventario import (  # noqa: F401
     InventarioVivero, MovimientoInventario, InventarioTestBlock, GuiaDespacho,

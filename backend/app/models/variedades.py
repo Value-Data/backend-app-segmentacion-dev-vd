@@ -1,5 +1,5 @@
 """Variedad, variedad_susceptibilidades, variedades_log,
-defectos, defectos_variedades, asignaciones_testblock models.
+defectos models.
 """
 
 import base64
@@ -102,25 +102,3 @@ class Defecto(SQLModel, table=True):
     updated_at: Optional[datetime] = Field(default=None)
     imagen_url: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(500)))
     imagen: Optional[bytes] = Field(default=None, sa_column=Column(sa.LargeBinary))
-
-
-# ── defectos_variedades ──────────────────────────────────────────────────────
-class DefectoVariedad(SQLModel, table=True):
-    __tablename__ = "defectos_variedades"
-    id: Optional[int] = Field(default=None, primary_key=True)
-    id_variedad: int = Field(foreign_key="variedades.id_variedad")
-    id_defecto: int = Field(foreign_key="defectos.id")
-    created_at: Optional[datetime] = Field(default=None)
-
-
-# ── asignaciones_testblock ──────────────────────────────────────────────────
-class AsignacionTestBlock(SQLModel, table=True):
-    __tablename__ = "asignaciones_testblock"
-    id_asignacion: Optional[int] = Field(default=None, primary_key=True)
-    id_variedad: int = Field(foreign_key="variedades.id_variedad")
-    id_cuartel: int = Field(foreign_key="cuarteles.id_cuartel")
-    cantidad_posiciones: Optional[int] = Field(default=None)
-    fecha_asignacion: Optional[date] = Field(default=None)
-    estado: Optional[str] = Field(default=None, sa_column=Column(sa.String(20)))
-    observaciones: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(None)))
-    fecha_creacion: Optional[datetime] = Field(default=None)
