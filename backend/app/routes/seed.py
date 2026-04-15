@@ -656,7 +656,7 @@ def seed_susceptibilidades(
 
     deactivated = 0
     for s in db.query(Susceptibilidad).filter(Susceptibilidad.activo == True).all():
-        if not any(s.codigo.startswith(p) for p in ("CIR-", "NEC-", "DUR-")):
+        if not any(s.codigo.startswith(p) for p in ("CIR-", "CER-", "NEC-", "DUR-")):
             s.activo = False
             deactivated += 1
 
