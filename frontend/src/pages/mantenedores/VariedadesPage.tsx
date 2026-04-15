@@ -75,17 +75,20 @@ export function VariedadesPage() {
   const [selectedVar, setSelectedVar] = useState<Record<string, unknown> | null>(null);
 
   // Auto-select variedad from URL ?id=
+  const urlIdHandled = useRef(false);
   useEffect(() => {
+    if (urlIdHandled.current) return;
     const idParam = searchParams.get("id");
-    if (idParam && data && data.length > 0 && !selectedVar) {
-      const found = (data as Record<string, unknown>[]).find((v) => String(v.id_variedad) === idParam);
-      if (found) {
-        setSelectedVar(found);
-        searchParams.delete("id");
-        setSearchParams(searchParams, { replace: true });
-      }
+    if (!idParam) return;
+    if (!data || (data as any[]).length === 0) return;
+    const found = (data as Record<string, unknown>[]).find((v) => String(v.id_variedad) === idParam);
+    if (found) {
+      urlIdHandled.current = true;
+      setSelectedVar(found);
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
     }
-  }, [searchParams, data, selectedVar, setSearchParams]);
+  }, [data, searchParams]);
   const [bitacoraOpen, setBitacoraOpen] = useState(false);
   const [editingBitacora, setEditingBitacora] = useState<BitacoraEntry | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "fotos" | "polinizantes" | "suscept" | "bitacora" | "log">("info");
