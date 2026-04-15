@@ -235,6 +235,16 @@ def crear_medicion(
         calibre_val = float(data.perimetro) / math.pi
         calibre = Decimal(str(round(calibre_val, 2)))
 
+    # Resolve testblock and lote from position
+    _pos_tb = None
+    _pos_lote = None
+    if data.id_posicion:
+        from app.models.testblock import PosicionTestBlock
+        _pos = db.query(PosicionTestBlock).filter(PosicionTestBlock.id_posicion == data.id_posicion).first()
+        if _pos:
+            _pos_tb = _pos.id_testblock
+            _pos_lote = _pos.id_lote
+
     medicion = MedicionLaboratorio(
         id_posicion=data.id_posicion,
         id_planta=data.id_planta,
@@ -291,6 +301,8 @@ def crear_medicion(
         id_variedad=data.id_variedad,
         id_especie=data.id_especie,
         id_portainjerto=data.id_portainjerto,
+        id_testblock=_pos_tb,
+        id_lote=_pos_lote,
     )
     db.add(medicion)
     db.flush()

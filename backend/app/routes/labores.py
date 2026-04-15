@@ -611,6 +611,13 @@ def create_planificacion(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo", "operador")),
 ):
+    # Resolve id_lote from position if available
+    pos_lote = None
+    if data.id_posicion:
+        pos = db.query(PosicionTestBlock).filter(PosicionTestBlock.id_posicion == data.id_posicion).first()
+        if pos:
+            pos_lote = pos.id_lote
+
     labor = EjecucionLabor(
         id_posicion=data.id_posicion,
         id_planta=data.id_planta,
@@ -621,6 +628,7 @@ def create_planificacion(
         estado="planificada",
         observaciones=data.observaciones,
         usuario_registro=user.username,
+        id_lote=pos_lote,
     )
     db.add(labor)
     db.commit()
@@ -657,6 +665,7 @@ def create_planificacion_testblock(
             estado="planificada",
             observaciones=data.observaciones,
             usuario_registro=user.username,
+            id_lote=pos.id_lote,
         )
         db.add(labor)
         created += 1
@@ -877,9 +886,11 @@ def registrar_fenologico(
 
     created = 0
     for pos_id in posiciones_ids:
-        # Resolve planta from position
+        # Resolve planta, lote, and testblock from position
         pos = db.get(PosicionTestBlock, pos_id)
         id_planta = getattr(pos, "id_planta", None) if pos else None
+        pos_lote = pos.id_lote if pos else None
+        pos_tb = pos.id_testblock if pos else None
 
         # Create EjecucionLabor entry (for labor tracking)
         ej = EjecucionLabor(
@@ -893,6 +904,7 @@ def registrar_fenologico(
             ejecutor=user.username,
             observaciones=f"{estado.nombre}: {porcentaje}% - {observaciones}" if porcentaje else f"{estado.nombre} - {observaciones}",
             usuario_registro=user.username,
+            id_lote=pos_lote,
         )
         db.add(ej)
 
@@ -906,6 +918,8 @@ def registrar_fenologico(
             porcentaje=porcentaje,
             observaciones=observaciones,
             usuario_registro=user.username,
+            id_testblock=pos_tb,
+            id_lote=pos_lote,
         )
         db.add(reg)
         created += 1
@@ -1231,6 +1245,62 @@ def fenologia_comparativa_export(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=comparativa_fenologica.xlsx"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Backfill — Propagate id_lote from positions to existing labores
+# ---------------------------------------------------------------------------
+
+@router.post("/backfill-lote")
+def backfill_lote(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Backfill id_lote on existing EjecucionLabor and RegistroFenologico
+    records by resolving from PosicionTestBlock.id_lote.
+    """
+    # Backfill EjecucionLabor
+    labores = (
+        db.query(EjecucionLabor)
+        .filter(
+            EjecucionLabor.id_lote == None,
+            EjecucionLabor.id_posicion != None,
+        )
+        .all()
+    )
+    updated_labores = 0
+    for l in labores:
+        pos = db.get(PosicionTestBlock, l.id_posicion)
+        if pos and pos.id_lote:
+            l.id_lote = pos.id_lote
+            updated_labores += 1
+
+    # Backfill RegistroFenologico
+    registros = (
+        db.query(RegistroFenologico)
+        .filter(
+            RegistroFenologico.id_lote == None,
+            RegistroFenologico.id_posicion != None,
+        )
+        .all()
+    )
+    updated_fenol = 0
+    for r in registros:
+        pos = db.get(PosicionTestBlock, r.id_posicion)
+        if pos:
+            if pos.id_lote:
+                r.id_lote = pos.id_lote
+                updated_fenol += 1
+            if pos.id_testblock and not r.id_testblock:
+                r.id_testblock = pos.id_testblock
+
+    db.commit()
+    return {
+        "labores_updated": updated_labores,
+        "labores_total": len(labores),
+        "fenologia_updated": updated_fenol,
+        "fenologia_total": len(registros),
+    }
 
 
 # ---------------------------------------------------------------------------

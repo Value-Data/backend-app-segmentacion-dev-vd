@@ -75,6 +75,8 @@ class MedicionLaboratorio(SQLModel, table=True):
     id_variedad: Optional[int] = Field(default=None, foreign_key="variedades.id_variedad")
     id_especie: Optional[int] = Field(default=None, foreign_key="especies.id_especie")
     id_portainjerto: Optional[int] = Field(default=None, foreign_key="portainjertos.id_portainjerto")
+    id_testblock: Optional[int] = Field(default=None, foreign_key="testblocks.id_testblock")
+    id_lote: Optional[int] = Field(default=None, foreign_key="inventario_vivero.id_inventario")
 
 
 class ClasificacionCluster(SQLModel, table=True):
@@ -117,6 +119,8 @@ class RegistroFenologico(SQLModel, table=True):
     foto_url: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(500)))
     usuario_registro: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(50)))
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    id_testblock: Optional[int] = Field(default=None, foreign_key="testblocks.id_testblock")
+    id_lote: Optional[int] = Field(default=None, foreign_key="inventario_vivero.id_inventario")
 
 
 class DetalleLabor(SQLModel, table=True):

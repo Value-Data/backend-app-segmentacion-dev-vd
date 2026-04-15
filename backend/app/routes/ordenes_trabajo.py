@@ -351,10 +351,24 @@ def auto_generar_ots(
         current_seq += 1
         codigo = f"OT-{year}-{current_seq:03d}"
 
+        # Resolve id_lote from the group's positions (use most common lote)
+        group_lote = None
+        lote_counts: dict[int, int] = {}
+        for l in labor_list:
+            if l.id_lote:
+                lote_counts[l.id_lote] = lote_counts.get(l.id_lote, 0) + 1
+            elif l.id_posicion:
+                p = db.get(PosicionTestBlock, l.id_posicion)
+                if p and p.id_lote:
+                    lote_counts[p.id_lote] = lote_counts.get(p.id_lote, 0) + 1
+        if lote_counts:
+            group_lote = max(lote_counts, key=lote_counts.get)
+
         ot = OrdenTrabajo(
             codigo=codigo,
             id_tipo_labor=id_labor,
             id_testblock=tb_id,
+            id_lote=group_lote,
             temporada=temporada,
             fecha_plan_inicio=fecha_inicio,
             fecha_plan_fin=fecha_fin,
