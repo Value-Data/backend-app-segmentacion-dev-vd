@@ -5,7 +5,7 @@ maestras -> inventario vivero -> testblocks -> posiciones -> alta plantas.
 from datetime import datetime, date
 from app.core.utils import utcnow
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -916,3 +916,102 @@ def seed_complementarios(
 
     db.commit()
     return {"status": "ok", "summary": summary}
+
+
+@router.post("/seed-labores-planificacion", tags=["Seed"])
+def seed_labores_planificacion(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    """Import planned labors from Excel 'Planificación test block' — sheet 'BASE 2'."""
+    import openpyxl
+    from io import BytesIO
+    from datetime import date as _date
+    from app.models.laboratorio import EjecucionLabor
+    from app.models.maestras import TipoLabor
+    from fastapi import HTTPException as _HTTPExc
+
+    content = file.file.read()
+    wb = openpyxl.load_workbook(BytesIO(content), data_only=True)
+    sheet_name = "BASE 2 " if "BASE 2 " in wb.sheetnames else "BASE 2" if "BASE 2" in wb.sheetnames else None
+    if not sheet_name:
+        raise _HTTPExc(status_code=400, detail=f"Hoja 'BASE 2' no encontrada. Hojas: {wb.sheetnames}")
+    ws = wb[sheet_name]
+
+    LABOR_MAP = {
+        "Fenológicos":("FENOLOGICO","fenologia","Registro Fenológico"),
+        "Poda invierno":("PODA_INV","poda","Poda de Invierno"),
+        "Aplicaciones":("APLICACION","fitosanidad","Aplicaciones Fitosanitarias"),
+        "Plantación":("PLANTACION_LAB","manejo","Plantación"),
+        "Cosecha":("COSECHA_LAB","cosecha","Cosecha"),
+        "Injertación":("INJERTACION","manejo","Injertación"),
+        "Formación":("FORMACION_LAB","manejo","Formación de Plantas"),
+        "Ortopedia":("ORTOPEDIA","manejo","Ortopedia"),
+        "Malezas":("MALEZAS","manejo","Control de Malezas"),
+        "Malezas ":("MALEZAS","manejo","Control de Malezas"),
+        "Riego":("RIEGO_LAB","riego","Riego"),
+        "Raleos":("RALEO_LAB","manejo","Raleo de Frutos"),
+        "Incisiones":("INCISION","manejo","Incisiones"),
+        "Poda luz":("PODA_LUZ","poda","Poda de Luz"),
+        "Poda luz ":("PODA_LUZ","poda","Poda de Luz"),
+        "Conteos":("CONTEO","manejo","Conteos"),
+        "Poda":("PODA_GRAL","poda","Poda General"),
+        "Poda ":("PODA_GRAL","poda","Poda General"),
+        "Material injertación":("MAT_INJERT","manejo","Material de Injertación"),
+        "Carteles":("CARTELES","manejo","Carteles"),
+        "Defoliación":("DEFOLIACION","manejo","Defoliación"),
+        "Desyeme":("DESYEME","manejo","Desyeme"),
+        "Inventario temporada":("INV_TEMP","manejo","Inventario Temporada"),
+        "Inventario":("INVENTARIO_LAB","manejo","Inventario"),
+    }
+
+    existing_tipos = {t.codigo: t for t in db.query(TipoLabor).all()}
+    tipos_creados = 0
+    for (codigo, categoria, nombre) in LABOR_MAP.values():
+        if codigo not in existing_tipos:
+            t = TipoLabor(codigo=codigo, nombre=nombre, categoria=categoria, activo=True)
+            db.add(t); db.flush()
+            existing_tipos[codigo] = t
+            tipos_creados += 1
+
+    tipo_id_map = {}
+    for excel_name, (codigo, _, _) in LABOR_MAP.items():
+        t = existing_tipos.get(codigo)
+        if t: tipo_id_map[excel_name.strip()] = t.id_labor
+
+    MES = {"Enero":1,"Febrero":2,"Marzo":3,"Abril":4,"Mayo":5,"Mayo ":5,"Junio":6,
+           "Julio":7,"Agosto":8,"Septiembre":9,"Octubre":10,"Noviembre":11,"Diciembre":12}
+
+    creados = skipped = 0
+    for r in range(2, ws.max_row + 1):
+        mes = str(ws.cell(row=r, column=1).value or "").strip()
+        especie = str(ws.cell(row=r, column=2).value or "").strip()
+        labor = str(ws.cell(row=r, column=3).value or "").strip()
+        estado_etapa = str(ws.cell(row=r, column=4).value or "").strip()
+        detalle = str(ws.cell(row=r, column=6).value or "").strip()
+        responsable = str(ws.cell(row=r, column=8).value or "").strip()
+        if not labor: continue
+
+        id_labor = tipo_id_map.get(labor)
+        if not id_labor: skipped += 1; continue
+
+        mn = MES.get(mes)
+        fecha = _date(2025 if mn and mn >= 7 else 2026, mn, 15) if mn else None
+
+        obs = " | ".join(filter(None, [
+            f"[{estado_etapa}]" if estado_etapa else None,
+            detalle[:200] if detalle and detalle != "-" else None,
+            f"Especie: {especie}" if especie else None,
+            f"Resp: {responsable}" if responsable else None,
+        ]))[:500] or None
+
+        db.add(EjecucionLabor(
+            id_labor=id_labor, temporada="2025-2026", fecha_programada=fecha,
+            estado="planificada", observaciones=obs, usuario_registro="seed_planificacion",
+        ))
+        creados += 1
+
+    db.commit(); wb.close()
+    return {"tipos_creados": tipos_creados, "labores_creadas": creados, "skipped": skipped,
+            "total": db.query(EjecucionLabor).count()}
