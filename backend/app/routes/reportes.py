@@ -99,17 +99,27 @@ def report_variedad(
             )
         plantaciones.append(pd)
 
-    # Lab results: mediciones from plants of this variety
+    # Lab results: mediciones linked by either id_planta OR id_variedad directo
+    # (R-2: la query anterior solo filtraba por id_planta y perdía mediciones
+    # que venían con id_variedad set pero id_planta NULL — mayoría del dataset).
+    from sqlalchemy import or_
     planta_ids = [
         pl.id_planta for pl in
         db.query(Planta.id_planta).filter(Planta.id_variedad == id_variedad).all()
     ]
-    mediciones = []
+    med_filter = MedicionLaboratorio.id_variedad == id_variedad
     if planta_ids:
-        med_rows = db.query(MedicionLaboratorio).filter(
-            MedicionLaboratorio.id_planta.in_(planta_ids)
-        ).order_by(MedicionLaboratorio.fecha_medicion.desc()).all()
-        mediciones = _serialize_rows(med_rows)
+        med_filter = or_(
+            MedicionLaboratorio.id_variedad == id_variedad,
+            MedicionLaboratorio.id_planta.in_(planta_ids),
+        )
+    med_rows = (
+        db.query(MedicionLaboratorio)
+        .filter(med_filter)
+        .order_by(MedicionLaboratorio.fecha_medicion.desc())
+        .all()
+    )
+    mediciones = _serialize_rows(med_rows)
 
     # Bitacora
     bitacora_rows = db.query(BitacoraVariedad).filter(
@@ -582,9 +592,23 @@ def ai_analysis(
         raise HTTPException(status_code=400, detail="tipo_reporte debe ser: variedad, lote, testblock")
 
     question = req.pregunta or "Analiza estos datos y da recomendaciones agronomicas concretas."
-    analisis = get_ai_analysis(context, question)
-
-    return {"analisis": analisis}
+    try:
+        from app.services.ai_service import AIError
+        analisis = get_ai_analysis(context, question)
+        return {"analisis": analisis, "status": "ok"}
+    except AIError as e:
+        status_map = {
+            "config": 503,
+            "connection": 502,
+            "auth": 502,
+            "quota": 429,
+            "timeout": 504,
+            "other": 502,
+        }
+        raise HTTPException(
+            status_code=status_map.get(e.kind, 502),
+            detail=f"[{e.kind}] {e.detail}",
+        )
 
 
 # ── PDF Report ─────────────────────────────────────────────────────────────

@@ -1400,7 +1400,7 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
       const pregunta = aiPrompt
         || (nivel === "alto"
           ? `Genera un resumen ejecutivo de alto nivel de las variedades: ${selectedNames}. Incluye conclusiones y recomendaciones clave para la toma de decisiones.`
-          : `Genera un analisis detallado de bajo nivel con todos los parametros de cosecha de las variedades: ${selectedNames}. Incluye firmeza por punto, distribucion de calibre, color de cubrimiento, SS%, acidez, y comparacion entre portainjertos.`);
+          : `Genera un análisis detallado de bajo nivel con todos los parámetros de cosecha de las variedades: ${selectedNames}. Incluye firmeza por punto, distribución de calibre, color de cubrimiento, SS%, acidez, y comparación entre portainjertos.`);
       const ids = Array.from(selectedIds);
       // Use first selected variedad for the AI context
       const res = await reportesService.aiAnalisis({
@@ -1410,7 +1410,21 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
       });
       setAiResponse(res.analisis);
     } catch (e: any) {
-      setAiResponse("Error: " + (e?.message || "No se pudo generar el analisis"));
+      const msg = String(e?.message || "No se pudo generar el análisis");
+      // Detectar categoría por prefijo [kind] que agrega el backend
+      if (msg.includes("[config]")) {
+        setAiResponse("⚠️ **Servicio de IA no configurado**\n\nEl administrador debe configurar AZURE_OPENAI_API_KEY y AZURE_OPENAI_ENDPOINT en el servidor para habilitar este análisis.");
+      } else if (msg.includes("[connection]")) {
+        setAiResponse("⚠️ **No se pudo conectar al servicio de IA**\n\nEl endpoint Azure OpenAI no respondió. Verifica con el administrador si el servicio está disponible o si la URL del deployment cambió.");
+      } else if (msg.includes("[auth]")) {
+        setAiResponse("⚠️ **Credenciales inválidas**\n\nLa API key de Azure OpenAI fue rechazada. El administrador debe rotarla.");
+      } else if (msg.includes("[quota]")) {
+        setAiResponse("⚠️ **Cuota de IA excedida**\n\nSe alcanzó el límite de uso del servicio. Intenta en unos minutos o contacta al administrador para ampliar cuota.");
+      } else if (msg.includes("[timeout]")) {
+        setAiResponse("⚠️ **El servicio de IA tardó demasiado en responder**\n\nIntenta nuevamente en unos segundos.");
+      } else {
+        setAiResponse("❌ " + msg);
+      }
     } finally {
       setAiLoading(false);
     }
@@ -1505,7 +1519,7 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
         <div className="bg-white rounded-xl border p-4 space-y-3">
           <h3 className="font-semibold text-sm flex items-center gap-2">
             <span className="bg-garces-cherry text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">2</span>
-            Analisis con IA
+            Análisis con IA
           </h3>
 
           <div className="flex flex-wrap gap-3 items-center">
@@ -1568,7 +1582,7 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            El PDF incluye tablas de parametros, graficos de calibre y color, fotos (si disponibles), y analisis IA.
+            El PDF incluye tablas de parámetros y gráficos de calibre y color. El análisis IA se incluye solo si el servicio está configurado y disponible; las fotos requieren que hayan sido persistidas desde el detalle de variedad.
           </p>
         </div>
       )}
@@ -1587,7 +1601,7 @@ export function ReportesPage() {
           <FileText className="h-5 w-5 text-garces-cherry" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-garces-cherry">Reportes y Gestión</h2>
+          <h2 className="text-xl font-bold text-garces-cherry">Reportes y Análisis</h2>
           <p className="text-sm text-muted-foreground">
             Reportes cruzados con análisis AI integrado — combine filtros para acotar resultados
           </p>

@@ -48,6 +48,14 @@ ESTRUCTURA DEL INFORME:
 Escribe en espanol. Usa formato Markdown. Se conciso pero completo."""
 
 
+class AIError(Exception):
+    """Clase base para errores del servicio AI con clasificación."""
+    def __init__(self, kind: str, detail: str):
+        super().__init__(detail)
+        self.kind = kind  # "config" | "connection" | "auth" | "quota" | "timeout" | "other"
+        self.detail = detail
+
+
 def get_ai_analysis(context: str, question: str) -> str:
     """Send context + question to Azure OpenAI and return professional analysis.
 
@@ -56,16 +64,30 @@ def get_ai_analysis(context: str, question: str) -> str:
         question: User question or default analysis request.
 
     Returns:
-        AI-generated analysis text, or an error/config message.
+        AI-generated analysis text.
+
+    Raises:
+        AIError — with `.kind` one of: config/connection/auth/quota/timeout/other.
     """
     settings = get_settings()
 
     if not settings.AZURE_OPENAI_API_KEY or settings.AZURE_OPENAI_API_KEY == "tu_api_key":
-        return "AI no configurada. Configure AZURE_OPENAI_API_KEY en .env"
+        raise AIError("config", "AZURE_OPENAI_API_KEY no está configurada en el servidor.")
+    if not settings.AZURE_OPENAI_ENDPOINT:
+        raise AIError("config", "AZURE_OPENAI_ENDPOINT no está configurado.")
 
     try:
         from openai import AzureOpenAI
+        from openai import (
+            APIConnectionError as _Conn,
+            AuthenticationError as _Auth,
+            RateLimitError as _Rate,
+            APITimeoutError as _Timeout,
+        )
+    except ImportError:
+        raise AIError("config", "Paquete openai no instalado en el servidor.")
 
+    try:
         client = AzureOpenAI(
             api_key=settings.AZURE_OPENAI_API_KEY,
             api_version=settings.AZURE_OPENAI_API_VERSION,
@@ -90,6 +112,17 @@ def get_ai_analysis(context: str, question: str) -> str:
                 },
             ],
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content or ""
+    except _Conn as e:
+        raise AIError(
+            "connection",
+            f"No se pudo conectar a Azure OpenAI. Verifica endpoint '{settings.AZURE_OPENAI_ENDPOINT}' y conectividad de red. ({str(e)[:120]})",
+        )
+    except _Auth as e:
+        raise AIError("auth", f"Credenciales inválidas. Verifica AZURE_OPENAI_API_KEY. ({str(e)[:120]})")
+    except _Rate as e:
+        raise AIError("quota", f"Cuota Azure OpenAI excedida. ({str(e)[:120]})")
+    except _Timeout as e:
+        raise AIError("timeout", f"Timeout del servicio AI. ({str(e)[:120]})")
     except Exception as e:
-        return f"Error AI: {str(e)[:200]}"
+        raise AIError("other", f"{type(e).__name__}: {str(e)[:200]}")
