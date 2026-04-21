@@ -99,7 +99,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       silent ||
       (isGet && (response.status === 404 || response.status === 422));
     if (!suppress) {
-      toast.error(detail);
+      // Dedup: identical errors on the same endpoint reuse the same id
+      // so they replace instead of stacking.
+      toast.error(detail, { id: `api-err:${method}:${path}:${detail.slice(0, 80)}` });
     }
     throw new Error(detail);
   }

@@ -18,7 +18,9 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+_BACKEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend")
+os.chdir(_BACKEND_DIR)
+sys.path.insert(0, _BACKEND_DIR)
 from sqlalchemy import text  # noqa: E402
 from app.core.database import engine  # noqa: E402
 from app.routes.labores import SEED_ESTADOS_FENOLOGICOS, _parse_mes_range  # noqa: E402

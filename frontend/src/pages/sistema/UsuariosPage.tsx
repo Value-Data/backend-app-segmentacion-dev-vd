@@ -24,7 +24,13 @@ const userColumns = [
   {
     accessorKey: "activo",
     header: "Estado",
-    cell: ({ getValue }: any) => <StatusBadge status={getValue() ? "activo" : "inactivo"} />,
+    cell: ({ row, getValue }: any) => {
+      const activo = getValue();
+      const ultimoAcceso = row.original?.ultimo_acceso;
+      // Usuario activo pero nunca se logueó → pendiente (no terminó onboarding)
+      if (activo && !ultimoAcceso) return <StatusBadge status="pendiente" />;
+      return <StatusBadge status={activo ? "activo" : "inactivo"} />;
+    },
   },
   { accessorKey: "ultimo_acceso", header: "Último Acceso", cell: ({ getValue }: any) => formatDate(getValue() as string) },
 ];

@@ -20,8 +20,10 @@ import argparse
 import os
 import sys
 
-# Import backend config
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+# Switch cwd to backend/ so pydantic-settings finds backend/.env
+_BACKEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend")
+os.chdir(_BACKEND_DIR)
+sys.path.insert(0, _BACKEND_DIR)
 from app.core.database import engine  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
@@ -30,11 +32,17 @@ LEGACY_ACTIONS = [
     "APROBAR_PROVEEDOR",
     "RECHAZAR_PROVEEDOR",
     "REGISTRAR_PROVEEDOR",
-    "UPLOAD_SECCION",
-    "EJECUTAR_SCORING",
+    "BAJA_PROVEEDOR",
+    "BLOQUEAR_PROVEEDOR",
+    "DESBLOQUEAR_PROVEEDOR",
     "APROBAR_CONTRATISTA",
     "RECHAZAR_CONTRATISTA",
     "REGISTRAR_CONTRATISTA",
+    "UPLOAD_SECCION",
+    "EJECUTAR_SCORING",
+    "OVERRIDE_SCORING",
+    "RECHAZO_SII",
+    "CARGAR_DB",
 ]
 
 # Also: anything with contratista_rut set is legacy

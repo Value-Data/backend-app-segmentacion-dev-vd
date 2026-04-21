@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Package, TrendingUp, Truck, AlertTriangle, Sprout, AlertCircle, Eye, QrCode, Filter, X, CheckSquare, FileDown, ArrowUpRight, ArrowDownRight, ArrowLeft, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -87,7 +87,16 @@ function StockBar({ actual, inicial }: { actual: number; inicial: number }) {
 export function InventarioPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [wizardOpen, setWizardOpen] = useState(searchParams.get("wizard") === "1");
+  useEffect(() => {
+    // Quick-action from Home can arrive as /inventario?wizard=1 → open modal on mount
+    if (searchParams.get("wizard") === "1") {
+      setWizardOpen(true);
+      searchParams.delete("wizard");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [despachoOpen, setDespachoOpen] = useState(false);
   const [selectedBodega, setSelectedBodega] = useState<number | "todas">("todas");
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>("todos");

@@ -6,6 +6,8 @@ import { useAuthStore } from "@/stores/authStore";
 import { get } from "@/services/api";
 import { CommandPalette } from "./CommandPalette";
 import { useSidebarStore } from "@/stores/sidebarStore";
+import { useTemporadaStore } from "@/stores/temporadaStore";
+import { mantenedorService } from "@/services/mantenedores";
 
 const titleMap: Record<string, string> = {
   "/": "Dashboard",
@@ -135,6 +137,21 @@ export function Header() {
   });
   const isConnected = !!health && !dbDown;
 
+  // Temporadas: load from backend and sync to global store
+  const currentTemporada = useTemporadaStore((s) => s.current);
+  const setCurrentTemporada = useTemporadaStore((s) => s.setCurrent);
+  const [tempMenuOpen, setTempMenuOpen] = useState(false);
+  const { data: temporadas } = useQuery({
+    queryKey: ["temporadas"],
+    queryFn: () => mantenedorService("temporadas").list(),
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+  const temporadaOpts = ((temporadas || []) as any[])
+    .filter((t) => t.activo !== false)
+    .map((t) => String(t.nombre || t.codigo || ""))
+    .filter((v) => v && !/test/i.test(v));
+
   return (
     <>
       <header className="h-14 border-b border-border/50 bg-card/80 backdrop-blur-sm flex items-center justify-between px-6 shrink-0 sticky top-0 z-20">
@@ -193,10 +210,35 @@ export function Header() {
             )}
           </div>
 
-          {/* Season */}
-          <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-full px-3 py-1.5">
-            <Calendar className="h-3.5 w-3.5" />
-            <span>2024-2025</span>
+          {/* Season selector */}
+          <div className="hidden md:block relative">
+            <button
+              onClick={() => setTempMenuOpen((o) => !o)}
+              onBlur={() => setTimeout(() => setTempMenuOpen(false), 150)}
+              className="flex items-center gap-1.5 text-xs text-foreground bg-muted/40 hover:bg-muted/60 rounded-full px-3 py-1.5 transition-colors"
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              <span>{currentTemporada}</span>
+              <ChevronRight className={`h-3 w-3 transition-transform ${tempMenuOpen ? "rotate-90" : ""}`} />
+            </button>
+            {tempMenuOpen && temporadaOpts.length > 0 && (
+              <div className="absolute right-0 top-full mt-1 bg-card border border-border/50 rounded-lg shadow-lg py-1 z-30 min-w-[140px]">
+                {temporadaOpts.map((t) => (
+                  <button
+                    key={t}
+                    onMouseDown={() => {
+                      setCurrentTemporada(t);
+                      setTempMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors ${
+                      t === currentTemporada ? "bg-muted/40 font-semibold" : ""
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Dark mode */}

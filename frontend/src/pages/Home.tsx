@@ -275,10 +275,10 @@ export function HomePage() {
           </h3>
           <div className="space-y-2">
             {[
-              { label: "Nuevo Lote / Planta", to: "/inventario", icon: Sprout, desc: "Crear plantas en vivero" },
+              { label: "Nuevo Lote / Planta", to: "/inventario?wizard=1", icon: Sprout, desc: "Crear plantas en vivero" },
               { label: "Despachar a TestBlock", to: "/inventario", icon: Truck, desc: "Enviar stock a campo" },
               { label: "Planificar Labores", to: "/labores", icon: Hammer, desc: "Programar trabajo" },
-              { label: "Registrar Medicion", to: "/laboratorio", icon: FlaskConical, desc: "Datos de calidad" },
+              { label: "Registrar Medición", to: "/laboratorio", icon: FlaskConical, desc: "Datos de calidad" },
               { label: "Ver Reportes", to: "/reportes", icon: BarChart3, desc: "Informes y AI" },
             ].map(({ label, to, icon: Icon, desc }) => (
               <button

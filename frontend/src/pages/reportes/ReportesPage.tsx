@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   FileText, Sparkles, Package, TreePine, Grid3X3,
   FlaskConical, ClipboardList, Loader2, Sprout, BookOpen,
-  Hammer, TrendingUp, ArrowRight, Download, Filter, X,
+  Hammer, TrendingUp, ArrowRight, Download, Filter, X, Search,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1355,6 +1355,7 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
   const [aiResponse, setAiResponse] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [nivel, setNivel] = useState<"alto" | "bajo">("alto");
+  const [varSearch, setVarSearch] = useState("");
 
   const { data: variedades } = useQuery({
     queryKey: ["variedades"],
@@ -1365,8 +1366,16 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
     let items = (variedades || []) as any[];
     if (filters.especie) items = items.filter((v: any) => String(v.id_especie) === filters.especie);
     if (filters.pmg) items = items.filter((v: any) => String(v.id_pmg) === filters.pmg);
-    return items.filter((v: any) => v.activo !== false);
-  }, [variedades, filters.especie, filters.pmg]);
+    items = items.filter((v: any) => v.activo !== false);
+    if (varSearch.trim()) {
+      const q = varSearch.toLowerCase();
+      items = items.filter((v: any) =>
+        (v.nombre || "").toLowerCase().includes(q) ||
+        (v.codigo || "").toLowerCase().includes(q),
+      );
+    }
+    return items;
+  }, [variedades, filters.especie, filters.pmg, varSearch]);
 
   const selectedNames = useMemo(() => {
     return filtered
@@ -1437,8 +1446,36 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
         <h3 className="font-semibold text-sm flex items-center gap-2">
           <span className="bg-garces-cherry text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">1</span>
           Seleccionar variedades
+          <span className="ml-2 text-xs font-normal text-muted-foreground">({filtered.length} disponibles)</span>
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 max-w-sm min-w-[200px]">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre o código..."
+              value={varSearch}
+              onChange={(e) => setVarSearch(e.target.value)}
+              className="w-full pl-8 pr-2 py-1.5 rounded-md border text-sm"
+            />
+          </div>
+          <button
+            onClick={() => setSelectedIds(new Set(filtered.map((v: any) => v.id_variedad)))}
+            className="text-xs px-2.5 py-1.5 rounded-md border hover:bg-muted"
+            disabled={filtered.length === 0}
+          >
+            Seleccionar todas ({filtered.length})
+          </button>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs px-2.5 py-1.5 rounded-md border hover:bg-muted"
+            >
+              Limpiar ({selectedIds.size})
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 max-h-[400px] overflow-y-auto">
           {filtered.map((v: any) => {
             const isSelected = selectedIds.has(v.id_variedad);
             return (
@@ -1459,7 +1496,7 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
           })}
         </div>
         {selectedIds.size > 0 && (
-          <p className="text-xs text-garces-cherry font-medium">{selectedIds.size} seleccionadas: {selectedNames}</p>
+          <p className="text-xs text-garces-cherry font-medium">{selectedIds.size} seleccionadas: {selectedNames.length > 120 ? selectedNames.slice(0, 120) + "..." : selectedNames}</p>
         )}
       </div>
 

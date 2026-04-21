@@ -24,9 +24,11 @@ import { CrudForm } from "@/components/shared/CrudForm";
 import { KpiCard } from "@/components/shared/KpiCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { laboresService } from "@/services/labores";
+import { get } from "@/services/api";
 import type { LaborDashboard, EstadoFenologico, DetalleLabor } from "@/services/labores";
 import { useTestblocks } from "@/hooks/useTestblock";
 import { useAuthStore } from "@/stores/authStore";
+import { useTemporadaStore } from "@/stores/temporadaStore";
 import { useLookups } from "@/hooks/useLookups";
 import { mantenedorService } from "@/services/mantenedores";
 import { formatDate } from "@/lib/utils";
@@ -411,11 +413,19 @@ export function LaboresPage() {
     });
   }, [dashboard?.por_tipo]);
 
+  // Use global temporada selector as default for all "plan" modals
+  const currentTemporada = useTemporadaStore((s) => s.current);
+
   // --- form fields ---
   const createFields: FieldDef[] = [
-    { key: "id_posicion", label: "ID Posición", type: "number" },
+    {
+      key: "id_posicion",
+      label: "ID Posición",
+      type: "number",
+      placeholder: "Copia el ID desde la grilla del TestBlock",
+    },
     { key: "id_labor", label: "Tipo de Labor", type: "select", required: true, options: laborOpts },
-    { key: "temporada", label: "Temporada", type: "text", placeholder: "2024-2025" },
+    { key: "temporada", label: "Temporada", type: "text", placeholder: currentTemporada },
     { key: "fecha_programada", label: "Fecha Programada", type: "date", required: true },
     { key: "observaciones", label: "Observaciones", type: "textarea" },
   ];
@@ -423,14 +433,25 @@ export function LaboresPage() {
   const planTbFields: FieldDef[] = [
     { key: "id_testblock", label: "TestBlock", type: "select", required: true, options: tbOpts },
     { key: "id_labor", label: "Tipo de Labor", type: "select", required: true, options: laborOpts },
-    { key: "temporada", label: "Temporada", type: "text", placeholder: "2025-2026" },
+    { key: "temporada", label: "Temporada", type: "text", placeholder: currentTemporada },
     { key: "fecha_programada", label: "Fecha Programada", type: "date", required: true },
     { key: "observaciones", label: "Observaciones", type: "textarea" },
   ];
 
+  // Load users for ejecutor selector
+  const { data: usuariosSistema } = useQuery({
+    queryKey: ["sistema", "usuarios"],
+    queryFn: () => get<any[]>("/sistema/usuarios"),
+    staleTime: 5 * 60_000,
+  });
+  const ejecutorOpts = (usuariosSistema || []).map((u: any) => ({
+    value: u.username,
+    label: u.nombre_completo || u.username,
+  }));
+
   const ejecutarFields: FieldDef[] = [
     { key: "fecha_ejecucion", label: "Fecha Ejecución", type: "date", required: true },
-    { key: "ejecutor", label: "Ejecutor", type: "text", required: true },
+    { key: "ejecutor", label: "Ejecutor", type: "select", required: true, options: ejecutorOpts },
     { key: "duracion_min", label: "Duración (min)", type: "number" },
     { key: "observaciones", label: "Observaciones", type: "textarea" },
   ];
@@ -1730,6 +1751,7 @@ export function LaboresPage() {
         onClose={() => setCreateOpen(false)}
         onSubmit={async (data) => { await createMut.mutateAsync(data); }}
         fields={createFields}
+        initialData={{ temporada: currentTemporada }}
         title="Planificar Labor (Posición)"
         isLoading={createMut.isPending}
       />
@@ -1740,6 +1762,7 @@ export function LaboresPage() {
         onClose={() => setPlanTbOpen(false)}
         onSubmit={async (data) => { await planTbMut.mutateAsync(data); }}
         fields={planTbFields}
+        initialData={{ temporada: currentTemporada }}
         title="Planificar Labor para TestBlock Completo"
         isLoading={planTbMut.isPending}
       />
