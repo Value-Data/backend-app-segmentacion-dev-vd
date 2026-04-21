@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Hammer, CheckCircle2, Clock, AlertTriangle, Plus, CalendarDays,
   TrendingUp, QrCode, Camera, FileText, Download, X, Image as ImageIcon,
-  Calendar, MoreHorizontal, Leaf, Scissors, ChevronDown, ChevronRight, ListChecks,
+  Calendar, Leaf, Scissors, ChevronDown, ChevronRight, ListChecks,
   ClipboardList, Play, Pencil, Trash2, MapPin, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -980,14 +980,14 @@ export function LaboresPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="text-muted-foreground border-gray-200 text-xs h-8 w-8 p-0"
+                          className="border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-blue-700 text-xs h-8"
                           onClick={() => {
                             setSelectedLabor(labor);
                             setEjecutarOpen(true);
                           }}
-                          title="Más opciones"
+                          title="Registrar ejecución"
                         >
-                          <MoreHorizontal className="h-4 w-4" />
+                          <Play className="h-3.5 w-3.5 mr-1" /> Ejecutar
                         </Button>
                       </div>
                     </div>
@@ -1056,13 +1056,14 @@ export function LaboresPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-muted-foreground border-gray-200 text-xs h-8 w-8 p-0"
+                        className="border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-blue-700 text-xs h-8"
                         onClick={() => {
                           setSelectedLabor(labor);
                           setEjecutarOpen(true);
                         }}
+                        title="Registrar ejecución"
                       >
-                        <MoreHorizontal className="h-4 w-4" />
+                        <Play className="h-3.5 w-3.5 mr-1" /> Ejecutar
                       </Button>
                     </div>
                   );
@@ -1320,13 +1321,14 @@ export function LaboresPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="text-muted-foreground border-gray-200 text-xs h-8 w-8 p-0"
+                          className="border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-blue-700 text-xs h-8"
                           onClick={() => {
                             setSelectedLabor(labor);
                             setEjecutarOpen(true);
                           }}
+                          title="Registrar ejecución"
                         >
-                          <MoreHorizontal className="h-4 w-4" />
+                          <Play className="h-3.5 w-3.5 mr-1" /> Ejecutar
                         </Button>
                       </div>
                     </div>

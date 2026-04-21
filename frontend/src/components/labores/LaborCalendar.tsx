@@ -496,10 +496,13 @@ export function LaborCalendar({ labores, laborNames, onSelectLabor }: LaborCalen
                                       }}
                                     >
                                       <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[11px] text-gray-700 truncate">
+                                        <span
+                                          className="text-[11px] text-gray-700 truncate"
+                                          title={`Posición ${l.id_posicion ?? "sin asignar"}`}
+                                        >
                                           Pos. {l.id_posicion ?? "-"}
                                         </span>
-                                        <span className={`text-[10px] ${stColor}`}>
+                                        <span className={`text-[10px] ${stColor}`} title={st}>
                                           {st}
                                         </span>
                                       </div>
