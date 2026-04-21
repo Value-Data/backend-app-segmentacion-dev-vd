@@ -9,7 +9,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Pencil, Trash2, Search, Plus, Loader2, Download, Inbox } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, Search, Plus, Loader2, Download, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -161,26 +161,33 @@ export function CrudTable({
       </div>
 
       {/* Table */}
-      <div className="rounded-md border bg-white overflow-auto">
+      <div className="rounded-md border bg-card overflow-auto">
         <table className="w-full text-sm">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b bg-muted/50">
-                {hg.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className={cn(
-                      "h-10 px-3 text-left font-medium text-muted-foreground",
-                      header.column.getCanSort() && "cursor-pointer select-none"
-                    )}
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    <div className="flex items-center gap-1">
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      {header.column.getCanSort() && <ArrowUpDown className="h-3 w-3" />}
-                    </div>
-                  </th>
-                ))}
+                {hg.headers.map((header) => {
+                  const sortDir = header.column.getIsSorted();
+                  return (
+                    <th
+                      key={header.id}
+                      className={cn(
+                        "h-10 px-3 text-left font-medium text-muted-foreground",
+                        header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground transition-colors"
+                      )}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      <div className="flex items-center gap-1">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getCanSort() && (
+                          sortDir === "asc" ? <ArrowUp className="h-3 w-3 text-garces-cherry" /> :
+                          sortDir === "desc" ? <ArrowDown className="h-3 w-3 text-garces-cherry" /> :
+                          <ArrowUpDown className="h-3 w-3 opacity-40" />
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             ))}
           </thead>
