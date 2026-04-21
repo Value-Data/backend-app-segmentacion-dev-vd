@@ -122,7 +122,11 @@ export function GenericMantenedorPage({
           </Button>
           <div>
             <h2 className="text-xl font-bold text-garces-cherry">{title}</h2>
-            <p className="text-xs text-muted-foreground">{rows.length} registros</p>
+            <p className="text-xs text-muted-foreground">
+              {filtered.length === rows.length
+                ? `${rows.length} ${rows.length === 1 ? "registro" : "registros"}`
+                : `${filtered.length} de ${rows.length} ${rows.length === 1 ? "registro" : "registros"}`}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">

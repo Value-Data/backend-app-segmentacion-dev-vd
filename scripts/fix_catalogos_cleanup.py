@@ -28,13 +28,46 @@ import sys
 _BACKEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend")
 os.chdir(_BACKEND_DIR)
 sys.path.insert(0, _BACKEND_DIR)
-from sqlalchemy import text  # noqa: E402
-from app.core.database import engine  # noqa: E402
+from sqlalchemy import text, create_engine  # noqa: E402
+from app.core.config import get_settings  # noqa: E402
+
+# Rebuild engine with larger timeout to survive Azure serverless cold starts.
+_s = get_settings()
+_cs = (
+    f"DRIVER={{{_s.DB_DRIVER}}};"
+    f"SERVER={_s.DB_SERVER};"
+    f"DATABASE={_s.DB_NAME};"
+    f"UID={_s.DB_USER};"
+    f"PWD={_s.DB_PASSWORD};"
+    "Encrypt=yes;TrustServerCertificate=no;"
+    "Connection Timeout=120;"
+)
+engine = create_engine(
+    f"mssql+pyodbc:///?odbc_connect={_cs}",
+    pool_pre_ping=True,
+)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+def _wake_db(max_attempts: int = 8, delay: int = 15):
+    """Try to wake the Azure DB; serverless can take 1-2 min to resume."""
+    import time
+    for i in range(max_attempts):
+        try:
+            with engine.connect() as c:
+                c.execute(text("SELECT 1"))
+            if i > 0:
+                print(f"  BD despertó tras {i} reintento(s)")
+            return
+        except Exception:
+            if i < max_attempts - 1:
+                print(f"  Intento {i+1}/{max_attempts}: BD dormida. Esperando {delay}s...")
+                time.sleep(delay)
+    raise RuntimeError(f"BD no respondió tras {max_attempts} intentos")
+
+
+# -----------------------------------------------------------------------------
 # Tildes
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 TILDES_PAISES = [
     ("Espana", "España"),
@@ -66,7 +99,7 @@ TILDES_REGIONES = [
 
 
 def op_tildes(conn, execute: bool) -> int:
-    print("═══ TILDES ═══")
+    print("=== TILDES ===")
     total = 0
     for tabla, pares in [("paises", TILDES_PAISES), ("regiones", TILDES_REGIONES)]:
         for old, new in pares:
@@ -77,7 +110,7 @@ def op_tildes(conn, execute: bool) -> int:
                 {"old": old},
             ).scalar()
             if count:
-                print(f"  {tabla}: {count} filas  '{old}' → '{new}'")
+                print(f"  {tabla}: {count} filas  '{old}' -> '{new}'")
                 total += count
                 if execute:
                     conn.execute(
@@ -89,9 +122,9 @@ def op_tildes(conn, execute: bool) -> int:
     return total
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Data test
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 TEST_PATTERNS = ["%_TEST_%", "%E2E%", "%2BAD31%", "%Prueba%", "%Import Masivo%", "Test%", "%TI-PI%"]
 
@@ -106,7 +139,7 @@ TEST_TABLES = [
 
 
 def op_test_data(conn, execute: bool) -> int:
-    print("═══ DATA TEST ═══")
+    print("=== DATA TEST ===")
     total = 0
     for tabla, campo, id_col in TEST_TABLES:
         for pat in TEST_PATTERNS:
@@ -131,15 +164,15 @@ def op_test_data(conn, execute: bool) -> int:
     return total
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Estados Planta Es Final (#77)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 ESTADOS_FINALES = ["baja", "cosechada", "arrancada", "descartada", "muerta", "eliminada"]
 
 
 def op_estados_final(conn, execute: bool) -> int:
-    print("═══ ESTADOS PLANTA es_final ═══")
+    print("=== ESTADOS PLANTA es_final ===")
     estados = conn.execute(
         text("SELECT id_estado, codigo, nombre, es_final FROM estados_planta WHERE activo = 1")
     ).all()
@@ -165,13 +198,13 @@ def op_estados_final(conn, execute: bool) -> int:
     return len(to_update)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Colores duplicados (#75)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def op_colores_dups(conn, execute: bool) -> int:
-    print("═══ COLORES DUPLICADOS ═══")
+    print("=== COLORES DUPLICADOS ===")
     all_rows = conn.execute(
         text("SELECT id_color, codigo, nombre FROM colores ORDER BY codigo, id_color")
     ).all()
@@ -191,7 +224,7 @@ def op_colores_dups(conn, execute: bool) -> int:
         keep = rows[0]
         for dup in rows[1:]:
             new_code = f"{cod}-DUP{dup[0]}"
-            print(f"    → id={dup[0]} recibirá código='{new_code}' (el keeper es id={keep[0]})")
+            print(f"    → id={dup[0]} recibira codigo='{new_code}' (el keeper es id={keep[0]})")
             total_to_rename += 1
             if execute:
                 conn.execute(
@@ -201,13 +234,13 @@ def op_colores_dups(conn, execute: bool) -> int:
     return total_to_rename
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Orígenes vs Países (#78)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def op_origenes_vs_paises(conn, execute: bool) -> int:
-    print("═══ ORÍGENES contaminados con PAÍSES ═══")
+    print("=== ORÍGENES contaminados con PAÍSES ===")
     paises_names = {r[0].strip().lower() for r in conn.execute(
         text("SELECT nombre FROM paises WHERE activo = 1")
     ).all()}
@@ -227,9 +260,9 @@ def op_origenes_vs_paises(conn, execute: bool) -> int:
     return len(matches)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Main
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def main() -> int:
@@ -249,6 +282,7 @@ def main() -> int:
         # No flags → run all as dry-run
         args.all = True
 
+    _wake_db()
     with engine.begin() as conn:
         total = 0
         if args.all or args.tildes:
@@ -267,7 +301,7 @@ def main() -> int:
             total += op_origenes_vs_paises(conn, args.execute)
             print()
 
-        print(f"═══ TOTAL: {total} cambios")
+        print(f"=== TOTAL: {total} cambios")
         if not args.execute:
             print("DRY-RUN. Pasa --execute para aplicar.")
     return 0
