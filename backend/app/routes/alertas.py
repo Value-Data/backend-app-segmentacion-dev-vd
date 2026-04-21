@@ -35,7 +35,23 @@ def api_resolver(
 ):
     if not data.usuario:
         data.usuario = user.username
-    return resolver_alerta(db, id, data)
+    result = resolver_alerta(db, id, data)
+    # S-8: audit
+    try:
+        import json as _json
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="alertas",
+            registro_id=id,
+            accion="RESOLVER",
+            datos_nuevos=_json.dumps({"notas": data.notas}, default=str, ensure_ascii=False),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
+    return result
 
 
 @router.get("/reglas")
@@ -102,4 +118,20 @@ def api_evaluar_reglas(
     Evita duplicados: no crea alerta activa si ya existe una con mismo
     (tipo, posición, título).
     """
-    return evaluar_reglas(db)
+    result = evaluar_reglas(db)
+    # S-8: audit (entrada resumen del run)
+    try:
+        import json as _json
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="alertas",
+            registro_id=None,
+            accion="EVALUAR_REGLAS",
+            datos_nuevos=_json.dumps(result, default=str, ensure_ascii=False),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
+    return result

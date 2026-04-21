@@ -663,6 +663,26 @@ def create_planificacion(
     db.add(labor)
     db.commit()
     db.refresh(labor)
+
+    # S-8: audit
+    try:
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="ejecucion_labores",
+            registro_id=labor.id_ejecucion,
+            accion="CREATE",
+            datos_nuevos=json.dumps({
+                "id_posicion": data.id_posicion,
+                "id_labor": data.id_labor,
+                "temporada": data.temporada,
+                "fecha_programada": str(data.fecha_programada),
+            }, default=str, ensure_ascii=False),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
     return labor
 
 
@@ -701,6 +721,27 @@ def create_planificacion_testblock(
         created += 1
 
     db.commit()
+
+    # S-8: audit — una sola entrada resumen del bulk
+    try:
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="ejecucion_labores",
+            registro_id=None,
+            accion="BULK_CREATE_TESTBLOCK",
+            datos_nuevos=json.dumps({
+                "id_testblock": data.id_testblock,
+                "id_labor": data.id_labor,
+                "temporada": data.temporada,
+                "fecha_programada": str(data.fecha_programada),
+                "created": created,
+            }, default=str, ensure_ascii=False),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
     return {"created": created, "testblock": data.id_testblock}
 
 
@@ -800,6 +841,25 @@ def ejecutar_labor(
     labor.usuario_registro = user.username
     db.commit()
     db.refresh(labor)
+
+    # S-8: audit
+    try:
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="ejecucion_labores",
+            registro_id=id,
+            accion="EJECUTAR",
+            datos_nuevos=json.dumps({
+                "fecha_ejecucion": str(data.fecha_ejecucion),
+                "ejecutor": data.ejecutor,
+                "duracion_min": data.duracion_min,
+            }, default=str, ensure_ascii=False),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
     return labor
 
 

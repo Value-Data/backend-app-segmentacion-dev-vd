@@ -185,11 +185,27 @@ def generar_paquetes(
     db.commit()
     # Invalidar cache del dashboard para reflejar el cambio
     _dashboard_cache.clear()
-    return {
+    result = {
         "eliminados_previos": deleted,
         "generados": created,
         "temporada": temporada or "todas",
     }
+    # S-8: audit
+    try:
+        import json as _json
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="paquete_tecnologico",
+            registro_id=None,
+            accion="GENERAR_PAQUETES",
+            datos_nuevos=_json.dumps(result, default=str, ensure_ascii=False),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
+    return result
 
 
 @router.get("/clusters")

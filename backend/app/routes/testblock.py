@@ -464,7 +464,23 @@ def api_alta(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
-    return alta_planta(db, id, data, usuario=user.username)
+    result = alta_planta(db, id, data, usuario=user.username)
+    # S-8: audit
+    try:
+        import json as _json
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="plantas",
+            registro_id=id,
+            accion="ALTA_PLANTA",
+            datos_nuevos=_json.dumps(data.model_dump(exclude_unset=True), default=str, ensure_ascii=False),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
+    return result
 
 
 @router.post("/{id}/alta-directa")
@@ -587,6 +603,24 @@ def api_alta_masiva(
     return alta_masiva(db, id, data, usuario=user.username)
 
 
+def _audit_planta(db, id_tb, accion, data_dict, usuario):
+    """Helper S-8: emite audit para alta/baja/replante sin romper el endpoint."""
+    try:
+        import json as _json
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="plantas",
+            registro_id=id_tb,
+            accion=accion,
+            datos_nuevos=_json.dumps(data_dict, default=str, ensure_ascii=False),
+            usuario=usuario,
+        )
+        db.commit()
+    except Exception:
+        pass
+
+
 @router.post("/{id}/baja")
 def api_baja(
     id: int,
@@ -594,7 +628,9 @@ def api_baja(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
-    return baja_planta(db, id, data, usuario=user.username)
+    result = baja_planta(db, id, data, usuario=user.username)
+    _audit_planta(db, id, "BAJA_PLANTA", data.model_dump(exclude_unset=True), user.username)
+    return result
 
 
 @router.post("/{id}/baja-masiva")
@@ -604,7 +640,9 @@ def api_baja_masiva(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
-    return baja_masiva(db, id, data, usuario=user.username)
+    result = baja_masiva(db, id, data, usuario=user.username)
+    _audit_planta(db, id, "BAJA_MASIVA", data.model_dump(exclude_unset=True), user.username)
+    return result
 
 
 @router.post("/{id}/replante")
@@ -614,7 +652,9 @@ def api_replante(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
-    return replante_planta(db, id, data, usuario=user.username)
+    result = replante_planta(db, id, data, usuario=user.username)
+    _audit_planta(db, id, "REPLANTE_PLANTA", data.model_dump(exclude_unset=True), user.username)
+    return result
 
 
 # ── Historial global del testblock ────────────────────────────────────────

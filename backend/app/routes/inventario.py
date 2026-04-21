@@ -581,7 +581,23 @@ def create_movimiento(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
-    return registrar_movimiento(db, id, data, usuario=user.username)
+    result = registrar_movimiento(db, id, data, usuario=user.username)
+    # S-8: audit
+    try:
+        import json as _json
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="movimientos_inventario",
+            registro_id=id,
+            accion="MOVIMIENTO",
+            datos_nuevos=_json.dumps(data.model_dump(exclude_unset=True), default=str, ensure_ascii=False),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
+    return result
 
 
 @router.post("/despacho", status_code=201)
@@ -590,7 +606,23 @@ def despacho(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
-    return crear_despacho(db, data, usuario=user.username)
+    result = crear_despacho(db, data, usuario=user.username)
+    # S-8: audit
+    try:
+        import json as _json
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="inventario_vivero",
+            registro_id=getattr(result, "id_guia", None),
+            accion="DESPACHO",
+            datos_nuevos=_json.dumps(data.model_dump(exclude_unset=True), default=str, ensure_ascii=False),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
+    return result
 
 
 # ── Mediciones por lote ───────────────────────────────────────────────────
