@@ -170,6 +170,16 @@ export function TestblockDetailPage() {
     if (!laboresTb) return [];
     return (laboresTb as any[]).filter((l) => l.estado === "planificada");
   }, [laboresTb]);
+  // Las atrasadas son un subconjunto de las pendientes con fecha vencida
+  const laboresAtrasadasSet = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return new Set(
+      laboresPendientes
+        .filter((l: any) => l.fecha_programada && l.fecha_programada.slice(0, 10) < today)
+        .map((l: any) => l.id_ejecucion),
+    );
+  }, [laboresPendientes]);
+  const laboresAtrasadasCount = laboresAtrasadasSet.size;
   // Group by tipo labor
   const laboresPorTipo = useMemo(() => {
     const map = new Map<number, { nombre: string; labores: any[] }>();
@@ -1677,8 +1687,13 @@ export function TestblockDetailPage() {
             <TabsContent value="labores-tb">
               <div className="bg-white rounded-xl border overflow-auto">
                 <div className="flex items-center justify-between px-4 py-3 border-b">
-                  <h3 className="font-semibold text-sm">
+                  <h3 className="font-semibold text-sm flex items-center gap-2">
                     Labores Pendientes ({laboresPendientes.length})
+                    {laboresAtrasadasCount > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-800 px-2 py-0.5 text-xs font-medium animate-pulse">
+                        ⚠ {laboresAtrasadasCount} atrasadas
+                      </span>
+                    )}
                   </h3>
                   {laboresPendientes.length > 0 && (
                     <Button
