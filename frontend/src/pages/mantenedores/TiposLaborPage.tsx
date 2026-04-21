@@ -268,7 +268,7 @@ export function TiposLaborPage() {
           {filtered.map((labor) => {
             const isExpanded = expandedId === labor.id_labor;
             return (
-              <div key={labor.id_labor} className="bg-white rounded-lg border overflow-hidden">
+              <div key={labor.id_labor} className="bg-card rounded-lg border overflow-hidden">
                 {/* Labor row */}
                 <div
                   className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"

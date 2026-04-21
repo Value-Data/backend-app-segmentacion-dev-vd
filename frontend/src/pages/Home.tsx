@@ -33,7 +33,7 @@ function PipelineStep({ icon: Icon, title, value, subtitle, color, bgColor, to, 
   return (
     <div className="flex items-center">
       <div
-        className="bg-white rounded-xl border p-4 hover:shadow-lg transition-all cursor-pointer group flex-1 min-w-[160px]"
+        className="bg-card rounded-xl border p-4 hover:shadow-lg transition-all cursor-pointer group flex-1 min-w-[160px]"
         onClick={() => navigate(to)}
       >
         <div className={`h-10 w-10 rounded-lg ${bgColor} flex items-center justify-center mb-3`}>
@@ -239,7 +239,7 @@ export function HomePage() {
         </ChartContainer>
 
         {/* Lab KPIs */}
-        <div className="bg-white rounded-lg border p-4 space-y-3">
+        <div className="bg-card rounded-lg border p-4 space-y-3">
           <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
             <FlaskConical className="h-4 w-4 text-purple-600" /> Calidad Promedio
           </h3>
@@ -269,14 +269,14 @@ export function HomePage() {
         </div>
 
         {/* Quick actions */}
-        <div className="bg-white rounded-lg border p-4 space-y-3">
+        <div className="bg-card rounded-lg border p-4 space-y-3">
           <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground">
             <TrendingUp className="h-4 w-4 text-garces-cherry" /> Acciones Rapidas
           </h3>
           <div className="space-y-2">
             {[
               { label: "Nuevo Lote / Planta", to: "/inventario?wizard=1", icon: Sprout, desc: "Crear plantas en vivero" },
-              { label: "Despachar a TestBlock", to: "/inventario", icon: Truck, desc: "Enviar stock a campo" },
+              { label: "Despachar a TestBlock", to: "/inventario?despacho=1", icon: Truck, desc: "Enviar stock a campo" },
               { label: "Planificar Labores", to: "/labores", icon: Hammer, desc: "Programar trabajo" },
               { label: "Registrar Medición", to: "/laboratorio", icon: FlaskConical, desc: "Datos de calidad" },
               { label: "Ver Reportes", to: "/reportes", icon: BarChart3, desc: "Informes y AI" },

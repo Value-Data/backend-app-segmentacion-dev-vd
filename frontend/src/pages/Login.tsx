@@ -31,29 +31,33 @@ export function LoginPage() {
           />
           <p className="text-sm text-muted-foreground mt-1">Sistema de Segmentación de Especies</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <div>
             <Label htmlFor="username">Usuario</Label>
             <Input
               id="username"
+              name="garces-username"
               className="mt-1"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Ingrese su usuario"
               required
               autoFocus
+              autoComplete="off"
             />
           </div>
           <div>
-            <Label htmlFor="password">Contrasena</Label>
+            <Label htmlFor="password">Contraseña</Label>
             <Input
               id="password"
+              name="garces-password"
               type="password"
               className="mt-1"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Ingrese su contrasena"
+              placeholder="Ingrese su contraseña"
               required
+              autoComplete="new-password"
             />
           </div>
           <Button type="submit" className="w-full" disabled={login.isPending}>

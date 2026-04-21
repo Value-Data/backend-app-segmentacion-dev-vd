@@ -89,15 +89,22 @@ export function InventarioPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [wizardOpen, setWizardOpen] = useState(searchParams.get("wizard") === "1");
+  const [despachoOpen, setDespachoOpen] = useState(searchParams.get("despacho") === "1");
   useEffect(() => {
-    // Quick-action from Home can arrive as /inventario?wizard=1 → open modal on mount
+    // Quick-actions from Home: /inventario?wizard=1 or /inventario?despacho=1
+    let dirty = false;
     if (searchParams.get("wizard") === "1") {
       setWizardOpen(true);
       searchParams.delete("wizard");
-      setSearchParams(searchParams, { replace: true });
+      dirty = true;
     }
+    if (searchParams.get("despacho") === "1") {
+      setDespachoOpen(true);
+      searchParams.delete("despacho");
+      dirty = true;
+    }
+    if (dirty) setSearchParams(searchParams, { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [despachoOpen, setDespachoOpen] = useState(false);
   const [selectedBodega, setSelectedBodega] = useState<number | "todas">("todas");
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>("todos");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
