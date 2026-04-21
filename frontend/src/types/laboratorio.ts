@@ -84,6 +84,7 @@ export interface ClasificacionCluster {
   id_clasificacion: number;
   id_medicion: number;
   cluster?: number | null;
+  cluster_label?: string | null;
   banda_brix?: number | null;
   banda_firmeza?: number | null;
   banda_acidez?: number | null;
@@ -91,6 +92,14 @@ export interface ClasificacionCluster {
   score_total?: number | null;
   metodo?: string | null;
   fecha_calculo?: string;
+  // Enriquecidos por el endpoint /analisis/clusters (JOIN con mediciones/variedades/especies)
+  temporada?: string | null;
+  id_variedad?: number | null;
+  id_especie?: number | null;
+  fecha_medicion?: string | null;
+  variedad?: string | null;
+  especie?: string | null;
+  id_testblock?: number | null;
 }
 
 export interface BatchRowResult {
