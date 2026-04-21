@@ -186,7 +186,7 @@ export function TestblocksListPage() {
             <div key={campo}>
               <h3 className="text-sm font-semibold text-garces-cherry-light mb-3 flex items-center gap-2 border-b pb-2">
                 <MapPin className="h-4 w-4" /> {campo}
-                <span className="text-xs font-normal text-muted-foreground">({tbs!.length} testblocks)</span>
+                <span className="text-xs font-normal text-muted-foreground">({tbs!.length} testblock{tbs!.length === 1 ? "" : "s"})</span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(tbs || []).map((tb) => {
