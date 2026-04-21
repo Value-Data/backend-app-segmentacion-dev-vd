@@ -10,9 +10,9 @@ import { laboratorioService, type ReglaCluster } from "@/services/laboratorio";
 
 // ── Metric configuration ───────────────────────────────────────────────
 const METRICS = [
-  { key: "brix", label: "Brix", unit: "\u00b0Bx", step: "0.1", inverted: false },
+  { key: "brix", label: "Brix", unit: "°Bx", step: "0.1", inverted: false },
   { key: "mejillas", label: "Firmeza Mejillas", unit: "lb", step: "0.1", inverted: false },
-  { key: "punto", label: "Firmeza Punto D\u00e9bil", unit: "lb", step: "0.1", inverted: false },
+  { key: "punto", label: "Firmeza Punto Débil", unit: "lb", step: "0.1", inverted: false },
   { key: "acidez", label: "Acidez", unit: "%", step: "0.01", inverted: true },
 ] as const;
 
@@ -145,7 +145,7 @@ function ReglaCard({ regla }: { regla: ReglaCluster }) {
             <table className="w-full text-sm">
               <thead>
                 <tr>
-                  <th className="text-left py-2 pr-4 font-medium text-muted-foreground w-48">M\u00e9trica</th>
+                  <th className="text-left py-2 pr-4 font-medium text-muted-foreground w-48">Métrica</th>
                   {BAND_COLORS.slice(0, 3).map((band, i) => (
                     <th key={i} className={`px-3 py-2 text-center rounded-t-md ${band.bg} ${band.text} font-medium min-w-[120px]`}>
                       {band.label}
@@ -161,7 +161,7 @@ function ReglaCard({ regla }: { regla: ReglaCluster }) {
                   const b1Key = `${metric.key}_b1` as keyof EditableFields;
                   const b2Key = `${metric.key}_b2` as keyof EditableFields;
                   const b3Key = `${metric.key}_b3` as keyof EditableFields;
-                  const op = metric.inverted ? "\u2264" : "\u2265";
+                  const op = metric.inverted ? "≤" : "≥";
                   const opElse = metric.inverted ? ">" : "<";
 
                   return (
@@ -345,7 +345,7 @@ export function ReglasClusterPage() {
             Reglas de Clustering
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configuraci\u00f3n de umbrales para clasificaci\u00f3n de calidad por bandas (algoritmo Band-Sum)
+            Configuración de umbrales para clasificación de calidad por bandas (algoritmo Band-Sum)
           </p>
         </div>
         <Button
@@ -364,9 +364,9 @@ export function ReglasClusterPage() {
         <div>
           <p className="font-medium">Algoritmo Band-Sum</p>
           <p className="mt-1 text-blue-700">
-            Cada m\u00e9trica se clasifica en bandas 1-4 seg\u00fan los umbrales configurados.
+            Cada métrica se clasifica en bandas 1-4 según los umbrales configurados.
             La suma de las 4 bandas (rango 4-16) determina el cluster final.
-            Para m\u00e9tricas normales (brix, firmeza): mayor valor = mejor banda.
+            Para métricas normales (brix, firmeza): mayor valor = mejor banda.
             Para acidez: menor valor = mejor banda (invertida).
           </p>
         </div>
@@ -398,7 +398,7 @@ export function ReglasClusterPage() {
             <Database className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
             <h3 className="text-lg font-medium">Sin reglas configuradas</h3>
             <p className="text-sm text-muted-foreground mt-1 mb-4">
-              Use el bot\u00f3n "Cargar desde valores por defecto" para crear las reglas iniciales desde el sistema.
+              Use el botón "Cargar desde valores por defecto" para crear las reglas iniciales desde el sistema.
             </p>
             <Button onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}>
               <Database className="h-4 w-4 mr-1.5" />

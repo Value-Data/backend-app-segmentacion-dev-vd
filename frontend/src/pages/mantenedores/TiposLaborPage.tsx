@@ -2,17 +2,20 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Plus, Pencil, Trash2, Search, ChevronDown, ChevronRight,
-  ListChecks, GripVertical, Loader2,
+  ListChecks, GripVertical, Loader2, LayoutGrid, List,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CrudForm } from "@/components/shared/CrudForm";
+import { CrudTable } from "@/components/shared/CrudTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useCrud } from "@/hooks/useCrud";
 import { get, post, put, del } from "@/services/api";
 import type { FieldDef } from "@/types";
+
+type ViewMode = "cards" | "table";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
 
@@ -101,6 +104,16 @@ export function TiposLaborPage() {
   const [search, setSearch] = useState("");
   const [detalleFormOpen, setDetalleFormOpen] = useState(false);
   const [editDetalle, setEditDetalle] = useState<DetalleLabor | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("cards");
+
+  const tableColumns = [
+    { accessorKey: "codigo", header: "Código" },
+    { accessorKey: "nombre", header: "Nombre" },
+    { accessorKey: "categoria", header: "Categoría" },
+    { accessorKey: "aplica_a", header: "Aplica a" },
+    { accessorKey: "aplica_especies", header: "Especies" },
+    { accessorKey: "frecuencia", header: "Frecuencia" },
+  ];
 
   const rows = (data || []) as TipoLabor[];
   const filtered = useMemo(() => {
@@ -188,9 +201,31 @@ export function TiposLaborPage() {
             <p className="text-xs text-muted-foreground">{rows.length} registros</p>
           </div>
         </div>
-        <Button size="sm" onClick={() => { setEditRow(null); setFormOpen(true); }}>
-          <Plus className="h-4 w-4 mr-1" /> Nueva Labor
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-muted rounded-md p-0.5">
+            <Button
+              variant={viewMode === "cards" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("cards")}
+              aria-label="Vista cuadrícula"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant={viewMode === "table" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("table")}
+              aria-label="Vista lista"
+            >
+              <List className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <Button size="sm" onClick={() => { setEditRow(null); setFormOpen(true); }}>
+            <Plus className="h-4 w-4 mr-1" /> Nueva Labor
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -205,7 +240,22 @@ export function TiposLaborPage() {
       </div>
 
       {/* List */}
-      {isLoading ? (
+      {viewMode === "table" ? (
+        <CrudTable
+          data={filtered as unknown as Record<string, unknown>[]}
+          columns={tableColumns as any}
+          isLoading={isLoading}
+          onEdit={(row) => {
+            setEditRow(row);
+            setFormOpen(true);
+          }}
+          onDelete={async (row) => {
+            if (confirm("Eliminar este tipo de labor?")) {
+              await remove((row as any).id_labor);
+            }
+          }}
+        />
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
           <Loader2 className="h-5 w-5 animate-spin" /> Cargando...
         </div>

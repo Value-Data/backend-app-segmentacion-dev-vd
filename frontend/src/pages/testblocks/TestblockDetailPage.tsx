@@ -519,7 +519,7 @@ export function TestblockDetailPage() {
 
   const editTbFields: FieldDef[] = useMemo(() => [
     { key: "nombre", label: "Nombre", type: "text", required: true },
-    { key: "codigo", label: "Codigo", type: "text", required: true },
+    { key: "codigo", label: "Código", type: "text", required: true },
     { key: "id_campo", label: "Campo", type: "select", options: lk.options.campos },
     { key: "num_hileras", label: "Num. Hileras", type: "number", placeholder: "Ej: 6" },
     { key: "posiciones_por_hilera", label: "Posiciones por Hilera", type: "number", placeholder: "Ej: 20" },

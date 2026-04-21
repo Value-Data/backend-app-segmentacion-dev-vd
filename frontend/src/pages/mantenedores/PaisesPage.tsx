@@ -2,7 +2,7 @@ import { GenericMantenedorPage, col } from "./GenericMantenedorPage";
 import type { FieldDef } from "@/types";
 
 const fields: FieldDef[] = [
-  { key: "codigo", label: "Codigo ISO", type: "text", required: true },
+  { key: "codigo", label: "Código ISO", type: "text", required: true },
   { key: "nombre", label: "Nombre", type: "text", required: true },
   { key: "nombre_en", label: "Nombre (EN)", type: "text" },
   { key: "orden", label: "Orden", type: "number" },
@@ -18,7 +18,7 @@ const columns = [
 export function PaisesPage() {
   return (
     <GenericMantenedorPage
-      title="Paises"
+      title="Países"
       entidad="paises"
       fields={fields}
       columns={columns}

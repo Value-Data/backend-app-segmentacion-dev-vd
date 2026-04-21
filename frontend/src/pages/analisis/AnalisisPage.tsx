@@ -100,7 +100,7 @@ export function AnalisisPage() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartContainer title="Distribucion de Clusters">
+        <ChartContainer title="Distribución de Clusters">
           {pieData.length > 0 ? (
             <PieChart>
               <Pie

@@ -12,7 +12,7 @@ interface CommandPaletteProps {
 }
 
 const pages = [
-  { label: "Inicio", to: "/", icon: Home, group: "Navegacion" },
+  { label: "Inicio", to: "/", icon: Home, group: "Navegación" },
   { label: "Especies y Variedades", to: "/catalogos", icon: Layers, group: "Mantenedores" },
   { label: "Especies", to: "/catalogos/especies", icon: Layers, group: "Mantenedores" },
   { label: "Variedades", to: "/catalogos/variedades", icon: Layers, group: "Mantenedores" },
@@ -56,7 +56,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           }}
         >
           <Command.Input
-            placeholder="Buscar paginas, variedades, lotes..."
+            placeholder="Buscar páginas, variedades, lotes..."
             className="w-full px-4 py-3.5 text-sm bg-transparent border-b border-border/50 outline-none placeholder:text-muted-foreground/60"
             autoFocus
           />

@@ -1,22 +1,22 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Pencil, Trash2, Flower2, Loader2, Search, Download } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { ArrowLeft, Plus, Pencil, Trash2, Flower2, Loader2, Search, LayoutGrid, List } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CrudForm } from "@/components/shared/CrudForm";
+import { CrudTable } from "@/components/shared/CrudTable";
 import { useCrud } from "@/hooks/useCrud";
 import { mantenedorService } from "@/services/mantenedores";
-import { laboresService } from "@/services/labores";
 import { useAuthStore } from "@/stores/authStore";
 import type { FieldDef } from "@/types";
 import type { Especie } from "@/types/maestras";
 import type { EstadoFenologico } from "@/services/labores";
 
+type ViewMode = "cards" | "table";
+
 export function EstadosFenologicosPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.rol === "admin";
 
@@ -27,23 +27,12 @@ export function EstadosFenologicosPage() {
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [search, setSearch] = useState("");
   const [activeEspecie, setActiveEspecie] = useState<number | "todas">("todas");
+  const [viewMode, setViewMode] = useState<ViewMode>("cards");
 
   // Fetch species for tabs and form select
   const { data: especies } = useQuery({
     queryKey: ["especies"],
     queryFn: () => mantenedorService("especies").list(),
-  });
-
-  // Seed mutation
-  const seedMut = useMutation({
-    mutationFn: () => laboresService.seedEstadosFenologicos(),
-    onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ["estados-fenologicos"] });
-      toast.success(`Seed completado: ${res.created} creados`);
-    },
-    onError: () => {
-      toast.error("Error al ejecutar seed");
-    },
   });
 
   // Build species options for form
@@ -192,28 +181,33 @@ export function EstadosFenologicosPage() {
           </Button>
           <Flower2 className="h-5 w-5 text-garces-cherry" />
           <h2 className="text-xl font-bold text-garces-cherry">
-            Estados Fenologicos
+            Estados Fenológicos
           </h2>
           <span className="text-sm text-muted-foreground">
             ({filtered.length})
           </span>
         </div>
         <div className="flex gap-2 items-center">
-          {isAdmin && (
+          <div className="flex bg-muted rounded-md p-0.5">
             <Button
+              variant={viewMode === "cards" ? "default" : "ghost"}
               size="sm"
-              variant="outline"
-              onClick={() => seedMut.mutate()}
-              disabled={seedMut.isPending}
+              className="h-7 px-2"
+              onClick={() => setViewMode("cards")}
+              aria-label="Vista cuadrícula"
             >
-              {seedMut.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              <span className="ml-1">Seed</span>
+              <LayoutGrid className="h-3.5 w-3.5" />
             </Button>
-          )}
+            <Button
+              variant={viewMode === "table" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("table")}
+              aria-label="Vista lista"
+            >
+              <List className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           <Button
             size="sm"
             onClick={() => {
@@ -265,7 +259,7 @@ export function EstadosFenologicosPage() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             className="w-full rounded-md border border-input bg-white pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            placeholder="Buscar estado fenologico..."
+            placeholder="Buscar estado fenológico..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -284,16 +278,37 @@ export function EstadosFenologicosPage() {
       </div>
 
       {/* Content */}
-      {isLoading ? (
+      {viewMode === "table" ? (
+        <CrudTable
+          data={filtered as unknown as Record<string, unknown>[]}
+          columns={[
+            { accessorKey: "codigo", header: "Código" },
+            { accessorKey: "nombre", header: "Nombre" },
+            {
+              accessorKey: "id_especie",
+              header: "Especie",
+              cell: ({ getValue }: any) => especieMap[getValue() as number]?.nombre ?? "-",
+            },
+            { accessorKey: "orden", header: "Orden" },
+            { accessorKey: "mes_orientativo", header: "Mes" },
+          ] as any}
+          isLoading={isLoading}
+          onEdit={(row) => {
+            setEditRow(row);
+            setFormOpen(true);
+          }}
+          onDelete={(row) => handleDelete(row as unknown as EstadoFenologico)}
+        />
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
-          Cargando estados fenologicos...
+          Cargando estados fenológicos...
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Flower2 className="h-10 w-10 mx-auto mb-2 opacity-30" />
           <p>
-            Sin estados fenologicos
+            Sin estados fenológicos
             {activeEspecie !== "todas"
               ? ` para ${especieMap[activeEspecie as number]?.nombre || "esta especie"}`
               : ""}
@@ -301,9 +316,7 @@ export function EstadosFenologicosPage() {
           </p>
           {isAdmin && (
             <p className="text-xs mt-2">
-              Usa el boton{" "}
-              <span className="font-medium">Seed</span> para cargar los estados
-              predeterminados.
+              Usa el botón <span className="font-medium">Nuevo Estado</span> para crear el primer estado fenológico.
             </p>
           )}
         </div>

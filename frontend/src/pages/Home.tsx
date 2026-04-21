@@ -101,7 +101,7 @@ export function HomePage() {
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-garces-cherry">Garces Fruit</h2>
-        <p className="text-sm text-muted-foreground">Sistema de Segmentaci\u00f3n de Nuevas Especies — Flujo de Proceso</p>
+        <p className="text-sm text-muted-foreground">Sistema de Segmentación de Nuevas Especies — Flujo de Proceso</p>
       </div>
 
       {/* Process Pipeline */}
@@ -167,7 +167,7 @@ export function HomePage() {
           />
           <PipelineStep
             icon={BarChart3}
-            title="An\u00e1lisis"
+            title="Análisis"
             value={Object.keys(dashboard?.cluster_distribution || {}).length}
             subtitle="clusters identificados"
             color="text-garces-cherry"

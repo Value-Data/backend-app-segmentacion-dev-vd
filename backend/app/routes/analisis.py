@@ -33,7 +33,14 @@ def dashboard(
         return cached["data"]
 
     kpis = get_kpis(db, temporada=temporada)
-    total_plantas = db.query(Planta).filter(Planta.activa == True).count()
+    # Plantas activas = posiciones con estado "alta" (coincide con suma de pos_alta
+    # en listado de testblocks). Antes contaba Planta.activa=True lo cual daba un
+    # número distinto (plantas vivas en BD, incluyendo algunas fuera de testblocks).
+    total_plantas = (
+        db.query(PosicionTestBlock)
+        .filter(PosicionTestBlock.estado == "alta")
+        .count()
+    )
     total_testblocks = db.query(TestBlock).filter(TestBlock.activo == True).count()
     total_posiciones = db.query(PosicionTestBlock).count()
 

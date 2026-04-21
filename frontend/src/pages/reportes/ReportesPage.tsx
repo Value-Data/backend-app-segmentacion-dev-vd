@@ -410,7 +410,7 @@ function TabVariedad({ filters }: { filters: ReportFilters }) {
   ];
 
   const inventarioColumns = [
-    { accessorKey: "codigo_lote", header: "Codigo Lote" },
+    { accessorKey: "codigo_lote", header: "Código Lote" },
     {
       accessorKey: "cantidad_actual",
       header: "Stock Actual",
@@ -724,7 +724,7 @@ function TabLote({ filters }: { filters: ReportFilters }) {
 
   // Columns for the summary list table
   const loteListColumns = [
-    { accessorKey: "codigo_lote", header: "Codigo Lote" },
+    { accessorKey: "codigo_lote", header: "Código Lote" },
     {
       accessorKey: "id_variedad",
       header: "Variedad",
@@ -1253,7 +1253,7 @@ function TabTestBlock({ filters }: { filters: ReportFilters }) {
           {totalPosiciones > 0 && (
             <div className="rounded-lg border bg-white p-4 shadow-sm">
               <h4 className="text-xs font-medium text-muted-foreground mb-3">
-                Distribucion de Posiciones
+                Distribución de Posiciones
               </h4>
               <div className="flex h-4 rounded-full overflow-hidden bg-gray-100">
                 {Object.entries(report.posiciones_resumen).map(([estado, count]) => {
@@ -1345,7 +1345,7 @@ function TabTestBlock({ filters }: { filters: ReportFilters }) {
 
 /* ─── Main Page ────────────────────────────────────────────────────────── */
 
-/* ─── Tab Evaluacion Cosecha (interactive report builder with AI) ─────── */
+/* ─── Tab Evaluación Cosecha (interactive report builder with AI) ─────── */
 
 function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
   const lk = useLookups();
@@ -1523,7 +1523,7 @@ function TabEvaluacionCosecha({ filters }: { filters: ReportFilters }) {
           <div className="flex gap-3">
             <Button disabled={generating} onClick={() => handleGenerate("evaluacion")}>
               {generating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
-              Evaluacion de Cosecha (por variedad)
+              Evaluación de Cosecha (por variedad)
             </Button>
             <Button variant="outline" disabled={generating} onClick={() => handleGenerate("resumen")}>
               {generating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <ClipboardList className="h-4 w-4 mr-1" />}
@@ -1564,7 +1564,7 @@ export function ReportesPage() {
         <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="evaluacion" className="gap-1">
             <FlaskConical className="h-3.5 w-3.5" />
-            Evaluacion Cosecha
+            Evaluación Cosecha
           </TabsTrigger>
           <TabsTrigger value="variedad" className="gap-1">
             <Sprout className="h-3.5 w-3.5" />

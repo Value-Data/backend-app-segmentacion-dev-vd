@@ -492,10 +492,10 @@ export function PlantWizard({ open, onClose }: PlantWizardProps) {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Codigo Lote */}
+              {/* Código Lote */}
               <div className="sm:col-span-2">
                 <Label htmlFor="wiz-codigo">
-                  Codigo Lote <span className="text-destructive">*</span>
+                  Código Lote <span className="text-destructive">*</span>
                 </Label>
                 <div className="flex gap-2 mt-1">
                   <Input

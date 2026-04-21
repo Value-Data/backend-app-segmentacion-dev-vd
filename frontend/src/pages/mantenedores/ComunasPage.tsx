@@ -15,7 +15,7 @@ export function ComunasPage() {
       required: true,
       options: options.regiones,
     },
-    { key: "codigo_postal", label: "Codigo Postal", type: "text" },
+    { key: "codigo_postal", label: "Código Postal", type: "text" },
   ], [options.regiones]);
 
   const columns = useMemo(() => [
@@ -26,7 +26,7 @@ export function ComunasPage() {
         return region(val);
       },
     }),
-    col("codigo_postal", "Codigo Postal"),
+    col("codigo_postal", "Código Postal"),
   ], [region]);
 
   return (

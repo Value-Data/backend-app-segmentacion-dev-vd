@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Flower2, Calendar, ArrowRight, Leaf, Snowflake, Sun, Droplets, Cherry,
   Camera, CircleDot, Grape, Apple, Settings2, Plus, GitCompare, TrendingUp, TrendingDown, Minus,
-  AlertTriangle, Download, Database, Clock,
+  AlertTriangle, Download, Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -111,19 +111,6 @@ export function FenologiaPage() {
       setRegEstadoId(null);
       setRegPorcentaje("");
       setRegObs("");
-    },
-  });
-
-  // Seed demo data mutation
-  const seedDemoMut = useMutation({
-    mutationFn: () => laboresService.seedFenologiaDemo(),
-    onSuccess: (res) => {
-      toast.success(res.message || `Se crearon ${res.created} registros demo`);
-      queryClient.invalidateQueries({ queryKey: ["fenologia-comparativa"] });
-      queryClient.invalidateQueries({ queryKey: ["historial-fenologico"] });
-    },
-    onError: () => {
-      toast.error("Error al crear datos demo (requiere rol admin)");
     },
   });
 
@@ -351,15 +338,6 @@ export function FenologiaPage() {
             <Button size="sm" variant="outline" onClick={() => navigate("/catalogos/estados-fenologicos")}>
               <Settings2 className="h-4 w-4 mr-1" /> Ir al Mantenedor
             </Button>
-            <Button
-              size="sm"
-              variant="default"
-              disabled={seedDemoMut.isPending}
-              onClick={() => seedDemoMut.mutate()}
-            >
-              <Database className="h-4 w-4 mr-1" />
-              {seedDemoMut.isPending ? "Creando..." : "Ejecutar Seed"}
-            </Button>
           </div>
         </div>
       )}
@@ -435,15 +413,6 @@ export function FenologiaPage() {
             <h3 className="font-semibold">Comparativa por Temporada</h3>
           </div>
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={seedDemoMut.isPending}
-              onClick={() => seedDemoMut.mutate()}
-            >
-              <Database className="h-4 w-4 mr-1" />
-              {seedDemoMut.isPending ? "Creando..." : "Seed Demo"}
-            </Button>
             <Button
               size="sm"
               variant="outline"

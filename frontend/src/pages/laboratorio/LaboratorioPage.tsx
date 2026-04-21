@@ -105,12 +105,16 @@ interface MedicionFormState {
   perimetro: string;
   raleo_frutos: string;
   rendimiento: string;
-  // Firmeza 5 puntos
+  // Firmeza 5 puntos (carozos)
   firmeza_punta: string;
   firmeza_quilla: string;
   firmeza_hombro: string;
   firmeza_mejilla_1: string;
   firmeza_mejilla_2: string;
+  // Firmeza unificada (cerezo — 1 lectura con Durofel)
+  firmeza: string;
+  // Calibre directo (cerezo — con pie de rey)
+  calibre: string;
   // Calidad
   brix: string;
   acidez: string;
@@ -161,6 +165,8 @@ const INITIAL_FORM: MedicionFormState = {
   firmeza_hombro: "",
   firmeza_mejilla_1: "",
   firmeza_mejilla_2: "",
+  firmeza: "",
+  calibre: "",
   brix: "",
   acidez: "",
   color_pulpa: "",
@@ -615,8 +621,8 @@ export function LaboratorioPage() {
       {kpis && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <KpiCard
-            title="Total Mediciones"
-            value={kpis.total}
+            title={medicionesTotal > 0 && medicionesTotal !== kpis.total ? "Mediciones (filtradas)" : "Total Mediciones"}
+            value={medicionesTotal > 0 && medicionesTotal !== kpis.total ? medicionesTotal : kpis.total}
             icon={FlaskConical}
           />
           <KpiCard
@@ -801,8 +807,8 @@ export function LaboratorioPage() {
               exportFilename="mediciones_laboratorio"
             />
             {medicionesTotal > mediciones.length && (
-              <div className="px-4 py-2 text-xs text-muted-foreground border-t bg-muted/30">
-                Mostrando {mediciones.length.toLocaleString()} de {medicionesTotal.toLocaleString()} registros totales. Use los filtros para refinar la busqueda.
+              <div className="px-4 py-2 text-xs border-t bg-amber-50 text-amber-800 border-amber-200">
+                ⚠ Se cargaron solo los primeros {mediciones.length.toLocaleString()} de {medicionesTotal.toLocaleString()} registros que coinciden con los filtros. Ajusta los filtros (especie, temporada, campo) para reducir el resultado y ver todos los registros.
               </div>
             )}
           </div>
@@ -1388,12 +1394,15 @@ function NuevaMedicionDialog({
       perimetro: toNum(form.perimetro),
       raleo_frutos: toNum(form.raleo_frutos),
       rendimiento: toNum(form.rendimiento),
-      // Firmeza 5 puntos
+      // Firmeza 5 puntos (carozos)
       firmeza_punta: toNum(form.firmeza_punta),
       firmeza_quilla: toNum(form.firmeza_quilla),
       firmeza_hombro: toNum(form.firmeza_hombro),
       firmeza_mejilla_1: toNum(form.firmeza_mejilla_1),
       firmeza_mejilla_2: toNum(form.firmeza_mejilla_2),
+      // Firmeza unificada + calibre directo (cerezo)
+      firmeza: toNum(form.firmeza),
+      calibre: toNum(form.calibre),
       // Calidad
       brix: toNum(form.brix),
       acidez: toNum(form.acidez),
@@ -1620,7 +1629,7 @@ function NuevaMedicionDialog({
                 />
               </div>
 
-              {/* Repeticion */}
+              {/* Repetición */}
               <div>
                 <Label htmlFor="repeticion">Repeticion</Label>
                 <Input
@@ -1758,7 +1767,7 @@ function NuevaMedicionDialog({
               )}
               <div>
                 <Label htmlFor="perimetro">
-                  Perimetro (mm)
+                  Perímetro (mm)
                   {calibreFromPerimetro != null && (
                     <span className="ml-1 text-xs font-normal text-emerald-600">
                       = calibre {calibreFromPerimetro.toFixed(1)} mm
@@ -1777,6 +1786,52 @@ function NuevaMedicionDialog({
               </div>
             </div>
           </fieldset>
+
+          {/* ════════════════════════════════════════════════════════════════
+           *  Section 3a: Firmeza unificada + Calibre (cerezo — 1 lectura)
+           * ════════════════════════════════════════════════════════════════ */}
+          {(fVisible("firmeza") || fRequired("firmeza") || fVisible("calibre") || fRequired("calibre")) && (
+            <fieldset className="space-y-3">
+              <SectionHeading number={++sectionNum} title="Firmeza y Calibre" icon={Ruler} />
+              <p className="text-xs text-muted-foreground">
+                Para cerezo: una lectura de firmeza con durofel y el calibre medido directamente con pie de rey.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {(fVisible("firmeza") || fRequired("firmeza")) && (
+                  <div>
+                    <ClusterFieldLabel htmlFor="firmeza" isRequired={fRequired("firmeza")}>
+                      Firmeza (N)
+                    </ClusterFieldLabel>
+                    <Input
+                      id="firmeza"
+                      type="number"
+                      step="0.1"
+                      className="mt-1"
+                      value={form.firmeza}
+                      onChange={(e) => setField("firmeza", e.target.value)}
+                      placeholder="75.0"
+                    />
+                  </div>
+                )}
+                {(fVisible("calibre") || fRequired("calibre")) && (
+                  <div>
+                    <ClusterFieldLabel htmlFor="calibre" isRequired={fRequired("calibre")}>
+                      Calibre (mm)
+                    </ClusterFieldLabel>
+                    <Input
+                      id="calibre"
+                      type="number"
+                      step="0.1"
+                      className="mt-1"
+                      value={form.calibre}
+                      onChange={(e) => setField("calibre", e.target.value)}
+                      placeholder="28.0"
+                    />
+                  </div>
+                )}
+              </div>
+            </fieldset>
+          )}
 
           {/* ════════════════════════════════════════════════════════════════
            *  Section 3: Firmeza (5 puntos) — always for stone fruits
@@ -1993,11 +2048,11 @@ function NuevaMedicionDialog({
                 </div>
               )}
 
-              {/* Sub-section C: Distribucion de color */}
+              {/* Sub-section C: Distribución de color */}
               {fVisible("color_verde") && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wide">
-                    C. Distribucion de color
+                    C. Distribución de color
                   </p>
                   <div className="grid grid-cols-4 gap-3">
                     <div>
@@ -2078,10 +2133,10 @@ function NuevaMedicionDialog({
 
             {showAdvancedFields && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                {/* Periodo almacenaje — full width */}
+                {/* Período almacenaje — full width */}
                 <div className="sm:col-span-2">
                   <Label htmlFor="periodo_almacenaje">
-                    Periodo almacenaje (dias)
+                    Período almacenaje (dias)
                   </Label>
                   <Input
                     id="periodo_almacenaje"

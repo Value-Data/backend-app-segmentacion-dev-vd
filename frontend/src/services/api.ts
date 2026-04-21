@@ -7,11 +7,12 @@ const RETRY_DELAY_MS = 3000;
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined | null>;
+  silent?: boolean;
   _retryCount?: number;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { params, _retryCount = 0, ...fetchOptions } = options;
+  const { params, silent, _retryCount = 0, ...fetchOptions } = options;
 
   let url = `${BASE_URL}${path}`;
   if (params) {
@@ -88,7 +89,18 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     } catch {
       // ignore json parse error
     }
-    toast.error(detail);
+    // Suppress toast for:
+    //   - Explicit silent requests
+    //   - 404 on GET (usually optional/missing data, not a user action)
+    //   - 422 on GET (stale route or bad query param — let caller handle)
+    const method = (fetchOptions.method || "GET").toUpperCase();
+    const isGet = method === "GET";
+    const suppress =
+      silent ||
+      (isGet && (response.status === 404 || response.status === 422));
+    if (!suppress) {
+      toast.error(detail);
+    }
     throw new Error(detail);
   }
 

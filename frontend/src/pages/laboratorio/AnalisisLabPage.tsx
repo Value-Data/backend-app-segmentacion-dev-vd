@@ -285,8 +285,20 @@ function EspeciePanel({
   rows: VariedadResumen[];
   onSelect: (r: VariedadResumen) => void;
 }) {
-  // Sort by quality score
-  const sorted = useMemo(() => [...rows].sort((a, b) => qualityScore(b) - qualityScore(a)), [rows]);
+  // Sort by quality score, with tie-breakers by total_mediciones (sample size
+  // confidence) and brix_avg. Excludes variedades with <5 mediciones from
+  // ranking so that a single perfect measurement doesn't yield a 100%.
+  const MIN_MEDICIONES = 5;
+  const sorted = useMemo(() => {
+    const eligible = rows.filter((r) => r.total_mediciones >= MIN_MEDICIONES);
+    return [...eligible].sort((a, b) => {
+      const ds = qualityScore(b) - qualityScore(a);
+      if (ds !== 0) return ds;
+      const dm = b.total_mediciones - a.total_mediciones;
+      if (dm !== 0) return dm;
+      return (b.brix_avg ?? 0) - (a.brix_avg ?? 0);
+    });
+  }, [rows]);
   const top5 = sorted.slice(0, 5);
   const bottom5 = [...sorted].reverse().slice(0, 5);
 

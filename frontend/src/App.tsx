@@ -6,7 +6,7 @@ import { LoginPage } from "@/pages/Login";
 // Lazy-loaded pages — code-split per route
 const HomePage = lazy(() => import("@/pages/Home").then(m => ({ default: m.HomePage })));
 
-// Catalogos (ex Mantenedores)
+// Catálogos (ex Mantenedores)
 const MantenedoresHub = lazy(() => import("@/pages/mantenedores/MantenedoresHub").then(m => ({ default: m.MantenedoresHub })));
 const EspeciesPage = lazy(() => import("@/pages/mantenedores/EspeciesPage").then(m => ({ default: m.EspeciesPage })));
 const VariedadesPage = lazy(() => import("@/pages/mantenedores/VariedadesPage").then(m => ({ default: m.VariedadesPage })));
@@ -75,7 +75,7 @@ export function App() {
       <Route element={<AppLayout />}>
         <Route index element={<HomePage />} />
 
-        {/* Catalogos (ex Mantenedores) */}
+        {/* Catálogos (ex Mantenedores) */}
         <Route path="catalogos" element={<MantenedoresHub />} />
         <Route path="catalogos/especies" element={<EspeciesPage />} />
         <Route path="catalogos/variedades" element={<VariedadesPage />} />

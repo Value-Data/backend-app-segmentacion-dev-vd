@@ -452,6 +452,38 @@ def carga_inicial(
     }
 
 
+# ── Sin asignar (lotes con stock no asignado a testblocks) ────────────────
+# Must be BEFORE /{id} so FastAPI doesn't try to parse "sin-testblock" as int
+@router.get("/sin-testblock")
+def lotes_sin_testblock(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Lotes with remaining stock that hasn't been fully assigned to testblocks."""
+    from app.models.inventario import InventarioTestBlock
+    from sqlalchemy import func
+
+    assigned_sub = (
+        db.query(
+            InventarioTestBlock.id_inventario,
+            func.coalesce(func.sum(InventarioTestBlock.cantidad_asignada), 0).label("total_asignado"),
+        )
+        .group_by(InventarioTestBlock.id_inventario)
+        .subquery()
+    )
+
+    lotes = (
+        db.query(InventarioVivero)
+        .outerjoin(assigned_sub, InventarioVivero.id_inventario == assigned_sub.c.id_inventario)
+        .filter(
+            InventarioVivero.cantidad_actual > 0,
+            InventarioVivero.estado != "baja",
+        )
+        .all()
+    )
+    return lotes
+
+
 @router.get("/{id}")
 def get_inventario(
     id: int,
@@ -559,38 +591,6 @@ def despacho(
     user: Usuario = Depends(require_role("admin", "agronomo")),
 ):
     return crear_despacho(db, data, usuario=user.username)
-
-
-# ── Sin asignar (lotes con stock no asignado a testblocks) ────────────────
-@router.get("/sin-testblock")
-def lotes_sin_testblock(
-    db: Session = Depends(get_db),
-    user: Usuario = Depends(get_current_user),
-):
-    """Lotes with remaining stock that hasn't been fully assigned to testblocks."""
-    from app.models.inventario import InventarioTestBlock
-    from sqlalchemy import func, case
-
-    # Subquery: total assigned per lote
-    assigned_sub = (
-        db.query(
-            InventarioTestBlock.id_inventario,
-            func.coalesce(func.sum(InventarioTestBlock.cantidad_asignada), 0).label("total_asignado"),
-        )
-        .group_by(InventarioTestBlock.id_inventario)
-        .subquery()
-    )
-
-    lotes = (
-        db.query(InventarioVivero)
-        .outerjoin(assigned_sub, InventarioVivero.id_inventario == assigned_sub.c.id_inventario)
-        .filter(
-            InventarioVivero.cantidad_actual > 0,
-            InventarioVivero.estado != "baja",
-        )
-        .all()
-    )
-    return lotes
 
 
 # ── Mediciones por lote ───────────────────────────────────────────────────

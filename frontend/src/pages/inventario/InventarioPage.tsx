@@ -606,7 +606,7 @@ export function InventarioPage() {
         <TabsList>
           <TabsTrigger value="lotes">Lotes ({filteredInventario.length})</TabsTrigger>
           <TabsTrigger value="sin-asignar">Plantas Sin Lote {plantasSinLote ? `(${plantasSinLote.length})` : ""}</TabsTrigger>
-          <TabsTrigger value="guias">Gu\u00edas Despacho</TabsTrigger>
+          <TabsTrigger value="guias">Guías Despacho</TabsTrigger>
           <TabsTrigger value="movimientos">
             Kardex {selectedLote ? `— ${selectedLote.codigo_lote}` : ""}
           </TabsTrigger>
@@ -911,7 +911,7 @@ export function InventarioPage() {
                 l.estado,
               ].join(","));
               const csv = [headers.join(","), ...rows].join("\n");
-              const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+              const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;

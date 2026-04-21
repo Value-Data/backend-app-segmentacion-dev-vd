@@ -45,14 +45,14 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     items: [
       { to: "/testblocks", label: "TestBlocks", icon: Grid3X3 },
       { to: "/labores", label: "Labores", icon: Hammer, badgeKey: "labores" },
-      { to: "/fenologia", label: "Fenolog\u00eda", icon: Flower2 },
+      { to: "/fenologia", label: "Fenología", icon: Flower2 },
     ],
   },
   {
     label: "Calidad",
     items: [
       { to: "/laboratorio", label: "Mediciones Lab", icon: FlaskConical },
-      { to: "/laboratorio/analisis", label: "Clasificaci\u00f3n Calidad", icon: Microscope },
+      { to: "/laboratorio/analisis", label: "Clasificación Calidad", icon: Microscope },
       { to: "/laboratorio/reglas-cluster", label: "Reglas Cluster", icon: Settings },
     ],
   },
@@ -65,7 +65,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
   {
     items: [
       { to: "/alertas", label: "Alertas", icon: Bell, badgeKey: "alertas" },
-      { to: "/analisis", label: "Paquetes Tecnol\u00f3gicos", icon: BarChart3 },
+      { to: "/analisis", label: "Paquetes Tecnológicos", icon: BarChart3 },
     ],
   },
   {
@@ -167,7 +167,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               className="overflow-hidden whitespace-nowrap"
             >
               <p className="text-sm font-bold leading-tight tracking-tight">Garces Fruit</p>
-              <p className="text-[10px] text-white/50 leading-tight">Segmentacion de Especies</p>
+              <p className="text-[10px] text-white/50 leading-tight">Segmentación de Especies</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -241,7 +241,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                             : "min-w-[20px] h-[20px] text-[10px] px-1"
                         )}
                       >
-                        {item.badge > 999 ? "999+" : item.badge}
+                        {item.badge > 9999 ? "9k+" : item.badge >= 1000 ? `${Math.floor(item.badge / 100) / 10}k` : item.badge}
                       </span>
                     )}
                     {/* Tooltip when collapsed */}

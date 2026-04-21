@@ -333,7 +333,7 @@ export function LaboresPage() {
     [allLabores],
   );
 
-  /** Labores for the "Hoy" tab: today's scheduled + overdue */
+  /** Labores for the "Hoy" tab: today's scheduled + overdue (for the view) */
   const laboresHoy = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     return allLabores.filter((l) => {
@@ -345,17 +345,30 @@ export function LaboresPage() {
     });
   }, [allLabores]);
 
-  /** Labores for the "Semana" tab */
+  /** Strictly today's scheduled (for the "Hoy" KPI — excludes overdue) */
+  const laboresHoyStrict = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return allLabores.filter(
+      (l) =>
+        l.estado === "planificada" &&
+        l.fecha_programada?.slice(0, 10) === todayStr,
+    );
+  }, [allLabores]);
+
+  /** Labores strictly within current week (Mon–Sun), aligned with backend `esta_semana` */
   const laboresSemana = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const endOfWeek = new Date(today);
-    endOfWeek.setDate(endOfWeek.getDate() + (7 - endOfWeek.getDay()));
+    const dow = today.getDay() === 0 ? 6 : today.getDay() - 1; // Mon=0..Sun=6
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - dow);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
     return allLabores.filter((l) => {
       if (l.estado === "ejecutada") return false;
       if (!l.fecha_programada) return false;
       const fp = new Date(l.fecha_programada);
-      return fp <= endOfWeek;
+      return fp >= weekStart && fp <= weekEnd;
     });
   }, [allLabores]);
 
@@ -564,9 +577,11 @@ export function LaboresPage() {
     });
   };
 
-  // Count pending/ejecutada for Hoy summary
+  // Count pending/ejecutada for Hoy summary (tab view — includes overdue)
   const hoyPendientes = laboresHoy.filter((l) => displayStatus(l) !== "ejecutada").length;
   const hoyEjecutadas = laboresHoy.filter((l) => displayStatus(l) === "ejecutada").length;
+  // Count strictly today's scheduled labores for KPI (excludes overdue)
+  const hoyStrictPendientes = laboresHoyStrict.length;
 
   // Guess labor "tipo" from labor name for badge display
   const guessTipo = (labor: EjecucionLabor): "Labor" | "Fenologia" => {
@@ -606,12 +621,12 @@ export function LaboresPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
           title="Hoy"
-          value={hoyPendientes}
+          value={hoyStrictPendientes}
           icon={CalendarDays}
           className="border-blue-200"
           iconBg="bg-blue-50"
           iconColor="text-blue-600"
-          trend="labores programadas"
+          trend="programadas para hoy"
         />
         <KpiCard
           title="Esta semana"

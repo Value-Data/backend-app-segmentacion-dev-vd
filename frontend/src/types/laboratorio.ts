@@ -40,7 +40,7 @@ export interface MedicionLaboratorio {
   color_50_75?: number | null;
   color_75_100?: number | null;
   color_total?: number | null;
-  // Distribucion de color
+  // Distribución de color
   color_verde?: number | null;
   color_crema?: number | null;
   color_amarillo?: number | null;

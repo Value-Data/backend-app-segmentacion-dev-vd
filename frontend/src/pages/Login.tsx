@@ -29,7 +29,7 @@ export function LoginPage() {
             alt="Garces Fruit"
             className="h-16 mx-auto mb-3 object-contain"
           />
-          <p className="text-sm text-muted-foreground mt-1">Sistema de Segmentacion de Especies</p>
+          <p className="text-sm text-muted-foreground mt-1">Sistema de Segmentación de Especies</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

@@ -26,14 +26,14 @@ const userColumns = [
     header: "Estado",
     cell: ({ getValue }: any) => <StatusBadge status={getValue() ? "activo" : "inactivo"} />,
   },
-  { accessorKey: "ultimo_acceso", header: "Ultimo Acceso", cell: ({ getValue }: any) => formatDate(getValue() as string) },
+  { accessorKey: "ultimo_acceso", header: "Último Acceso", cell: ({ getValue }: any) => formatDate(getValue() as string) },
 ];
 
 const createFields: FieldDef[] = [
   { key: "username", label: "Usuario", type: "text", required: true },
   { key: "nombre_completo", label: "Nombre Completo", type: "text", required: true },
   { key: "email", label: "Email", type: "text" },
-  { key: "password", label: "Contrasena", type: "password", required: true },
+  { key: "password", label: "Contraseña", type: "password", required: true },
   {
     key: "rol",
     label: "Rol",
@@ -41,7 +41,7 @@ const createFields: FieldDef[] = [
     required: true,
     options: [
       { value: "admin", label: "Admin" },
-      { value: "agronomo", label: "Agronomo" },
+      { value: "agronomo", label: "Agrónomo" },
       { value: "laboratorio", label: "Laboratorio" },
       { value: "operador", label: "Operador" },
       { value: "visualizador", label: "Visualizador" },
@@ -53,7 +53,7 @@ const createFields: FieldDef[] = [
 const editFields: FieldDef[] = createFields.filter((f) => f.key !== "password");
 
 const passwordFields: FieldDef[] = [
-  { key: "new_password", label: "Nueva Contrasena", type: "password", required: true },
+  { key: "new_password", label: "Nueva Contraseña", type: "password", required: true },
 ];
 
 export function UsuariosPage() {
@@ -98,7 +98,7 @@ export function UsuariosPage() {
     mutationFn: ({ id, pwd }: { id: number; pwd: string }) =>
       sistemaService.changePassword(id, { new_password: pwd }),
     onSuccess: () => {
-      toast.success("Contrasena cambiada");
+      toast.success("Contraseña cambiada");
     },
   });
 
@@ -167,7 +167,7 @@ export function UsuariosPage() {
           await pwdMut.mutateAsync({ id: selectedUser.id_usuario, pwd: String(data.new_password) });
         }}
         fields={passwordFields}
-        title={`Cambiar Contrasena: ${selectedUser?.username ?? ""}`}
+        title={`Cambiar Contraseña: ${selectedUser?.username ?? ""}`}
         isLoading={pwdMut.isPending}
       />
     </div>

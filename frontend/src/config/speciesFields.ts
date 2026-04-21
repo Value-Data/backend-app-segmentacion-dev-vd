@@ -41,6 +41,22 @@ const BASE_REQUIRED = ["fecha_medicion", "brix", "acidez"];
 const BASE_VISIBLE = ["n_muestra", "repeticion", "peso", "perimetro", "observaciones"];
 
 export const SPECIES_FIELD_CONFIG: Record<string, SpeciesFieldConfig> = {
+  cerezo: {
+    required: [...BASE_REQUIRED, "firmeza", "calibre"],
+    visible: [...BASE_VISIBLE, "color_piel"],
+    ruleHint: "Cerezo: brix, firmeza unificada y calibre son críticos. Los 5 puntos de firmeza (tipo ciruela) no aplican.",
+    needsPeso: false,
+    needsColorPulpa: false,
+    needsFechaEval: false,
+  },
+  cereza: {
+    required: [...BASE_REQUIRED, "firmeza", "calibre"],
+    visible: [...BASE_VISIBLE, "color_piel"],
+    ruleHint: "Cereza: brix, firmeza unificada y calibre son críticos. Los 5 puntos de firmeza (tipo ciruela) no aplican.",
+    needsPeso: false,
+    needsColorPulpa: false,
+    needsFechaEval: false,
+  },
   ciruela: {
     required: [...BASE_REQUIRED, "peso", ...FIRMEZA_5PT],
     visible: [...BASE_VISIBLE, ...COLOR_COVERAGE, ...COLOR_DIST],
