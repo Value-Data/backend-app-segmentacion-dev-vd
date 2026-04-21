@@ -1149,9 +1149,17 @@ function ClusterFieldLabel({
       {isRequired && (
         <Fragment>
           {" "}
-          <span className="text-destructive">*</span>
-          <span className="ml-1 text-[10px] font-normal text-amber-600 bg-amber-50 px-1 rounded">
-            cluster
+          <span
+            className="text-destructive"
+            title="Campo obligatorio — criterio de clasificación de calidad"
+          >
+            *
+          </span>
+          <span
+            className="ml-1 text-[10px] font-normal text-amber-700 bg-amber-50 px-1 rounded"
+            title="Este campo forma parte del criterio de clasificación por cluster de calidad"
+          >
+            criterio
           </span>
         </Fragment>
       )}

@@ -359,15 +359,15 @@ function EspeciePanel({
               <th className="px-2 py-2 text-left">PI</th>
               <th className="px-2 py-2 text-left">PMG</th>
               <th className="px-2 py-2 text-left">Campo</th>
-              <th className="px-2 py-2 text-right">Meds</th>
-              <th className="px-2 py-2 text-right">Temp.</th>
-              <th className="px-2 py-2 text-right">Brix</th>
-              <th className="px-2 py-2 text-right">Firmeza</th>
-              <th className="px-2 py-2 text-right">Acidez</th>
-              <th className="px-2 py-2 text-right">Peso</th>
-              <th className="px-2 py-2 text-right">%C1+C2</th>
-              <th className="px-3 py-2 text-center w-[140px]">Clusters</th>
-              <th className="px-2 py-2 text-center">C</th>
+              <th className="px-2 py-2 text-right" title="Mediciones totales para esta combinación">Meds</th>
+              <th className="px-2 py-2 text-right" title="Cantidad de temporadas distintas con mediciones">Temp.</th>
+              <th className="px-2 py-2 text-right" title="Brix promedio">Brix</th>
+              <th className="px-2 py-2 text-right" title="Firmeza promedio">Firmeza</th>
+              <th className="px-2 py-2 text-right" title="Acidez promedio (%)">Acidez</th>
+              <th className="px-2 py-2 text-right" title="Peso promedio (g)">Peso</th>
+              <th className="px-2 py-2 text-right" title="% mediciones en Cluster 1 (Premium) o 2 (Buena)">%C1+C2</th>
+              <th className="px-3 py-2 text-center w-[140px]" title="Distribución de mediciones entre C1/C2/C3/C4">Clusters</th>
+              <th className="px-2 py-2 text-center" title="Cluster predominante">C</th>
               <th className="px-1 py-2 text-center w-[32px]">PDF</th>
             </tr>
           </thead>
