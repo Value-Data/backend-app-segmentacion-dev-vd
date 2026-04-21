@@ -5,6 +5,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 
 function PageSkeleton() {
   return (
@@ -42,20 +43,22 @@ export function AppLayout() {
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         <Header />
         <main id="main-content" className="flex-1 overflow-auto">
-          <Suspense fallback={<PageSkeleton />}>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={location.pathname}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.15, ease: "easeOut" }}
-                className="p-6"
-              >
-                <Outlet />
-              </motion.div>
-            </AnimatePresence>
-          </Suspense>
+          <ErrorBoundary key={location.pathname}>
+            <Suspense fallback={<PageSkeleton />}>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={location.pathname}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="p-6"
+                >
+                  <Outlet />
+                </motion.div>
+              </AnimatePresence>
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
     </div>

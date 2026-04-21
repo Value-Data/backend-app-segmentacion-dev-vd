@@ -2,7 +2,8 @@ import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
-const MAX_RETRIES = 1;
+// Azure serverless cold-start puede tardar hasta ~60s; reintentamos con backoff
+const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 3000;
 
 interface RequestOptions extends RequestInit {
@@ -42,6 +43,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers["Content-Type"] = "application/json";
   }
 
+  // Exponential backoff: 3s, 6s, 12s = hasta ~21s total
+  const backoff = (attempt: number) => RETRY_DELAY_MS * Math.pow(2, attempt);
+
   let response: Response;
   try {
     response = await fetch(url, {
@@ -49,24 +53,37 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       headers,
     });
   } catch (networkError) {
-    // Network error (server unreachable, DB sleep) — retry once
     if (_retryCount < MAX_RETRIES) {
-      toast.loading("Conectando con el servidor... un momento", { id: "retry-connect" });
-      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      toast.loading(
+        `Conectando con el servidor... (intento ${_retryCount + 1}/${MAX_RETRIES + 1})`,
+        { id: "retry-connect" },
+      );
+      await new Promise((r) => setTimeout(r, backoff(_retryCount)));
       return request<T>(path, { ...options, _retryCount: _retryCount + 1 });
     }
     toast.dismiss("retry-connect");
-    toast.error("No se pudo conectar al servidor");
+    toast.error("No se pudo conectar al servidor", { id: "conn-error" });
     throw networkError;
   }
 
-  // 503 = server/DB waking up — retry once
+  // 503 = server/DB waking up — retry con backoff
   if (response.status === 503 && _retryCount < MAX_RETRIES) {
-    toast.loading("Conectando con el servidor... un momento", { id: "retry-connect" });
-    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    toast.loading(
+      `El servidor se está despertando... (intento ${_retryCount + 1}/${MAX_RETRIES + 1})`,
+      { id: "retry-connect" },
+    );
+    await new Promise((r) => setTimeout(r, backoff(_retryCount)));
     return request<T>(path, { ...options, _retryCount: _retryCount + 1 });
   }
   toast.dismiss("retry-connect");
+
+  // Tras agotar retries con 503, mostrar mensaje específico (distinto de 404)
+  if (response.status === 503) {
+    toast.error("Servidor temporalmente no disponible. Intenta en unos segundos.", {
+      id: "server-503",
+    });
+    throw new Error("503 Service Unavailable");
+  }
 
   if (response.status === 401) {
     useAuthStore.getState().logout();
