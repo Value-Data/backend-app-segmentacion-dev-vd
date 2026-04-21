@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, CheckCircle2, AlertTriangle, ShieldAlert } from "lucide-react";
+import { Bell, CheckCircle2, AlertTriangle, ShieldAlert, Zap, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -11,7 +11,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { alertaService } from "@/services/sistema";
 import { formatDate } from "@/lib/utils";
 import type { FieldDef } from "@/types";
-import type { Alerta } from "@/types/sistema";
+import type { Alerta, ReglaAlerta } from "@/types/sistema";
 
 const PRIORIDAD_ICON: Record<string, string> = {
   alta: "text-red-500",
@@ -67,19 +67,36 @@ const resolverFields: FieldDef[] = [
 ];
 
 const reglaFields: FieldDef[] = [
-  { key: "codigo", label: "Código", type: "text", required: true },
+  { key: "codigo", label: "Código", type: "text", required: true, placeholder: "Ej: ALRT-006" },
   { key: "nombre", label: "Nombre", type: "text", required: true },
   { key: "descripcion", label: "Descripción", type: "textarea" },
-  { key: "tipo", label: "Tipo", type: "text" },
-  { key: "condicion", label: "Condicion (SQL/expresion)", type: "textarea" },
+  {
+    key: "tipo",
+    label: "Tipo",
+    type: "select",
+    required: true,
+    options: [
+      { value: "umbral", label: "Umbral — Valor cruza un límite" },
+      { value: "outlier", label: "Outlier — Valor fuera del rango esperado" },
+      { value: "tiempo", label: "Tiempo — Días sin registro" },
+      { value: "tendencia", label: "Tendencia — Cambio anómalo en el tiempo" },
+    ],
+  },
+  {
+    key: "condicion",
+    label: "Condición (descriptiva)",
+    type: "textarea",
+    placeholder: "Ej: brix < 14  |  cantidad_actual < cantidad_minima  |  dias_sin_registro > 7",
+  },
   {
     key: "prioridad_resultado",
     label: "Prioridad",
     type: "select",
+    required: true,
     options: [
-      { value: "alta", label: "Alta" },
-      { value: "media", label: "Media" },
-      { value: "baja", label: "Baja" },
+      { value: "alta", label: "Alta (crítica)" },
+      { value: "media", label: "Media (advertencia)" },
+      { value: "baja", label: "Baja (informativa)" },
     ],
   },
 ];
@@ -89,6 +106,8 @@ export function AlertasPage() {
   const [resolverOpen, setResolverOpen] = useState(false);
   const [reglaOpen, setReglaOpen] = useState(false);
   const [selectedAlerta, setSelectedAlerta] = useState<Alerta | null>(null);
+  const [editRegla, setEditRegla] = useState<ReglaAlerta | null>(null);
+  const [ultimaEvaluacion, setUltimaEvaluacion] = useState<Date | null>(null);
 
   const { data: activas, isLoading: loadingActivas } = useQuery({
     queryKey: ["alertas", "activa"],
@@ -122,13 +141,68 @@ export function AlertasPage() {
     },
   });
 
+  const updateReglaMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      alertaService.updateRegla(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alertas", "reglas"] });
+      toast.success("Regla actualizada");
+    },
+  });
+
+  const eliminarReglaMut = useMutation({
+    mutationFn: (id: number) => alertaService.eliminarRegla(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alertas", "reglas"] });
+      toast.success("Regla desactivada");
+    },
+  });
+
+  const evaluarMut = useMutation({
+    mutationFn: () => alertaService.evaluar(),
+    onSuccess: (res) => {
+      setUltimaEvaluacion(new Date());
+      queryClient.invalidateQueries({ queryKey: ["alertas"] });
+      const detalle = Object.entries(res.por_regla)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" · ");
+      toast.success(
+        `Evaluadas ${res.reglas_evaluadas} reglas. Nuevas alertas: ${res.alertas_creadas}. ${detalle}`,
+        { duration: 6000 },
+      );
+    },
+    onError: (err: Error) => toast.error(`Error evaluando: ${err.message}`),
+  });
+
   const totalActivas = activas?.length ?? 0;
   const altas = activas?.filter((a) => a.prioridad === "alta").length ?? 0;
   const medias = activas?.filter((a) => a.prioridad === "media").length ?? 0;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-garces-cherry">Alertas</h2>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-xl font-bold text-garces-cherry">Centro de Alertas</h2>
+        <div className="flex items-center gap-2">
+          {ultimaEvaluacion && (
+            <span className="text-xs text-muted-foreground">
+              Última evaluación: {ultimaEvaluacion.toLocaleTimeString("es-CL")}
+            </span>
+          )}
+          <Button
+            size="sm"
+            disabled={evaluarMut.isPending}
+            onClick={() => evaluarMut.mutate()}
+            title="Ejecuta todas las reglas activas y genera nuevas alertas"
+          >
+            {evaluarMut.isPending ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <Zap className="h-4 w-4 mr-1" />
+            )}
+            Evaluar reglas ahora
+          </Button>
+        </div>
+      </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -175,7 +249,11 @@ export function AlertasPage() {
             data={reglas || []}
             columns={reglaColumns as any}
             isLoading={loadingReglas}
-            onCreate={() => setReglaOpen(true)}
+            onCreate={() => { setEditRegla(null); setReglaOpen(true); }}
+            onEdit={(row) => { setEditRegla(row as unknown as ReglaAlerta); setReglaOpen(true); }}
+            onDelete={async (row) => {
+              await eliminarReglaMut.mutateAsync((row as any).id_regla);
+            }}
             createLabel="Nueva Regla"
           />
         </TabsContent>
@@ -195,11 +273,18 @@ export function AlertasPage() {
 
       <CrudForm
         open={reglaOpen}
-        onClose={() => setReglaOpen(false)}
-        onSubmit={async (data) => { await crearReglaMut.mutateAsync(data); }}
+        onClose={() => { setReglaOpen(false); setEditRegla(null); }}
+        onSubmit={async (data) => {
+          if (editRegla) {
+            await updateReglaMut.mutateAsync({ id: editRegla.id_regla, data });
+          } else {
+            await crearReglaMut.mutateAsync(data);
+          }
+        }}
         fields={reglaFields}
-        title="Nueva Regla de Alerta"
-        isLoading={crearReglaMut.isPending}
+        initialData={editRegla as unknown as Record<string, unknown> | null}
+        title={editRegla ? `Editar Regla: ${editRegla.codigo}` : "Nueva Regla de Alerta"}
+        isLoading={crearReglaMut.isPending || updateReglaMut.isPending}
       />
     </div>
   );

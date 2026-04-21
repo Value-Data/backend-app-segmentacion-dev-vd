@@ -1,4 +1,4 @@
-import { get, post, put } from "./api";
+import { get, post, put, del } from "./api";
 import type { Usuario, Rol, AuditLog, Alerta, ReglaAlerta } from "@/types/sistema";
 import type { PasswordChange } from "@/types/auth";
 
@@ -23,4 +23,12 @@ export const alertaService = {
   reglas: () => get<ReglaAlerta[]>("/alertas/reglas"),
   crearRegla: (data: Record<string, unknown>) =>
     post<ReglaAlerta>("/alertas/reglas", data),
+  updateRegla: (id: number, data: Record<string, unknown>) =>
+    put<ReglaAlerta>(`/alertas/reglas/${id}`, data),
+  eliminarRegla: (id: number) =>
+    del<{ ok: boolean }>(`/alertas/reglas/${id}`),
+  evaluar: () =>
+    post<{ reglas_evaluadas: number; alertas_creadas: number; por_regla: Record<string, number> }>(
+      "/alertas/evaluar",
+    ),
 };
