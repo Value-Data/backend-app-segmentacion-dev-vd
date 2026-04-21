@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, LayoutGrid, List, Pencil, Trash2, Search, Loader2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -57,7 +57,15 @@ export function GenericMantenedorPage({
   const { data, isLoading, create, update, remove, isCreating, isUpdating } = useCrud(entidad, params);
   const [formOpen, setFormOpen] = useState(false);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  const viewStorageKey = `catalog-view:${entidad}`;
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "cards";
+    const saved = window.localStorage.getItem(viewStorageKey);
+    return saved === "table" || saved === "cards" ? saved : "cards";
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(viewStorageKey, viewMode); } catch {}
+  }, [viewMode, viewStorageKey]);
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Record<string, unknown> | null>(null);
 
@@ -131,12 +139,15 @@ export function GenericMantenedorPage({
         </div>
         <div className="flex items-center gap-2">
           {/* View toggle */}
-          <div className="flex bg-muted rounded-md p-0.5">
+          <div className="flex bg-muted rounded-md p-0.5" role="group" aria-label="Cambiar vista">
             <Button
               variant={viewMode === "cards" ? "default" : "ghost"}
               size="sm"
               className="h-7 px-2"
               onClick={() => setViewMode("cards")}
+              title="Vista cuadricula"
+              aria-label="Vista cuadricula"
+              aria-pressed={viewMode === "cards"}
             >
               <LayoutGrid className="h-3.5 w-3.5" />
             </Button>
@@ -145,6 +156,9 @@ export function GenericMantenedorPage({
               size="sm"
               className="h-7 px-2"
               onClick={() => setViewMode("table")}
+              title="Vista lista"
+              aria-label="Vista lista"
+              aria-pressed={viewMode === "table"}
             >
               <List className="h-3.5 w-3.5" />
             </Button>

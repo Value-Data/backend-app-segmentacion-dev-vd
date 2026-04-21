@@ -1,12 +1,14 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2, Upload, Camera, History, X, Link2, Star, ShieldAlert } from "lucide-react";
+import { ArrowLeft, BookOpen, Plus, Image as ImageIcon, Search, Leaf, Pencil, Trash2, Upload, Camera, History, X, Link2, Star, ShieldAlert, LayoutGrid, List } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CrudForm } from "@/components/shared/CrudForm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { BulkActions } from "@/components/shared/BulkActions";
+import { AuthImage } from "@/components/shared/AuthImage";
+import { CrudTable } from "@/components/shared/CrudTable";
 import { useCrud } from "@/hooks/useCrud";
 import { useLookups } from "@/hooks/useLookups";
 import { mantenedorService, variedadBitacoraService } from "@/services/mantenedores";
@@ -308,6 +310,15 @@ export function VariedadesPage() {
   const [search, setSearch] = useState("");
   const [activeEspecie, setActiveEspecie] = useState<string>("todas");
   const [activePmg, setActivePmg] = useState<string>("todos");
+  const viewStorageKey = "catalog-view:variedades";
+  const [viewMode, setViewMode] = useState<"cards" | "table">(() => {
+    if (typeof window === "undefined") return "cards";
+    const s = window.localStorage.getItem(viewStorageKey);
+    return s === "table" || s === "cards" ? s : "cards";
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(viewStorageKey, viewMode); } catch {}
+  }, [viewMode]);
 
   // Build especie list for tabs
   const especieList = useMemo(() => {
@@ -371,9 +382,7 @@ export function VariedadesPage() {
     }
   };
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api/v1";
-  const token = useAuthStore((s) => s.token);
-  const fotoUrl = (fotoId: number) => `${API_BASE}/files/fotos/${fotoId}?token=${encodeURIComponent(token || "")}`;
+  const fotoPath = (fotoId: number) => `/files/fotos/${fotoId}`;
   const principalFoto = fotos?.find((f) => f.es_principal);
 
   // Detail view
@@ -424,7 +433,11 @@ export function VariedadesPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="bg-white rounded-lg border p-4 space-y-3">
               {principalFoto ? (
-                <img src={fotoUrl(principalFoto.id)} alt={selectedVar.nombre as string} className="w-full rounded-lg object-cover max-h-64" />
+                <AuthImage
+                  path={fotoPath(principalFoto.id)}
+                  alt={selectedVar.nombre as string}
+                  className="w-full rounded-lg object-cover max-h-64"
+                />
               ) : img ? (
                 <img src={`data:image/jpeg;base64,${img}`} alt={selectedVar.nombre as string} className="w-full rounded-lg object-cover max-h-64" />
               ) : (
@@ -672,11 +685,10 @@ export function VariedadesPage() {
                 {fotos.map((f) => (
                   <div key={f.id} className={`relative group border rounded-lg overflow-hidden ${f.es_principal ? "ring-2 ring-yellow-400" : ""}`}>
                     <div className="aspect-square bg-muted">
-                      <img
-                        src={fotoUrl(f.id)}
+                      <AuthImage
+                        path={fotoPath(f.id)}
                         alt={f.filename}
                         className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                       />
                     </div>
                     <div className="p-2">
@@ -901,6 +913,30 @@ export function VariedadesPage() {
           <span className="text-sm text-muted-foreground">({filtered.length})</span>
         </div>
         <div className="flex gap-2 items-center">
+          <div className="flex bg-muted rounded-md p-0.5" role="group" aria-label="Cambiar vista">
+            <Button
+              variant={viewMode === "cards" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("cards")}
+              title="Vista cuadricula"
+              aria-label="Vista cuadricula"
+              aria-pressed={viewMode === "cards"}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant={viewMode === "table" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("table")}
+              title="Vista lista"
+              aria-label="Vista lista"
+              aria-pressed={viewMode === "table"}
+            >
+              <List className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           <BulkActions
             entity="variedades"
             onImportComplete={() => queryClient.invalidateQueries({ queryKey: ["variedades"] })}
@@ -991,6 +1027,49 @@ export function VariedadesPage() {
           <Leaf className="h-10 w-10 mx-auto mb-2 opacity-30" />
           <p>Sin variedades{activeEspecie !== "todas" ? ` para ${activeEspecie}` : ""}{activePmg !== "todos" ? ` en ${activePmg}` : ""}{search ? ` con "${search}"` : ""}</p>
         </div>
+      ) : viewMode === "table" ? (
+        <CrudTable
+          data={filtered as Record<string, unknown>[]}
+          columns={[
+            { accessorKey: "codigo", header: "Código" },
+            { accessorKey: "nombre", header: "Nombre" },
+            {
+              accessorKey: "id_especie",
+              header: "Especie",
+              cell: ({ getValue }: any) => lk.especie(getValue() as number),
+            },
+            {
+              accessorKey: "id_pmg",
+              header: "PMG",
+              cell: ({ getValue }: any) => lk.pmg(getValue() as number),
+            },
+            {
+              accessorKey: "epoca_cosecha",
+              header: "Época",
+              cell: ({ getValue }: any) => {
+                const v = getValue() as string | null;
+                return v ? humanize(v) : "-";
+              },
+            },
+            { accessorKey: "calibre_esperado", header: "Calibre" },
+            { accessorKey: "color", header: "Color" },
+            {
+              accessorKey: "estado",
+              header: "Estado",
+              cell: ({ getValue }: any) => {
+                const v = (getValue() as string) || "prospecto";
+                return <StatusBadge status={v} />;
+              },
+            },
+          ] as any}
+          isLoading={isLoading}
+          onEdit={(row) => { setSelectedVar(row); }}
+          onDelete={async (row) => {
+            if (confirm(`Eliminar variedad "${row.nombre}"?`)) {
+              await remove(row.id_variedad as number);
+            }
+          }}
+        />
       ) : (
         <div>
           <p className="text-xs text-muted-foreground mb-3">{filtered.length} variedades</p>
@@ -1014,11 +1093,10 @@ export function VariedadesPage() {
                 </button>
                 {/* Image — prefer uploaded foto principal, fallback to legacy base64 */}
                 {principalFotoId ? (
-                  <img
-                    src={fotoUrl(principalFotoId)}
+                  <AuthImage
+                    path={fotoPath(principalFotoId)}
                     alt={v.nombre as string}
                     className="w-full h-36 object-cover"
-                    loading="lazy"
                   />
                 ) : img ? (
                   <img

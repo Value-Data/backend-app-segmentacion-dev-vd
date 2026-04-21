@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Pencil, Trash2, Flower2, Loader2, Search, LayoutGrid, List } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -27,7 +27,15 @@ export function EstadosFenologicosPage() {
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [search, setSearch] = useState("");
   const [activeEspecie, setActiveEspecie] = useState<number | "todas">("todas");
-  const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  const viewStorageKey = "catalog-view:estados-fenologicos";
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "cards";
+    const s = window.localStorage.getItem(viewStorageKey);
+    return s === "table" || s === "cards" ? s : "cards";
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(viewStorageKey, viewMode); } catch {}
+  }, [viewMode]);
 
   // Fetch species for tabs and form select
   const { data: especies } = useQuery({
@@ -188,13 +196,15 @@ export function EstadosFenologicosPage() {
           </span>
         </div>
         <div className="flex gap-2 items-center">
-          <div className="flex bg-muted rounded-md p-0.5">
+          <div className="flex bg-muted rounded-md p-0.5" role="group" aria-label="Cambiar vista">
             <Button
               variant={viewMode === "cards" ? "default" : "ghost"}
               size="sm"
               className="h-7 px-2"
               onClick={() => setViewMode("cards")}
-              aria-label="Vista cuadrícula"
+              title="Vista cuadricula"
+              aria-label="Vista cuadricula"
+              aria-pressed={viewMode === "cards"}
             >
               <LayoutGrid className="h-3.5 w-3.5" />
             </Button>
@@ -203,7 +213,9 @@ export function EstadosFenologicosPage() {
               size="sm"
               className="h-7 px-2"
               onClick={() => setViewMode("table")}
+              title="Vista lista"
               aria-label="Vista lista"
+              aria-pressed={viewMode === "table"}
             >
               <List className="h-3.5 w-3.5" />
             </Button>

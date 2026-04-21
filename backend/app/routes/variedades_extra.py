@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Header
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -188,18 +188,33 @@ def delete_foto(
 def serve_foto(
     fid: int,
     token: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ):
-    """Serve foto from DB (or legacy disk). Accepts token via query param for <img src>."""
-    if not token:
-        raise HTTPException(status_code=401, detail="Token requerido")
+    """Serve foto from DB (or legacy disk).
+
+    Auth: prefiere cabecera `Authorization: Bearer <token>` (no filtra el JWT
+    a logs/Referer). Acepta `?token=` sólo como fallback para links/imgs
+    legacy todavía en uso.
+    """
     from app.core.security import decode_access_token
-    payload = decode_access_token(token)
+
+    bearer = None
+    if authorization and authorization.lower().startswith("bearer "):
+        bearer = authorization.split(" ", 1)[1].strip()
+    effective = bearer or token
+    if not effective:
+        raise HTTPException(status_code=401, detail="Token requerido")
+    payload = decode_access_token(effective)
     if payload is None:
         raise HTTPException(status_code=401, detail="Token invalido o expirado")
+
     foto = db.get(VariedadFoto, fid)
     if not foto:
         raise HTTPException(status_code=404, detail="Foto no encontrada")
+
+    # Cache privado para que proxies/CDN no compartan contenido entre usuarios.
+    cache_header = "private, max-age=3600"
 
     # Serve from DB binary
     if foto.data:
@@ -208,16 +223,22 @@ def serve_foto(
             media_type=foto.content_type or "image/jpeg",
             headers={
                 "Content-Disposition": f'inline; filename="{foto.filename}"',
-                "Cache-Control": "public, max-age=86400",
+                "Cache-Control": cache_header,
             },
         )
 
     # Fallback: legacy disk file
     if foto.filepath and foto.filepath != "db" and os.path.exists(foto.filepath):
         from fastapi.responses import FileResponse
-        return FileResponse(foto.filepath, media_type="image/jpeg", filename=foto.filename)
+        return FileResponse(
+            foto.filepath,
+            media_type="image/jpeg",
+            filename=foto.filename,
+            headers={"Cache-Control": cache_header},
+        )
 
-    raise HTTPException(status_code=404, detail="Imagen no disponible")
+    # Foto existe pero sin data ni disco -> mismo 404 unificado
+    raise HTTPException(status_code=404, detail="Foto no encontrada")
 
 
 @router.put("/variedades/{id_variedad}/fotos/{fid}/principal")
