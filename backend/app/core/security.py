@@ -1,5 +1,6 @@
 """JWT token creation/validation and password hashing."""
 
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -27,11 +28,23 @@ def verify_password(plain: str, hashed: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    to_encode.update({"exp": expire})
+    """Crea JWT con claims estándar (S-10, S-16).
+
+    Claims incluidos:
+      - sub: username
+      - rol, email, id_usuario, campos_asignados: del caller
+      - iat: issued at (epoch)
+      - exp: expiration (epoch, default 8h desde config)
+      - jti: unique token id (permite revocación futura)
+    """
+    now = datetime.now(timezone.utc)
+    ttl = expires_delta or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode = {
+        **data,
+        "iat": int(now.timestamp()),
+        "exp": now + ttl,
+        "jti": uuid.uuid4().hex,
+    }
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 

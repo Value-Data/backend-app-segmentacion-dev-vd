@@ -36,30 +36,36 @@ const userColumns = [
 ];
 
 const createFields: FieldDef[] = [
-  { key: "username", label: "Usuario", type: "text", required: true },
+  { key: "username", label: "Usuario", type: "text", required: true, placeholder: "ej: juan.perez" },
   { key: "nombre_completo", label: "Nombre Completo", type: "text", required: true },
-  { key: "email", label: "Email", type: "text" },
-  { key: "password", label: "Contraseña", type: "password", required: true },
+  { key: "email", label: "Email", type: "text", required: true, placeholder: "usuario@garcesfruit.cl" },
+  { key: "password", label: "Contraseña", type: "password", required: true, placeholder: "Mínimo 8 caracteres" },
   {
     key: "rol",
     label: "Rol",
     type: "select",
     required: true,
     options: [
-      { value: "admin", label: "Admin" },
-      { value: "agronomo", label: "Agrónomo" },
-      { value: "laboratorio", label: "Laboratorio" },
-      { value: "operador", label: "Operador" },
-      { value: "visualizador", label: "Visualizador" },
+      { value: "admin", label: "Admin (todo el sistema)" },
+      { value: "agronomo", label: "Agrónomo (labores + fenología)" },
+      { value: "laboratorio", label: "Laboratorio (mediciones + clasif.)" },
+      { value: "operador", label: "Operador (bitácora + ejecución labores)" },
+      { value: "visualizador", label: "Visualizador (solo lectura)" },
     ],
   },
-  { key: "campos_asignados", label: "Campos Asignados (IDs separados por coma)", type: "text" },
+  { key: "campos_asignados", label: "Campos Asignados (IDs separados por coma)", type: "text", placeholder: "Ej: 1,3,5 — en blanco = todos los campos" },
 ];
 
-const editFields: FieldDef[] = createFields.filter((f) => f.key !== "password");
+// Edit: sin password, con toggle activo (S-11)
+const editFields: FieldDef[] = [
+  ...createFields.filter((f) => f.key !== "password").map((f) =>
+    f.key === "username" ? { ...f, disabled: true } : f,
+  ),
+  { key: "activo", label: "Activo", type: "boolean" },
+];
 
 const passwordFields: FieldDef[] = [
-  { key: "new_password", label: "Nueva Contraseña", type: "password", required: true },
+  { key: "new_password", label: "Nueva Contraseña", type: "password", required: true, placeholder: "Mínimo 8 caracteres" },
 ];
 
 export function UsuariosPage() {
@@ -110,6 +116,18 @@ export function UsuariosPage() {
 
   const activos = usuarios?.filter((u) => u.activo !== false).length ?? 0;
   const admins = usuarios?.filter((u) => u.rol === "admin").length ?? 0;
+  // S-21: KPIs más útiles. Pendientes = activos sin último acceso (onboarding incompleto).
+  // Inactivos30 = sin login en 30 días (estimado).
+  const pendientes = usuarios?.filter((u) => u.activo !== false && !u.ultimo_acceso).length ?? 0;
+  const inactivos30 = usuarios?.filter((u) => {
+    if (u.activo === false || !u.ultimo_acceso) return false;
+    try {
+      const d = new Date(u.ultimo_acceso);
+      return (Date.now() - d.getTime()) > 30 * 24 * 60 * 60 * 1000;
+    } catch {
+      return false;
+    }
+  }).length ?? 0;
 
   return (
     <div className="space-y-4">
@@ -120,11 +138,22 @@ export function UsuariosPage() {
         </Button>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <KpiCard title="Total Usuarios" value={usuarios?.length ?? 0} icon={Users} />
-        <KpiCard title="Activos" value={activos} icon={ShieldCheck} />
+      {/* KPIs (S-21) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <KpiCard title="Total" value={usuarios?.length ?? 0} icon={Users} />
         <KpiCard title="Administradores" value={admins} icon={Key} />
+        <KpiCard
+          title="Pendientes"
+          value={pendientes}
+          icon={ShieldCheck}
+          trend="nunca iniciaron sesión"
+        />
+        <KpiCard
+          title="Inactivos 30 días"
+          value={inactivos30}
+          icon={ShieldCheck}
+          trend="sin login reciente"
+        />
       </div>
 
       <CrudTable

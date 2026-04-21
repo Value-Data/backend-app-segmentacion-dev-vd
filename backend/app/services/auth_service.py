@@ -23,11 +23,20 @@ def authenticate(db: Session, req: LoginRequest) -> TokenResponse:
             detail="Usuario o contrasena incorrectos",
         )
 
-    # Update last access
+    # Update last access (S-17: antes solo el admin veía tracked porque
+    # el endpoint listaba campos no siempre actualizados; ahora todos
+    # los usuarios al login se les actualiza ultimo_acceso).
     user.ultimo_acceso = utcnow()
     db.commit()
 
-    token = create_access_token({"sub": user.username, "rol": user.rol})
+    # S-10: claims enriquecidos (iat/jti agregados por create_access_token).
+    token = create_access_token({
+        "sub": user.username,
+        "rol": user.rol,
+        "id_usuario": user.id_usuario,
+        "email": user.email,
+        "campos_asignados": user.campos_asignados,
+    })
 
     return TokenResponse(
         access_token=token,
