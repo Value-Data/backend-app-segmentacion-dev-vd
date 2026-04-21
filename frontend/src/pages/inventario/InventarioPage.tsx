@@ -214,7 +214,7 @@ export function InventarioPage() {
     },
     {
       accessorKey: "ano_plantacion",
-      header: "Ano",
+      header: "Año",
       cell: ({ getValue }: any) => getValue() ?? "-",
     },
     {
@@ -407,7 +407,7 @@ export function InventarioPage() {
   });
 
   const guiaColumns = [
-    { accessorKey: "numero_guia", header: "N. Guia", cell: ({ getValue }: any) => (
+    { accessorKey: "numero_guia", header: "N° Guía", cell: ({ getValue }: any) => (
       <span className="font-mono font-medium text-garces-cherry">{getValue()}</span>
     )},
     { accessorKey: "id_bodega_origen", header: "Bodega Origen", cell: ({ getValue }: any) => lk.bodega(getValue()) },
