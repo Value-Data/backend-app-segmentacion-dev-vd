@@ -22,9 +22,11 @@ interface CrudFormProps {
   isLoading?: boolean;
   /** Optional callback when any field value changes — useful for cascading dropdowns. */
   onFieldChange?: (key: string, value: unknown) => void;
+  /** Custom label for submit button (e.g. "Ejecutar", "Guardar cambios"). Default: "Actualizar" si editando, "Crear" si nuevo. */
+  submitLabel?: string;
 }
 
-export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, isLoading, onFieldChange }: CrudFormProps) {
+export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, isLoading, onFieldChange, submitLabel }: CrudFormProps) {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -213,7 +215,7 @@ export function CrudForm({ open, onClose, onSubmit, fields, initialData, title, 
               Cancelar
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Guardando..." : initialData ? "Actualizar" : "Crear"}
+              {isLoading ? "Guardando..." : submitLabel ?? (initialData ? "Actualizar" : "Crear")}
             </Button>
           </DialogFooter>
         </form>

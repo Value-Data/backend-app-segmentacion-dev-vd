@@ -1102,7 +1102,7 @@ export function LaboresPage() {
                 <div className="flex items-center justify-between px-5 py-3.5 border-b bg-gray-50/80">
                   <div className="flex items-center gap-3">
                     <span className="font-bold text-sm">
-                      Pauta {selectedPautaEspecieName} -- Temporada 2025-2026
+                      Pauta {selectedPautaEspecieName} — Temporada {currentTemporada}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {pautaItems.length} items ({pautaItems.filter((p) => p.tipo === "Fenologia").length} fenologia + {pautaItems.filter((p) => p.tipo === "Labor").length} labores)
@@ -1778,6 +1778,7 @@ export function LaboresPage() {
         fields={ejecutarFields}
         title={`Ejecutar: ${selectedLabor ? resolvLabor(selectedLabor.id_labor) : ""}`}
         isLoading={ejecutarMut.isPending}
+        submitLabel="Registrar ejecución"
       />
 
       {/* --- Evidence Modal --- */}
