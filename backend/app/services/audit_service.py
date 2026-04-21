@@ -1,8 +1,10 @@
 """Audit logging service — inserts rows into audit_log without committing."""
 
+import json
 import logging
 from datetime import datetime
 
+from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.models.sistema import AuditLog
@@ -19,24 +21,45 @@ def log_audit(
     datos_anteriores: str | None = None,
     datos_nuevos: str | None = None,
     usuario: str | None = None,
+    ip: str | None = None,
+    request: Request | None = None,
 ) -> None:
-    """Create an AuditLog row and add it to the session.
+    """Insert audit_log row. detalle serializado como JSON para que el
+    endpoint /sistema/audit-log pueda extraer tabla/id/ip/diff.
 
-    Maps the generic audit params to the actual audit_log table columns:
-    - accion = accion
-    - detalle = "{tabla} #{registro_id}: antes={datos_anteriores} despues={datos_nuevos}"
-    - usuario = usuario
-    - created_at = now()
+    El parámetro `request` es opcional — si se pasa, se extrae la IP del cliente.
     """
     try:
-        detalle_parts = [f"{tabla}"]
-        if registro_id is not None:
-            detalle_parts.append(f"#{registro_id}")
-        if datos_anteriores:
-            detalle_parts.append(f"antes={datos_anteriores[:500]}")
-        if datos_nuevos:
-            detalle_parts.append(f"despues={datos_nuevos[:500]}")
-        detalle = " | ".join(detalle_parts) or accion
+        # Extract IP from request if provided
+        if request is not None and ip is None:
+            try:
+                ip = request.client.host if request.client else None
+                # Honor X-Forwarded-For cuando hay proxy (Azure App Service)
+                xff = request.headers.get("x-forwarded-for")
+                if xff:
+                    ip = xff.split(",")[0].strip()
+            except Exception:
+                pass
+
+        # Parse JSON snippets back to dict if posible
+        def _safe_parse(v):
+            if not v:
+                return None
+            if isinstance(v, str):
+                try:
+                    return json.loads(v)
+                except (json.JSONDecodeError, TypeError):
+                    return v[:500]
+            return v
+
+        detalle_dict = {
+            "tabla": tabla,
+            "id": registro_id,
+            "ip": ip,
+            "antes": _safe_parse(datos_anteriores),
+            "despues": _safe_parse(datos_nuevos),
+        }
+        detalle = json.dumps(detalle_dict, default=str, ensure_ascii=False)
 
         entry = AuditLog(
             accion=accion,

@@ -596,13 +596,43 @@ def list_planificacion(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
+    """Lista ejecuciones labor.
+
+    L-20: enriquece id_posicion con posicion_display ("H3P5") y id_testblock
+    para que el frontend no muestre IDs numéricos crudos.
+    """
     q = db.query(EjecucionLabor)
     if testblock:
         pos_ids = [p.id_posicion for p in db.query(PosicionTestBlock.id_posicion).filter(
             PosicionTestBlock.id_testblock == testblock
         ).all()]
         q = q.filter(EjecucionLabor.id_posicion.in_(pos_ids))
-    return q.order_by(EjecucionLabor.fecha_programada).all()
+    labores = q.order_by(EjecucionLabor.fecha_programada).all()
+
+    # Batch lookup de posiciones para evitar N+1
+    pos_ids_in_use = list({l.id_posicion for l in labores if l.id_posicion})
+    pos_map: dict[int, tuple[int, int, int | None]] = {}
+    if pos_ids_in_use:
+        rows = db.query(
+            PosicionTestBlock.id_posicion,
+            PosicionTestBlock.hilera,
+            PosicionTestBlock.posicion,
+            PosicionTestBlock.id_testblock,
+        ).filter(PosicionTestBlock.id_posicion.in_(pos_ids_in_use)).all()
+        pos_map = {r[0]: (r[1], r[2], r[3]) for r in rows}
+
+    result = []
+    for l in labores:
+        d = {c: getattr(l, c) for c in l.__class__.model_fields}
+        if l.id_posicion and l.id_posicion in pos_map:
+            h, p, tb = pos_map[l.id_posicion]
+            d["posicion_display"] = f"H{h}P{p}"
+            d["id_testblock"] = tb
+        else:
+            d["posicion_display"] = None
+            d["id_testblock"] = None
+        result.append(d)
+    return result
 
 
 @router.post("/planificacion", status_code=201)

@@ -15,7 +15,7 @@ import type { Usuario } from "@/types/sistema";
 import { useAuthStore } from "@/stores/authStore";
 import { useNavigate } from "react-router-dom";
 
-const userColumns = [
+const buildUserColumns = (onChangePassword: (u: Usuario) => void) => [
   { accessorKey: "id_usuario", header: "ID" },
   { accessorKey: "username", header: "Usuario" },
   { accessorKey: "nombre_completo", header: "Nombre" },
@@ -27,12 +27,29 @@ const userColumns = [
     cell: ({ row, getValue }: any) => {
       const activo = getValue();
       const ultimoAcceso = row.original?.ultimo_acceso;
-      // Usuario activo pero nunca se logueó → pendiente (no terminó onboarding)
       if (activo && !ultimoAcceso) return <StatusBadge status="pendiente" />;
       return <StatusBadge status={activo ? "activo" : "inactivo"} />;
     },
   },
   { accessorKey: "ultimo_acceso", header: "Último Acceso", cell: ({ getValue }: any) => formatDate(getValue() as string) },
+  {
+    id: "_password",
+    header: "",
+    size: 40,
+    cell: ({ row }: any) => (
+      <Button
+        variant="ghost"
+        size="icon"
+        title="Cambiar contraseña"
+        onClick={(e) => {
+          e.stopPropagation();
+          onChangePassword(row.original as Usuario);
+        }}
+      >
+        <Key className="h-3.5 w-3.5" />
+      </Button>
+    ),
+  },
 ];
 
 const createFields: FieldDef[] = [
@@ -158,7 +175,10 @@ export function UsuariosPage() {
 
       <CrudTable
         data={usuarios || []}
-        columns={userColumns as any}
+        columns={buildUserColumns((u) => {
+          setSelectedUser(u);
+          setPwdOpen(true);
+        }) as any}
         isLoading={isLoading}
         onCreate={isAdmin ? () => setCreateOpen(true) : undefined}
         createLabel="Nuevo Usuario"

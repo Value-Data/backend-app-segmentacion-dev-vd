@@ -5,6 +5,7 @@ basado en el algoritmo Band-Sum del sistema legado. El motor es una funcion pura
 que no depende de la base de datos — las escrituras a BD se realizan aqui.
 """
 
+import json
 import math
 from datetime import datetime
 from decimal import Decimal
@@ -309,6 +310,28 @@ def crear_medicion(
 
     # Auto-trigger cluster classification con el motor Band-Sum
     clasif = autoclasificar_medicion(db, medicion)
+
+    # S-8: Auditoría explícita (este endpoint no pasa por crud genérico)
+    try:
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="mediciones_laboratorio",
+            registro_id=medicion.id_medicion,
+            accion="CREATE",
+            datos_nuevos=json.dumps({
+                "id_variedad": data.id_variedad,
+                "id_especie": data.id_especie,
+                "id_testblock": _pos_tb,
+                "temporada": data.temporada,
+                "brix": float(data.brix) if data.brix is not None else None,
+                "firmeza": float(firmeza) if firmeza is not None else None,
+                "calibre": float(calibre) if calibre is not None else None,
+            }, default=str, ensure_ascii=False),
+            usuario=usuario,
+        )
+    except Exception:
+        pass  # nunca romper la creación por fallo de audit
 
     if auto_commit:
         db.commit()

@@ -278,9 +278,22 @@ export function GenericMantenedorPage({
       <Dialog open={deleteTarget != null} onOpenChange={(v) => !v && setDeleteTarget(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Confirmar eliminacion</DialogTitle>
-            <DialogDescription>
-              Esta seguro de que desea eliminar este registro? Esta accion no se puede deshacer.
+            <DialogTitle>Confirmar eliminación</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2">
+                <p>¿Eliminar el registro?</p>
+                {deleteTarget && (
+                  <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground">
+                    {String(deleteTarget[nameField?.key || "nombre"] ?? "")}
+                    {codeField && deleteTarget[codeField.key] != null && (
+                      <span className="ml-2 text-xs text-muted-foreground font-mono">
+                        {String(deleteTarget[codeField.key])}
+                      </span>
+                    )}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">Esta acción no se puede deshacer.</p>
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
