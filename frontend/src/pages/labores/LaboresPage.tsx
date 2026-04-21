@@ -134,6 +134,7 @@ export function LaboresPage() {
   // --- state ---
   const [campoFilter, setCampoFilter] = useState<string>("");
   const [tbFilter, setTbFilter] = useState<string>("");
+  const [monthFilter, setMonthFilter] = useState<string>(""); // "" = todos, "1".."12" = mes
   const [createOpen, setCreateOpen] = useState(false);
   const [planTbOpen, setPlanTbOpen] = useState(false);
   const [ejecutarOpen, setEjecutarOpen] = useState(false);
@@ -327,6 +328,19 @@ export function LaboresPage() {
 
   // --- derived data ---
   const allLabores = planificacion || [];
+
+  /** Labores filtered by selected month (for Plan and Calendario tabs).
+   *  Month-specific tabs (Hoy/Semana/Atrasadas) keep using `allLabores`
+   *  because they have their own temporal meaning. */
+  const laboresMes = useMemo(() => {
+    if (!monthFilter) return allLabores;
+    const mNum = Number(monthFilter);
+    return allLabores.filter((l) => {
+      if (!l.fecha_programada) return false;
+      const m = new Date(l.fecha_programada).getMonth() + 1;
+      return m === mNum;
+    });
+  }, [allLabores, monthFilter]);
 
   const atrasadas = useMemo(
     () => allLabores.filter((l) => displayStatus(l) === "atrasada"),
@@ -723,8 +737,28 @@ export function LaboresPage() {
               </SelectContent>
             </Select>
           </div>
-          {(campoFilter || tbFilter) && (
-            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setCampoFilter(""); setTbFilter(""); }}>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <Select value={monthFilter || "all"} onValueChange={(v) => setMonthFilter(v === "all" ? "" : v)}>
+              <SelectTrigger className="w-40 h-9">
+                <SelectValue placeholder="Seleccionar mes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los meses</SelectItem>
+                {[
+                  { v: "1", l: "Enero" }, { v: "2", l: "Febrero" }, { v: "3", l: "Marzo" },
+                  { v: "4", l: "Abril" }, { v: "5", l: "Mayo" }, { v: "6", l: "Junio" },
+                  { v: "7", l: "Julio" }, { v: "8", l: "Agosto" }, { v: "9", l: "Septiembre" },
+                  { v: "10", l: "Octubre" }, { v: "11", l: "Noviembre" }, { v: "12", l: "Diciembre" },
+                ].map((m) => (
+                  <SelectItem key={m.v} value={m.v}>{m.l}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {(campoFilter || tbFilter || monthFilter) && (
+            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setCampoFilter(""); setTbFilter(""); setMonthFilter(""); }}>
               <X className="h-3 w-3 mr-1" /> Limpiar filtros
             </Button>
           )}
@@ -748,7 +782,7 @@ export function LaboresPage() {
               <TabsTrigger value="pauta" className="gap-1">
                 <Leaf className="h-3.5 w-3.5" /> Pauta
               </TabsTrigger>
-              <TabsTrigger value="plan">Plan ({allLabores.length})</TabsTrigger>
+              <TabsTrigger value="plan">Plan ({laboresMes.length}{monthFilter ? ` de ${allLabores.length}` : ""})</TabsTrigger>
               <TabsTrigger value="calendario" className="gap-1">
                 <Calendar className="h-3.5 w-3.5" /> Calendario
               </TabsTrigger>
@@ -777,8 +811,15 @@ export function LaboresPage() {
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="kanban" className="gap-1">Kanban</TabsTrigger>
-              <TabsTrigger value="por-persona" className="gap-1">Por Persona</TabsTrigger>
+              {/* Kanban y Por Persona deshabilitados: Kanban no renderiza datos
+                 y Por Persona requiere integracion con asignacion a usuarios
+                 que aun no esta implementada. Se reactivaran en Fase 4+. */}
+              {import.meta.env.DEV && (
+                <>
+                  <TabsTrigger value="kanban" className="gap-1">Kanban</TabsTrigger>
+                  <TabsTrigger value="por-persona" className="gap-1">Por Persona</TabsTrigger>
+                </>
+              )}
               <TabsTrigger value="cumplimiento" className="gap-1">Cumplimiento</TabsTrigger>
               <TabsTrigger value="desviaciones" className="gap-1">Plan vs Real</TabsTrigger>
             </TabsList>
@@ -1168,13 +1209,13 @@ export function LaboresPage() {
 
         {/* ==================== TAB: PLAN (grouped by TB → Month → Type) ==================== */}
         <TabsContent value="plan">
-          <TabPlanAgrupado testblockFilter={tbFilterNum} />
+          <TabPlanAgrupado testblockFilter={tbFilterNum} monthFilter={monthFilter} />
         </TabsContent>
 
         {/* ==================== TAB: CALENDARIO (existing LaborCalendar) ==================== */}
         <TabsContent value="calendario">
           <LaborCalendar
-            labores={allLabores}
+            labores={laboresMes}
             laborNames={laborMap}
             onSelectLabor={(labor) => {
               const st = displayStatus(labor);

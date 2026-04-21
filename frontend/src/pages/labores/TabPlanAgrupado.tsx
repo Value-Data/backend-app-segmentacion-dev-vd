@@ -13,9 +13,10 @@ const MESES = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","N
 
 interface Props {
   testblockFilter?: number;
+  monthFilter?: string; // "1".."12" or empty for all
 }
 
-export function TabPlanAgrupado({ testblockFilter }: Props) {
+export function TabPlanAgrupado({ testblockFilter, monthFilter }: Props) {
   const lk = useLookups();
   const { data: testblocks } = useTestblocks();
   const { data: allLabores, isLoading } = useQuery({
@@ -51,6 +52,13 @@ export function TabPlanAgrupado({ testblockFilter }: Props) {
     if (filterEstado === "planificada") list = list.filter((l) => l.estado === "planificada");
     else if (filterEstado === "ejecutada") list = list.filter((l) => l.estado === "ejecutada");
     else if (filterEstado === "atrasada") list = list.filter((l) => l.estado === "planificada" && l.fecha_programada && l.fecha_programada < new Date().toISOString().slice(0, 10));
+    if (monthFilter) {
+      const mNum = Number(monthFilter);
+      list = list.filter((l) => {
+        if (!l.fecha_programada) return false;
+        return new Date(l.fecha_programada).getMonth() + 1 === mNum;
+      });
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((l) =>
@@ -59,7 +67,7 @@ export function TabPlanAgrupado({ testblockFilter }: Props) {
       );
     }
     return list;
-  }, [allLabores, filterEstado, search, laborMap]);
+  }, [allLabores, filterEstado, search, laborMap, monthFilter]);
 
   // Group: TB → Mes → TipoLabor → items
   const grouped = useMemo(() => {

@@ -695,13 +695,17 @@ export function LaboratorioPage() {
             <Thermometer className="h-3.5 w-3.5" />
             Ambiente (+N dias)
           </TabsTrigger>
-          <TabsTrigger
-            value="externos"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-garces-cherry data-[state=active]:text-garces-cherry data-[state=active]:shadow-none data-[state=active]:bg-transparent text-muted-foreground text-sm font-medium px-4 py-2 gap-1.5"
-          >
-            <Globe className="h-3.5 w-3.5" />
-            Externos
-          </TabsTrigger>
+          {/* Tab "Externos" oculto en prod hasta que exista la separación
+             oficial/externos en datos. */}
+          {import.meta.env.DEV && (
+            <TabsTrigger
+              value="externos"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-garces-cherry data-[state=active]:text-garces-cherry data-[state=active]:shadow-none data-[state=active]:bg-transparent text-muted-foreground text-sm font-medium px-4 py-2 gap-1.5"
+            >
+              <Globe className="h-3.5 w-3.5" />
+              Externos
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="ingreso-rapido"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-garces-cherry data-[state=active]:text-garces-cherry data-[state=active]:shadow-none data-[state=active]:bg-transparent text-muted-foreground text-sm font-medium px-4 py-2 gap-1.5"
