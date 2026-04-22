@@ -1,11 +1,12 @@
 """Endpoints para polinizantes, fotos, y bitacora de portainjertos."""
 
+import json
 import os
 import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Header, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -18,13 +19,15 @@ from app.models.variedades_extra import (
     VariedadPolinizante, VariedadFoto,
     BitacoraPortainjerto, TestblockEvento,
 )
+from app.schemas.variedades import PolinizanteCreate, PolinizanteRead
+from app.services.audit_service import log_audit
 
 router = APIRouter(tags=["Variedades Extra"])
 
 
 # ── Polinizantes ──────────────────────────────────────────────────────────
 
-@router.get("/variedades/{id_variedad}/polinizantes")
+@router.get("/variedades/{id_variedad}/polinizantes", response_model=list[PolinizanteRead])
 def list_polinizantes(
     id_variedad: int,
     db: Session = Depends(get_db),
@@ -38,27 +41,67 @@ def list_polinizantes(
     )
 
 
-@router.post("/variedades/{id_variedad}/polinizantes")
+@router.post("/variedades/{id_variedad}/polinizantes", status_code=201, response_model=PolinizanteRead)
 def add_polinizante(
     id_variedad: int,
-    data: dict,
+    body: PolinizanteCreate,
+    request: Request,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
+    """Add a polinizante to a variedad.
+
+    Guardrails (POL-1..7):
+    - POL-1: polinizante must be same especie as the parent variedad.
+    - POL-2: self-reference rejected.
+    - POL-3: polinizante_nombre sanitized in schema (stored text, no HTML).
+    - POL-4: strict schema (extra="forbid") — unknown fields rejected.
+    - POL-7: duplicates on active rows rejected (409).
+    """
     var = db.get(Variedad, id_variedad)
     if not var:
         raise HTTPException(status_code=404, detail="Variedad no encontrada")
 
-    pol_variedad_id = data.get("polinizante_variedad_id")
-    pol_nombre = data.get("polinizante_nombre")
+    pol_variedad_id = body.polinizante_variedad_id
+    pol_nombre = body.polinizante_nombre
 
-    if pol_variedad_id:
+    if pol_variedad_id is not None:
+        # POL-2: self-reference
+        if pol_variedad_id == id_variedad:
+            raise HTTPException(
+                status_code=422,
+                detail="Una variedad no puede ser polinizante de sí misma",
+            )
         pol_var = db.get(Variedad, pol_variedad_id)
         if not pol_var:
             raise HTTPException(status_code=404, detail="Variedad polinizante no encontrada")
+        # POL-1: cross-especie
+        if var.id_especie is not None and pol_var.id_especie is not None \
+                and pol_var.id_especie != var.id_especie:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Polinizante debe ser de la misma especie "
+                    f"(variedad={var.id_especie}, polinizante={pol_var.id_especie})"
+                ),
+            )
+        # Derive nombre from linked variedad when FK provided
         pol_nombre = pol_var.nombre
-    elif not pol_nombre:
-        raise HTTPException(status_code=422, detail="Se requiere polinizante_variedad_id o polinizante_nombre")
+
+    # POL-7: dedupe on active rows
+    dupe_q = db.query(VariedadPolinizante).filter(
+        VariedadPolinizante.id_variedad == id_variedad,
+        VariedadPolinizante.activo == True,  # noqa: E712
+    )
+    if pol_variedad_id is not None:
+        dupe = dupe_q.filter(VariedadPolinizante.polinizante_variedad_id == pol_variedad_id).first()
+    else:
+        dupe = dupe_q.filter(
+            VariedadPolinizante.polinizante_variedad_id.is_(None),
+            VariedadPolinizante.polinizante_nombre == pol_nombre,
+        ).first()
+    if dupe:
+        raise HTTPException(status_code=409, detail="Polinizante ya registrado")
 
     pol = VariedadPolinizante(
         id_variedad=id_variedad,
@@ -68,6 +111,28 @@ def add_polinizante(
     db.add(pol)
     db.commit()
     db.refresh(pol)
+
+    try:
+        log_audit(
+            db,
+            tabla="variedades_polinizantes",
+            registro_id=pol.id,
+            accion="CREATE",
+            datos_nuevos=json.dumps(
+                {
+                    "id_variedad": id_variedad,
+                    "polinizante_variedad_id": pol_variedad_id,
+                    "polinizante_nombre": pol_nombre,
+                },
+                ensure_ascii=False,
+            ),
+            usuario=user.username,
+            request=request,
+        )
+        db.commit()
+    except Exception:
+        pass
+
     return pol
 
 
@@ -75,6 +140,7 @@ def add_polinizante(
 def delete_polinizante(
     id_variedad: int,
     pid: int,
+    request: Request,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
@@ -83,6 +149,20 @@ def delete_polinizante(
         raise HTTPException(status_code=404, detail="Polinizante no encontrado")
     pol.activo = False
     db.commit()
+
+    try:
+        log_audit(
+            db,
+            tabla="variedades_polinizantes",
+            registro_id=pid,
+            accion="DELETE",
+            usuario=user.username,
+            request=request,
+        )
+        db.commit()
+    except Exception:
+        pass
+
     return {"detail": "Eliminado"}
 
 
