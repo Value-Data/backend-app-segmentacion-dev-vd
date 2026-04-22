@@ -414,15 +414,38 @@ def add_variedad_susceptibilidad(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
 ):
-    data.id_variedad = id
-    # Prevent duplicates
+    """Asignar susceptibilidad a variedad.
+
+    SUS-4: si la susceptibilidad tiene id_especie distinta a la de la
+    variedad, rechaza con 422. Cuando la susceptibilidad todavía no tiene
+    id_especie (legacy), se permite sin bloqueo.
+    """
+    var = db.get(Variedad, id)
+    if not var:
+        raise HTTPException(status_code=404, detail="Variedad no encontrada")
+    sus = db.get(Susceptibilidad, data.id_suscept)
+    if not sus:
+        raise HTTPException(status_code=404, detail="Susceptibilidad no encontrada")
+    # SUS-4: cross-species guard
+    if sus.id_especie is not None and var.id_especie is not None \
+            and sus.id_especie != var.id_especie:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Susceptibilidad '{sus.codigo}' (especie {sus.id_especie}) "
+                f"no aplica a variedad de especie {var.id_especie}"
+            ),
+        )
+
     existing = db.query(VariedadSusceptibilidad).filter(
         VariedadSusceptibilidad.id_variedad == id,
         VariedadSusceptibilidad.id_suscept == data.id_suscept,
     ).first()
     if existing:
         return existing
-    vs = VariedadSusceptibilidad(**data.model_dump())
+
+    # SUS-5: id_variedad viene del path, body sólo tiene id_suscept/nivel/notas
+    vs = VariedadSusceptibilidad(id_variedad=id, **data.model_dump())
     db.add(vs)
     db.commit()
     db.refresh(vs)
@@ -439,8 +462,28 @@ def delete_variedad_susceptibilidad(
     vs = db.get(VariedadSusceptibilidad, id_vs)
     if not vs or vs.id_variedad != id:
         raise HTTPException(status_code=404, detail="No encontrado")
+    id_suscept = vs.id_suscept
     db.delete(vs)
     db.commit()
+
+    # SUS-6: audit log (el CRUD genérico lo hacía; este endpoint específico no)
+    try:
+        import json as _json
+        from app.services.audit_service import log_audit
+        log_audit(
+            db,
+            tabla="variedad_susceptibilidades",
+            registro_id=id_vs,
+            accion="DELETE",
+            datos_anteriores=_json.dumps(
+                {"id_variedad": id, "id_suscept": id_suscept}, ensure_ascii=False,
+            ),
+            usuario=user.username,
+        )
+        db.commit()
+    except Exception:
+        pass
+
     return {"detail": "Eliminado"}
 
 

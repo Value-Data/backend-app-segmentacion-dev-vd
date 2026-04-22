@@ -74,10 +74,17 @@ class VariedadUpdate(BaseModel):
 
 
 class VarSusceptCreate(BaseModel):
-    id_variedad: int
+    """SUS-5: id_variedad viene del path, no del body. Se rechazan extras."""
+    model_config = ConfigDict(extra="forbid")
+
     id_suscept: int
     nivel: Optional[str] = "media"
-    notas: Optional[str] = None
+    notas: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("notas", mode="before")
+    @classmethod
+    def _sanitize(cls, v):
+        return clean_text(v) if isinstance(v, str) else v
 
 
 class VarSusceptUpdate(BaseModel):

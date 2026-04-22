@@ -241,6 +241,8 @@ class SusceptibilidadCreate(BaseModel):
     codigo: str
     nombre: str
     nombre_en: Optional[str] = None
+    id_especie: Optional[int] = None  # SUS-2: filtro/asignación por especie
+    grupo: Optional[str] = None
     descripcion: Optional[str] = None
     categoria: Optional[str] = None
     severidad: Optional[str] = "media"
@@ -250,6 +252,8 @@ class SusceptibilidadUpdate(BaseModel):
     codigo: Optional[str] = None
     nombre: Optional[str] = None
     nombre_en: Optional[str] = None
+    id_especie: Optional[int] = None
+    grupo: Optional[str] = None
     descripcion: Optional[str] = None
     categoria: Optional[str] = None
     severidad: Optional[str] = None
