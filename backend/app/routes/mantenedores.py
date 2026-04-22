@@ -191,6 +191,26 @@ def create_entity(
             else:
                 coerced[k] = v
         validated = create_schema(**coerced)
+
+    # EF-2: FK + unique guards for estados-fenologicos
+    if entidad in ("estados-fenologicos", "estados_fenologicos"):
+        values = validated.model_dump(exclude_unset=True)
+        id_esp = values.get("id_especie")
+        codigo = values.get("codigo")
+        if id_esp is not None:
+            if not db.get(Especie, id_esp):
+                raise HTTPException(status_code=404, detail=f"Especie {id_esp} no existe")
+        if id_esp is not None and codigo:
+            dup = db.query(EstadoFenologico).filter(
+                EstadoFenologico.id_especie == id_esp,
+                EstadoFenologico.codigo == codigo,
+            ).first()
+            if dup:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Ya existe un estado fenológico con código '{codigo}' para la especie {id_esp}",
+                )
+
     return crud.create(db, model, validated, usuario=user.username)
 
 
