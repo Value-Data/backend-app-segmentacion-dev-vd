@@ -46,7 +46,10 @@ from app.schemas.maestras import (
     CentroCostoCreate, CentroCostoUpdate,
     MarcoPlantacionCreate, MarcoPlantacionUpdate,
 )
-from app.schemas.variedades import VariedadCreate, VariedadUpdate, VarSusceptCreate, VarSusceptUpdate
+from app.schemas.variedades import (
+    VariedadCreate, VariedadUpdate, VarSusceptCreate, VarSusceptUpdate,
+    BitacoraVariedadCreate, BitacoraVariedadUpdate,
+)
 
 router = APIRouter(prefix="/mantenedores", tags=["Mantenedores"])
 
@@ -543,21 +546,20 @@ def get_variedad_bitacora(
 @router.post("/variedades/{id}/bitacora", status_code=201)
 def add_variedad_bitacora(
     id: int,
-    data: dict,
+    body: BitacoraVariedadCreate,
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
 ):
-    entry = BitacoraVariedad(
-        id_variedad=id,
-        tipo_entrada=data.get("tipo_entrada"),
-        fecha=data.get("fecha"),
-        titulo=data.get("titulo"),
-        contenido=data.get("contenido"),
-        resultado=data.get("resultado"),
-        id_testblock=data.get("id_testblock"),
-        ubicacion=data.get("ubicacion"),
-        usuario=user.username,
-    )
+    """Crear entrada de bitácora (BIT-2..5).
+
+    - BIT-2: campos requeridos (tipo, título, contenido, fecha) validados por schema.
+    - BIT-3: fecha debe estar entre 2000-01-01 y mañana.
+    - BIT-4: título/contenido/ubicación/resultado sanitizados con bleach.
+    - BIT-5: `extra="forbid"` rechaza keys desconocidas.
+    """
+    payload = body.model_dump()
+    payload["tipo_entrada"] = payload["tipo_entrada"].value  # Enum → str
+    entry = BitacoraVariedad(id_variedad=id, usuario=user.username, **payload)
     db.add(entry)
     db.commit()
     db.refresh(entry)
@@ -568,16 +570,18 @@ def add_variedad_bitacora(
 def update_variedad_bitacora(
     id: int,
     bid: int,
-    data: dict,
+    body: BitacoraVariedadUpdate,
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
 ):
     entry = db.get(BitacoraVariedad, bid)
     if not entry or entry.id_variedad != id:
         raise HTTPException(status_code=404, detail="Entrada de bitacora no encontrada")
-    for field in ("tipo_entrada", "fecha", "titulo", "contenido", "resultado", "ubicacion"):
-        if field in data:
-            setattr(entry, field, data[field])
+    values = body.model_dump(exclude_unset=True)
+    if "tipo_entrada" in values and values["tipo_entrada"] is not None:
+        values["tipo_entrada"] = values["tipo_entrada"].value
+    for field, value in values.items():
+        setattr(entry, field, value)
     db.commit()
     db.refresh(entry)
     return entry
