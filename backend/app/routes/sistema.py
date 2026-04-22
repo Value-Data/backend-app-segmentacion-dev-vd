@@ -3,56 +3,49 @@
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.core.security import hash_password
 from app.models.sistema import Usuario, Rol, AuditLog
-from app.schemas.sistema import UsuarioCreate, UsuarioUpdate
+from app.schemas.sistema import UsuarioCreate, UsuarioUpdate, UsuarioRead
 from app.schemas.auth import PasswordChange
 from app.services import crud
 
 router = APIRouter(prefix="/sistema", tags=["Sistema"])
 
 
-def _safe_usuario(u: Usuario) -> dict:
-    """Serializa Usuario SIN password_hash (S-1)."""
-    return {
-        "id_usuario": u.id_usuario,
-        "username": u.username,
-        "nombre_completo": u.nombre_completo,
-        "email": u.email,
-        "rol": u.rol,
-        "campos_asignados": u.campos_asignados,
-        "activo": u.activo,
-        "ultimo_acceso": u.ultimo_acceso,
-        "fecha_creacion": u.fecha_creacion,
-    }
-
-
 # ── Usuarios ────────────────────────────────────────────────────────────────
-@router.get("/usuarios")
+# S-1: response_model=UsuarioRead excluye password_hash automáticamente
+# y lo hace visible en OpenAPI — más robusto que un helper manual.
+
+@router.get("/usuarios", response_model=list[UsuarioRead])
 def list_usuarios(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
 ):
-    """Lista usuarios (S-1: excluye password_hash del response)."""
-    rows = crud.list_all(db, Usuario, only_active=False)
-    return [_safe_usuario(u) for u in rows]
+    return crud.list_all(db, Usuario, only_active=False)
 
 
-@router.post("/usuarios", status_code=201)
+@router.get("/usuarios/{id}", response_model=UsuarioRead)
+def get_usuario(
+    id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_role("admin")),
+):
+    return crud.get_by_id(db, Usuario, id)
+
+
+@router.post("/usuarios", response_model=UsuarioRead, status_code=201)
 def create_usuario(
     data: UsuarioCreate,
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
 ):
-    # Check uniqueness
     exists = db.query(Usuario).filter(Usuario.username == data.username).first()
     if exists:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="Username ya existe")
 
     usuario = Usuario(
@@ -66,18 +59,17 @@ def create_usuario(
     db.add(usuario)
     db.commit()
     db.refresh(usuario)
-    return _safe_usuario(usuario)
+    return usuario
 
 
-@router.put("/usuarios/{id}")
+@router.put("/usuarios/{id}", response_model=UsuarioRead)
 def update_usuario(
     id: int,
     data: UsuarioUpdate,
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
 ):
-    updated = crud.update(db, Usuario, id, data, usuario=user.username)
-    return _safe_usuario(updated)
+    return crud.update(db, Usuario, id, data, usuario=user.username)
 
 
 @router.put("/usuarios/{id}/password")

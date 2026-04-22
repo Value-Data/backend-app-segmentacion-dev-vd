@@ -705,3 +705,55 @@ class TestHealth:
     def test_health(self, client):
         r = client.get(f"{API}/health")
         assert r.status_code == 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 11. S-1 CONTRACT: password_hash nunca se filtra por /sistema/usuarios
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestS1PasswordHashNotLeaked:
+    """S-1: ningún endpoint de /sistema/usuarios debe devolver password_hash."""
+
+    @staticmethod
+    def _assert_no_secret_keys(payload):
+        """Falla si cualquier key del dict (o de items de lista) contiene password/hash/secret."""
+        items = payload if isinstance(payload, list) else [payload]
+        forbidden = ("password", "hash", "secret")
+        for item in items:
+            assert isinstance(item, dict), f"Expected dict, got {type(item)}"
+            for key in item.keys():
+                k = key.lower()
+                assert not any(f in k for f in forbidden), (
+                    f"S-1 regression: response contains forbidden key '{key}'"
+                )
+
+    def test_list_usuarios_no_password_hash(self, client, auth_headers):
+        r = client.get(f"{API}/sistema/usuarios", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        self._assert_no_secret_keys(r.json())
+
+    def test_get_usuario_by_id_no_password_hash(self, client, auth_headers, test_user):
+        r = client.get(f"{API}/sistema/usuarios/{test_user.id_usuario}", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        self._assert_no_secret_keys(r.json())
+
+    def test_create_usuario_no_password_hash(self, client, auth_headers):
+        body = {
+            "username": "s1_contract_user",
+            "nombre_completo": "Contract Test",
+            "email": "s1@test.cl",
+            "password": "Secret123!",
+            "rol": "visualizador",
+        }
+        r = client.post(f"{API}/sistema/usuarios", json=body, headers=auth_headers)
+        assert r.status_code == 201, r.text
+        self._assert_no_secret_keys(r.json())
+
+    def test_update_usuario_no_password_hash(self, client, auth_headers, test_user):
+        r = client.put(
+            f"{API}/sistema/usuarios/{test_user.id_usuario}",
+            json={"nombre_completo": "Renamed"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        self._assert_no_secret_keys(r.json())

@@ -1,5 +1,6 @@
 """Schemas for sistema (usuarios, roles)."""
 
+from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 
@@ -19,3 +20,18 @@ class UsuarioUpdate(BaseModel):
     rol: Optional[str] = None
     campos_asignados: Optional[str] = None
     activo: Optional[bool] = None
+
+
+class UsuarioRead(BaseModel):
+    """S-1: response schema for Usuario. NEVER includes password_hash."""
+    id_usuario: int
+    username: str
+    nombre_completo: Optional[str] = None
+    email: Optional[str] = None
+    rol: str
+    campos_asignados: Optional[str] = None
+    activo: Optional[bool] = True
+    ultimo_acceso: Optional[datetime] = None
+    fecha_creacion: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
