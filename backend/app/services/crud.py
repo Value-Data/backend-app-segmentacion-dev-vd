@@ -89,6 +89,11 @@ def create(
             usuario=usuario,
         )
         db.commit()
+        # The second commit expires `obj`'s attributes (expire_on_commit
+        # default). Without this refresh, Pydantic's model_dump returns
+        # {} because the SQLAlchemy state is expired while Pydantic
+        # fields_set is empty — route responses came back as {}.
+        db.refresh(obj)
     except Exception:
         logger.exception("Audit log failed for CREATE on %s", model.__tablename__)
     # --- /audit ---
@@ -140,6 +145,9 @@ def update(
                 usuario=usuario,
             )
             db.commit()
+            # Second commit expires obj — refresh so serialization
+            # returns populated fields (see create() for details).
+            db.refresh(obj)
     except Exception:
         logger.exception("Audit log failed for UPDATE on %s id=%s", model.__tablename__, record_id)
     # --- /audit ---
