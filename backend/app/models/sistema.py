@@ -37,3 +37,21 @@ class AuditLog(SQLModel, table=True):
     detalle: str = Field(sa_column=Column(sa.NVARCHAR(None), nullable=False))
     usuario: str = Field(sa_column=Column(sa.NVARCHAR(200), nullable=False))
     created_at: datetime = Field(sa_column=Column(sa.DateTime, nullable=False))
+
+
+class JWTBlacklist(SQLModel, table=True):
+    """S-10: JWT revocation list.
+
+    Populated by POST /auth/logout with the token's jti claim.
+    Checked on every auth'd request. Entries past `expires_at` can be
+    purged lazily (no cron needed — JWT validation already rejects
+    expired tokens).
+    """
+    __tablename__ = "jwt_blacklist"
+    jti: str = Field(sa_column=Column(sa.String(64), primary_key=True))
+    usuario: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    expires_at: datetime = Field(sa_column=Column(sa.DateTime, nullable=False))
+    revoked_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column=Column(sa.DateTime, nullable=False),
+    )

@@ -23,7 +23,11 @@ class Settings(BaseSettings):
     # JWT
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours default
+    # S-10: TTL diferenciado por rol. Admin más corto = menor blast-radius
+    # si se compromete un token privilegiado.
+    JWT_EXPIRE_MINUTES_ADMIN: int = 240  # 4 hours
+    JWT_EXPIRE_MINUTES_DEFAULT: int = 720  # 12 hours
 
     # CORS
     CORS_ORIGINS: str = "http://localhost:3100,http://localhost:5173,http://localhost:3000"

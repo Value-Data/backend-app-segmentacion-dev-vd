@@ -19,6 +19,18 @@ def get_current_user(
     payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido o expirado")
+
+    # S-10: rechazar tokens revocados (logout).
+    jti = payload.get("jti")
+    if jti:
+        from app.models.sistema import JWTBlacklist
+        revoked = db.query(JWTBlacklist).filter(JWTBlacklist.jti == jti).first()
+        if revoked is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token revocado (logout). Inicia sesión de nuevo.",
+            )
+
     username: str | None = payload.get("sub")
     if username is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido")

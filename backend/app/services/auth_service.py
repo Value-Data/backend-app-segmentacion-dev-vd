@@ -1,11 +1,12 @@
 """Auth service: login, token creation."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.core.utils import utcnow
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.security import verify_password, create_access_token
 from app.models.sistema import Usuario
 from app.schemas.auth import LoginRequest, TokenResponse, UserInfo
@@ -23,20 +24,25 @@ def authenticate(db: Session, req: LoginRequest) -> TokenResponse:
             detail="Usuario o contrasena incorrectos",
         )
 
-    # Update last access (S-17: antes solo el admin veía tracked porque
-    # el endpoint listaba campos no siempre actualizados; ahora todos
-    # los usuarios al login se les actualiza ultimo_acceso).
     user.ultimo_acceso = utcnow()
     db.commit()
 
-    # S-10: claims enriquecidos (iat/jti agregados por create_access_token).
+    # S-10: TTL por rol. Admin más corto; resto default.
+    settings = get_settings()
+    minutes = (
+        settings.JWT_EXPIRE_MINUTES_ADMIN
+        if user.rol == "admin"
+        else settings.JWT_EXPIRE_MINUTES_DEFAULT
+    )
+    ttl = timedelta(minutes=minutes)
+
     token = create_access_token({
         "sub": user.username,
         "rol": user.rol,
         "id_usuario": user.id_usuario,
         "email": user.email,
         "campos_asignados": user.campos_asignados,
-    })
+    }, expires_delta=ttl)
 
     return TokenResponse(
         access_token=token,
