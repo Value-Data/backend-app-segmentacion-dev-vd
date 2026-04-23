@@ -141,30 +141,46 @@ def list_audit_log(
     rows = q.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit).all()
 
     def _parse(row: AuditLog) -> dict:
+        """S-2: normalize schema to match frontend AuditLog type.
+
+        Frontend UI columns expect: id_log, tabla, registro_id, accion,
+        usuario, ip_address, fecha. Also exposes datos_anteriores /
+        datos_nuevos parsed from the JSON detalle envelope.
+        """
         tabla_name = None
-        id_registro = None
-        ip = None
-        diff = None
+        registro_id = None
+        ip_address = None
+        datos_anteriores = None
+        datos_nuevos = None
         detalle_str = row.detalle or ""
         try:
             parsed = json.loads(detalle_str) if detalle_str.startswith("{") else None
             if isinstance(parsed, dict):
                 tabla_name = parsed.get("tabla") or parsed.get("table")
-                id_registro = parsed.get("id") or parsed.get("id_registro")
-                ip = parsed.get("ip")
-                diff = parsed.get("diff") or parsed.get("cambios")
+                registro_id = parsed.get("id") or parsed.get("id_registro")
+                ip_address = parsed.get("ip") or parsed.get("ip_address")
+                datos_anteriores = parsed.get("antes") or parsed.get("datos_anteriores")
+                datos_nuevos = parsed.get("despues") or parsed.get("datos_nuevos")
         except (json.JSONDecodeError, TypeError):
             pass
         return {
-            "id": row.id,
-            "accion": row.accion,
+            # S-2 UI-aligned keys (primary)
+            "id_log": row.id,
             "tabla": tabla_name,
-            "id_registro": id_registro,
-            "ip": ip,
+            "registro_id": registro_id,
+            "accion": row.accion,
             "usuario": row.usuario,
+            "ip_address": ip_address,
             "fecha": row.created_at.isoformat() if row.created_at else None,
-            "detalle": detalle_str[:500],  # truncar para listado
-            "diff": diff,
+            "datos_anteriores": datos_anteriores,
+            "datos_nuevos": datos_nuevos,
+            # Legacy keys kept for backward-compat (old scripts / external
+            # consumers may still read these). Safe to remove after one
+            # release cycle.
+            "id": row.id,
+            "id_registro": registro_id,
+            "ip": ip_address,
+            "detalle": detalle_str[:500],
         }
 
     items = [_parse(r) for r in rows]
