@@ -9,8 +9,9 @@ from typing import Optional
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.sistema import Usuario
-from app.models.variedades import Variedad
-from app.models.maestras import Especie, Portainjerto, Pmg, Campo, Vivero
+from app.models.variedades import Variedad, VariedadSusceptibilidad
+from app.models.variedades_extra import VariedadPolinizante
+from app.models.maestras import Especie, Portainjerto, Pmg, Campo, Vivero, Susceptibilidad
 from app.models.inventario import InventarioVivero, MovimientoInventario, InventarioTestBlock
 from app.models.testblock import TestBlock, PosicionTestBlock, Planta
 from app.models.laboratorio import MedicionLaboratorio, ClasificacionCluster, EjecucionLabor
@@ -135,12 +136,60 @@ def report_variedad(
             EjecucionLabor.id_posicion.in_(pos_ids)
         ).count()
 
+    # REP-1: polinizantes (activos) con nombre resuelto via JOIN a variedades
+    pol_rows = db.query(VariedadPolinizante).filter(
+        VariedadPolinizante.id_variedad == id_variedad,
+        VariedadPolinizante.activo == True,  # noqa: E712
+    ).all()
+    pol_var_ids = [p.polinizante_variedad_id for p in pol_rows if p.polinizante_variedad_id]
+    pol_var_map: dict[int, dict] = {}
+    if pol_var_ids:
+        for v in db.query(Variedad).filter(Variedad.id_variedad.in_(pol_var_ids)).all():
+            pol_var_map[v.id_variedad] = {"codigo": v.codigo, "nombre": v.nombre}
+    polinizantes = []
+    for p in pol_rows:
+        linked = pol_var_map.get(p.polinizante_variedad_id) if p.polinizante_variedad_id else None
+        polinizantes.append({
+            "id": p.id,
+            "polinizante_variedad_id": p.polinizante_variedad_id,
+            "polinizante_codigo": linked["codigo"] if linked else None,
+            "polinizante_nombre": (linked["nombre"] if linked else p.polinizante_nombre),
+        })
+
+    # REP-1: susceptibilidades con nombre/grupo/severidad resueltos via JOIN
+    sus_rows = db.query(VariedadSusceptibilidad).filter(
+        VariedadSusceptibilidad.id_variedad == id_variedad
+    ).all()
+    sus_ids = [s.id_suscept for s in sus_rows]
+    sus_map: dict[int, dict] = {}
+    if sus_ids:
+        for s in db.query(Susceptibilidad).filter(Susceptibilidad.id_suscept.in_(sus_ids)).all():
+            sus_map[s.id_suscept] = {
+                "codigo": s.codigo, "nombre": s.nombre,
+                "grupo": s.grupo, "severidad": s.severidad,
+            }
+    susceptibilidades = []
+    for s in sus_rows:
+        meta = sus_map.get(s.id_suscept, {})
+        susceptibilidades.append({
+            "id_vs": s.id_vs,
+            "id_suscept": s.id_suscept,
+            "codigo": meta.get("codigo"),
+            "nombre": meta.get("nombre"),
+            "grupo": meta.get("grupo"),
+            "severidad": meta.get("severidad"),
+            "nivel": s.nivel,
+            "notas": s.notas,
+        })
+
     return {
         "variedad": var_dict,
         "inventario": inventario,
         "plantaciones": plantaciones,
         "mediciones": mediciones,
         "bitacora": bitacora,
+        "polinizantes": polinizantes,
+        "susceptibilidades": susceptibilidades,
         "labores_count": labores_count,
     }
 
