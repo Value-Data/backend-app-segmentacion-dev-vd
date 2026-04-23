@@ -276,19 +276,31 @@ def serve_foto(
 ):
     """Serve foto from DB (or legacy disk).
 
-    Auth: prefiere cabecera `Authorization: Bearer <token>` (no filtra el JWT
-    a logs/Referer). Acepta `?token=` sólo como fallback para links/imgs
-    legacy todavía en uso.
+    Auth: requiere cabecera `Authorization: Bearer <token>`.
+    El parámetro `?token=` está deprecado (SEC-JWT) porque filtraba el
+    JWT a logs HTTP, referer y cachés compartidos — cualquier request
+    que lo use recibe 410 Gone. El frontend debe usar AuthImage
+    (fetch con header Bearer + blob URL).
     """
     from app.core.security import decode_access_token
 
     bearer = None
     if authorization and authorization.lower().startswith("bearer "):
         bearer = authorization.split(" ", 1)[1].strip()
-    effective = bearer or token
-    if not effective:
+
+    # SEC-JWT: rechazar querystring-token aunque haya venido junto con header.
+    if token is not None:
+        raise HTTPException(
+            status_code=410,
+            detail=(
+                "El acceso vía ?token= está deprecado (filtra el JWT). "
+                "Usar Authorization: Bearer <token>."
+            ),
+        )
+
+    if not bearer:
         raise HTTPException(status_code=401, detail="Token requerido")
-    payload = decode_access_token(effective)
+    payload = decode_access_token(bearer)
     if payload is None:
         raise HTTPException(status_code=401, detail="Token invalido o expirado")
 
