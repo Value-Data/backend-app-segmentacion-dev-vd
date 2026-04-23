@@ -23,6 +23,9 @@ class Pais(SQLModel, table=True):
     orden: Optional[int] = Field(default=0)
     activo: Optional[bool] = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    usuario_modificacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
 
 
 # ── regiones ────────────────────────────────────────────────────────────────
@@ -35,6 +38,9 @@ class Region(SQLModel, table=True):
     orden: Optional[int] = Field(default=None)
     activo: Optional[bool] = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    usuario_modificacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
 
 
 # ── comunas ─────────────────────────────────────────────────────────────────
@@ -46,6 +52,9 @@ class Comuna(SQLModel, table=True):
     codigo_postal: Optional[str] = Field(default=None, sa_column=Column(sa.String(10)))
     activo: Optional[bool] = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    usuario_modificacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
 
 
 # ── campos ──────────────────────────────────────────────────────────────────
@@ -354,6 +363,9 @@ class Temporada(SQLModel, table=True):
     notas: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(None)))
     activo: bool = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    usuario_modificacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
 
 
 # ── bodegas ─────────────────────────────────────────────────────────────────
@@ -366,6 +378,9 @@ class Bodega(SQLModel, table=True):
     responsable: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
     activo: Optional[bool] = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    usuario_modificacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
 
 
 # ── catalogos ───────────────────────────────────────────────────────────────
@@ -378,6 +393,9 @@ class Catalogo(SQLModel, table=True):
     orden: Optional[int] = Field(default=0)
     activo: Optional[bool] = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    usuario_modificacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
 
 
 # ── correlativos ────────────────────────────────────────────────────────────

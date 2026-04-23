@@ -107,6 +107,7 @@ def add_polinizante(
         id_variedad=id_variedad,
         polinizante_variedad_id=pol_variedad_id,
         polinizante_nombre=pol_nombre,
+        usuario_creacion=user.username,  # MT-1 Pase 2
     )
     db.add(pol)
     db.commit()
@@ -148,6 +149,8 @@ def delete_polinizante(
     if not pol or pol.id_variedad != id_variedad:
         raise HTTPException(status_code=404, detail="Polinizante no encontrado")
     pol.activo = False
+    pol.usuario_modificacion = user.username  # MT-1 Pase 2
+    pol.fecha_modificacion = datetime.utcnow()
     db.commit()
 
     try:

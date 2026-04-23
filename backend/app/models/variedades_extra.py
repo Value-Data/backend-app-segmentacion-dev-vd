@@ -16,6 +16,9 @@ class VariedadPolinizante(SQLModel, table=True):
     polinizante_nombre: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(200), nullable=True))
     activo: Optional[bool] = Field(default=True)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    usuario_creacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
+    usuario_modificacion: Optional[str] = Field(default=None, sa_column=Column(sa.NVARCHAR(100)))
 
 
 class VariedadFoto(SQLModel, table=True):

@@ -83,6 +83,28 @@ async def lifespan(app: FastAPI):
                 "IF COL_LENGTH('movimientos_inventario', 'id_evento') IS NULL ALTER TABLE movimientos_inventario ADD id_evento INT NULL",
                 "IF COL_LENGTH('tipos_labor', 'meses_sugeridos') IS NULL ALTER TABLE tipos_labor ADD meses_sugeridos NVARCHAR(100) NULL",
                 "IF COL_LENGTH('tipos_labor', 'etapa') IS NULL ALTER TABLE tipos_labor ADD etapa NVARCHAR(30) NULL",
+                # Pase 2 (MT-1): audit columns for mantenedores that lacked them
+                "IF COL_LENGTH('paises', 'usuario_creacion') IS NULL ALTER TABLE paises ADD usuario_creacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('paises', 'usuario_modificacion') IS NULL ALTER TABLE paises ADD usuario_modificacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('paises', 'fecha_modificacion') IS NULL ALTER TABLE paises ADD fecha_modificacion DATETIME NULL",
+                "IF COL_LENGTH('regiones', 'usuario_creacion') IS NULL ALTER TABLE regiones ADD usuario_creacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('regiones', 'usuario_modificacion') IS NULL ALTER TABLE regiones ADD usuario_modificacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('regiones', 'fecha_modificacion') IS NULL ALTER TABLE regiones ADD fecha_modificacion DATETIME NULL",
+                "IF COL_LENGTH('comunas', 'usuario_creacion') IS NULL ALTER TABLE comunas ADD usuario_creacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('comunas', 'usuario_modificacion') IS NULL ALTER TABLE comunas ADD usuario_modificacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('comunas', 'fecha_modificacion') IS NULL ALTER TABLE comunas ADD fecha_modificacion DATETIME NULL",
+                "IF COL_LENGTH('temporadas', 'usuario_creacion') IS NULL ALTER TABLE temporadas ADD usuario_creacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('temporadas', 'usuario_modificacion') IS NULL ALTER TABLE temporadas ADD usuario_modificacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('temporadas', 'fecha_modificacion') IS NULL ALTER TABLE temporadas ADD fecha_modificacion DATETIME NULL",
+                "IF COL_LENGTH('bodegas', 'usuario_creacion') IS NULL ALTER TABLE bodegas ADD usuario_creacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('bodegas', 'usuario_modificacion') IS NULL ALTER TABLE bodegas ADD usuario_modificacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('bodegas', 'fecha_modificacion') IS NULL ALTER TABLE bodegas ADD fecha_modificacion DATETIME NULL",
+                "IF COL_LENGTH('catalogos', 'usuario_creacion') IS NULL ALTER TABLE catalogos ADD usuario_creacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('catalogos', 'usuario_modificacion') IS NULL ALTER TABLE catalogos ADD usuario_modificacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('catalogos', 'fecha_modificacion') IS NULL ALTER TABLE catalogos ADD fecha_modificacion DATETIME NULL",
+                "IF COL_LENGTH('variedades_polinizantes', 'usuario_creacion') IS NULL ALTER TABLE variedades_polinizantes ADD usuario_creacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('variedades_polinizantes', 'usuario_modificacion') IS NULL ALTER TABLE variedades_polinizantes ADD usuario_modificacion NVARCHAR(100) NULL",
+                "IF COL_LENGTH('variedades_polinizantes', 'fecha_modificacion') IS NULL ALTER TABLE variedades_polinizantes ADD fecha_modificacion DATETIME NULL",
             ]:
                 try:
                     conn.execute(text(stmt))
