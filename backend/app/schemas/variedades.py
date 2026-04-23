@@ -194,3 +194,49 @@ class BitacoraVariedadUpdate(BaseModel):
         if v < _date_type(2000, 1, 1) or v > hoy + timedelta(days=1):
             raise ValueError("Fecha fuera de rango (2000-01-01 a hoy+1)")
         return v
+
+
+# ── Bitácora de portainjertos ─────────────────────────────────────────────
+class BitacoraPortainjertoCreate(BaseModel):
+    """POST /portainjertos/{id}/bitacora — mismo hardening que bitácora variedad."""
+    model_config = ConfigDict(extra="forbid")
+
+    nota: str = Field(..., min_length=1, max_length=5000)
+    fecha: Optional[_date_type] = None
+
+    @field_validator("nota", mode="before")
+    @classmethod
+    def _sanitize_nota(cls, v):
+        return clean_text(v) if isinstance(v, str) else v
+
+    @field_validator("fecha")
+    @classmethod
+    def _fecha_en_rango(cls, v):
+        if v is None:
+            return v
+        hoy = datetime.utcnow().date()
+        if v < _date_type(2000, 1, 1) or v > hoy + timedelta(days=1):
+            raise ValueError("Fecha fuera de rango (2000-01-01 a hoy+1)")
+        return v
+
+
+class BitacoraPortainjertoUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nota: Optional[str] = Field(None, min_length=1, max_length=5000)
+    fecha: Optional[_date_type] = None
+
+    @field_validator("nota", mode="before")
+    @classmethod
+    def _sanitize_nota(cls, v):
+        return clean_text(v) if isinstance(v, str) else v
+
+    @field_validator("fecha")
+    @classmethod
+    def _fecha_en_rango(cls, v):
+        if v is None:
+            return v
+        hoy = datetime.utcnow().date()
+        if v < _date_type(2000, 1, 1) or v > hoy + timedelta(days=1):
+            raise ValueError("Fecha fuera de rango (2000-01-01 a hoy+1)")
+        return v

@@ -19,7 +19,10 @@ from app.models.variedades_extra import (
     VariedadPolinizante, VariedadFoto,
     BitacoraPortainjerto, TestblockEvento,
 )
-from app.schemas.variedades import PolinizanteCreate, PolinizanteRead
+from app.schemas.variedades import (
+    PolinizanteCreate, PolinizanteRead,
+    BitacoraPortainjertoCreate, BitacoraPortainjertoUpdate,
+)
 from app.services.audit_service import log_audit
 
 router = APIRouter(tags=["Variedades Extra"])
@@ -389,14 +392,19 @@ def list_bitacora_pi(
 @router.post("/portainjertos/{id_portainjerto}/bitacora")
 def add_bitacora_pi(
     id_portainjerto: int,
-    data: dict,
+    body: BitacoraPortainjertoCreate,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
+    """Crear entrada de bitácora de portainjerto.
+
+    Schema strict: extra='forbid', sanitiza HTML en `nota`, valida rango
+    de fecha (igual que bitácora variedad).
+    """
     entry = BitacoraPortainjerto(
         id_portainjerto=id_portainjerto,
-        nota=data["nota"],
-        fecha=data.get("fecha"),
+        nota=body.nota,
+        fecha=body.fecha,
         created_by=user.username,
     )
     db.add(entry)
@@ -409,17 +417,16 @@ def add_bitacora_pi(
 def update_bitacora_pi(
     id_portainjerto: int,
     bid: int,
-    data: dict,
+    body: BitacoraPortainjertoUpdate,
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
 ):
     entry = db.get(BitacoraPortainjerto, bid)
     if not entry or entry.id_portainjerto != id_portainjerto:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
-    if "nota" in data:
-        entry.nota = data["nota"]
-    if "fecha" in data:
-        entry.fecha = data["fecha"]
+    values = body.model_dump(exclude_unset=True)
+    for field, value in values.items():
+        setattr(entry, field, value)
     entry.updated_at = datetime.utcnow()
     entry.updated_by = user.username
     db.commit()
