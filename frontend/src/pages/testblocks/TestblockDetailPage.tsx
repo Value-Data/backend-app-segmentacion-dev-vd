@@ -22,6 +22,7 @@ import { testblockService } from "@/services/testblock";
 import { laboratorioService } from "@/services/laboratorio";
 import { laboresService } from "@/services/labores";
 import { inventarioService } from "@/services/inventario";
+import { sistemaService } from "@/services/sistema";
 import { post } from "@/services/api";
 import { formatNumber } from "@/lib/utils";
 import type { PosicionTestBlock, ColorMode, HistorialPosicion } from "@/types/testblock";
@@ -145,6 +146,18 @@ export function TestblockDetailPage() {
     queryFn: () => laboresService.tiposLabor(),
     staleTime: 5 * 60_000,
   });
+
+  /* --- TB-EJECUTOR: usuarios activos para el selector "quién ejecutó" --- */
+  const { data: allUsuarios } = useQuery({
+    queryKey: ["sistema", "usuarios"],
+    queryFn: () => sistemaService.usuarios(),
+    staleTime: 5 * 60_000,
+  });
+  const ejecutorOpts = useMemo(() =>
+    ((allUsuarios || []) as { id_usuario: number; nombre_completo?: string; username: string; activo?: boolean }[])
+      .filter((u) => u.activo !== false)
+      .map((u) => ({ value: u.id_usuario, label: u.nombre_completo || u.username })),
+  [allUsuarios]);
 
   /* --- Historial query for selected position --- */
   const { data: historialPos } = useQuery({
@@ -459,9 +472,10 @@ export function TestblockDetailPage() {
       },
       { key: "porcentaje", label: "Porcentaje (%)", type: "number" as const, required: false, placeholder: "0 - 100" },
       { key: "fecha", label: "Fecha", type: "date" as const, required: false, placeholder: new Date().toISOString().slice(0, 10) },
+      { key: "id_persona_ejecutora", label: "Persona que observó", type: "select" as const, required: false, options: ejecutorOpts, placeholder: "Dejar vacío para usar tu usuario" },
       { key: "observaciones", label: "Observaciones", type: "textarea" as const, required: false, placeholder: "Observaciones (opcional)" },
     ];
-  }, [allEstadosFenol]);
+  }, [allEstadosFenol, ejecutorOpts]);
 
   /* ---------------------------------------------------------------- */
   /*  Group selection toolbar dropdown options                          */
@@ -523,9 +537,10 @@ export function TestblockDetailPage() {
     return [
       { key: "id_labor", label: "Tipo de Labor", type: "select" as const, required: true, options: laborOpts, placeholder: "Seleccionar labor" },
       { key: "fecha_programada", label: "Fecha Programada", type: "date" as const, required: false, placeholder: new Date().toISOString().slice(0, 10) },
+      { key: "id_persona_ejecutora", label: "Persona que ejecutó", type: "select" as const, required: false, options: ejecutorOpts, placeholder: "Dejar vacío para usar tu usuario" },
       { key: "observaciones", label: "Observaciones", type: "textarea" as const, required: false, placeholder: "Observaciones (opcional)" },
     ];
-  }, [allTiposLabor]);
+  }, [allTiposLabor, ejecutorOpts]);
 
   const editTbFields: FieldDef[] = useMemo(() => [
     { key: "nombre", label: "Nombre", type: "text", required: true },
@@ -702,6 +717,7 @@ export function TestblockDetailPage() {
         fecha_programada: data.fecha_programada || new Date().toISOString().slice(0, 10),
         observaciones: data.observaciones || "",
         temporada: tb?.temporada_inicio || "2025-2026",
+        id_persona_ejecutora: data.id_persona_ejecutora ? Number(data.id_persona_ejecutora) : undefined,
       });
       toast.success(`Labor planificada para ${res.created} posiciones`);
       queryClient.invalidateQueries({ queryKey: ["testblocks", tbId] });
@@ -882,6 +898,7 @@ export function TestblockDetailPage() {
         fecha: data.fecha || new Date().toISOString().slice(0, 10),
         observaciones: data.observaciones || "",
         temporada: tb?.temporada_inicio || "2025-2026",
+        id_persona_ejecutora: data.id_persona_ejecutora ? Number(data.id_persona_ejecutora) : undefined,
       };
       const res = await laboresService.registroFenologico(payload);
       toast.success(`Fenologia registrada: ${res.created} posicion${res.created !== 1 ? "es" : ""}`);

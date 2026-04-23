@@ -31,6 +31,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/testblocks", tags=["TestBlock Grupo"])
 
 
+def _parse_date(value, default: date) -> date:
+    """Accept ISO string or date, normalize to date object.
+
+    Needed because SQLite binds Date columns strictly to date objects;
+    a ISO-format string fails. SQL Server accepts both.
+    """
+    if value is None:
+        return default
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return default
+    return default
+
+
+def _resolve_ejecutor(data: dict, db: Session, fallback_user: Usuario) -> str:
+    """Resolve who actually executed the action.
+
+    Priority (TB-EJECUTOR feature):
+      1. `id_persona_ejecutora` → look up Usuario.nombre_completo
+      2. `ejecutor` string from body (legacy / free text)
+      3. Logged-in user.username as fallback
+
+    Separates "quién registra" (siempre el logueado, va a usuario_registro)
+    de "quién ejecutó" (puede ser otro, va a ejecutor). Útil para
+    supervisores que registran lo hecho por su cuadrilla.
+    """
+    pid = data.get("id_persona_ejecutora")
+    if pid is not None:
+        persona = db.get(Usuario, pid)
+        if persona:
+            return persona.nombre_completo or persona.username
+    raw = data.get("ejecutor")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return fallback_user.username
+
+
 # ---------------------------------------------------------------------------
 # Helper: resolve positions from selection modes
 # ---------------------------------------------------------------------------
@@ -204,10 +245,11 @@ def grupo_fenologia(
     if not estado_fenol:
         raise HTTPException(status_code=404, detail=f"Estado fenologico {id_estado_fenol} no encontrado")
 
-    fecha = data.get("fecha", date.today().isoformat())
+    fecha = _parse_date(data.get("fecha"), date.today())
     observaciones = data.get("observaciones", "")
     temporada = data.get("temporada", "2025-2026")
     porcentaje = data.get("porcentaje")
+    ejecutor_real = _resolve_ejecutor(data, db, user)
 
     # Get the REG_FENOL tipo_labor for the EjecucionLabor entry
     tipo_labor = db.query(TipoLabor).filter(TipoLabor.codigo == "REG_FENOL").first()
@@ -239,7 +281,7 @@ def grupo_fenologia(
                 fecha_programada=fecha,
                 fecha_ejecucion=fecha,
                 estado="ejecutada",
-                ejecutor=user.username,
+                ejecutor=ejecutor_real,
                 observaciones=obs_text,
                 usuario_registro=user.username,
             )
@@ -297,9 +339,10 @@ def grupo_labores(
     if not tipo_labor:
         raise HTTPException(status_code=404, detail=f"Tipo de labor {id_labor} no encontrado")
 
-    fecha_programada = data.get("fecha_programada", date.today().isoformat())
+    fecha_programada = _parse_date(data.get("fecha_programada"), date.today())
     observaciones = data.get("observaciones", "")
     temporada = data.get("temporada", "2025-2026")
+    ejecutor_real = _resolve_ejecutor(data, db, user)
 
     created = 0
     affected_ids: list[int] = []
@@ -321,7 +364,7 @@ def grupo_labores(
             fecha_programada=fecha_programada,
             fecha_ejecucion=None,
             estado="programada",
-            ejecutor=user.username,
+            ejecutor=ejecutor_real,
             observaciones=observaciones,
             usuario_registro=user.username,
         )

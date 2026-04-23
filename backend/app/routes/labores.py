@@ -966,6 +966,10 @@ def registrar_fenologico(
     observaciones = data.get("observaciones", "")
     temporada = data.get("temporada", "2025-2026")
 
+    # TB-EJECUTOR: resolve ejecutor_real from optional body fields
+    from app.routes.testblock_grupo import _resolve_ejecutor
+    ejecutor_real = _resolve_ejecutor(data, db, user)
+
     if not posiciones_ids:
         raise HTTPException(status_code=400, detail="Debe seleccionar al menos una posicion")
     if not id_estado_fenol:
@@ -998,7 +1002,7 @@ def registrar_fenologico(
             fecha_programada=fecha,
             fecha_ejecucion=fecha,
             estado="ejecutada",
-            ejecutor=user.username,
+            ejecutor=ejecutor_real,
             observaciones=f"{estado.nombre}: {porcentaje}% - {observaciones}" if porcentaje else f"{estado.nombre} - {observaciones}",
             usuario_registro=user.username,
             id_lote=pos_lote,
