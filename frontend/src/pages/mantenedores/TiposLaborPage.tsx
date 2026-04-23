@@ -48,7 +48,7 @@ const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov"
 const laborFields: FieldDef[] = [
   { key: "codigo", label: "Código", type: "text", required: true },
   { key: "nombre", label: "Nombre", type: "text", required: true },
-  { key: "categoria", label: "Categoria", type: "select", options: [
+  { key: "categoria", label: "Categoría", type: "select", options: [
     { value: "manejo", label: "Manejo" },
     { value: "fitosanidad", label: "Fitosanidad" },
     { value: "riego", label: "Riego" },
@@ -90,6 +90,17 @@ const CAT_COLORS: Record<string, string> = {
   fenologia: "bg-purple-100 text-purple-800",
   poda: "bg-orange-100 text-orange-800",
   fertilizacion: "bg-lime-100 text-lime-800",
+};
+
+/* TL-1: display labels with tildes + Capitalización; raw DB values stay lowercase. */
+const CAT_LABELS: Record<string, string> = {
+  manejo: "Manejo",
+  fitosanidad: "Fitosanidad",
+  riego: "Riego",
+  cosecha: "Cosecha",
+  fenologia: "Fenología",
+  poda: "Poda",
+  fertilizacion: "Fertilización",
 };
 
 /* ─── Component ──────────────────────────────────────────────────── */
@@ -300,7 +311,7 @@ export function TiposLaborPage() {
                       </span>
                       {labor.categoria && (
                         <span className={`text-xs px-2 py-0.5 rounded-full ${CAT_COLORS[labor.categoria] || "bg-gray-100 text-gray-800"}`}>
-                          {labor.categoria}
+                          {CAT_LABELS[labor.categoria] || labor.categoria}
                         </span>
                       )}
                       {labor.aplica_a && (

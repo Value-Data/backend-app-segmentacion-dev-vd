@@ -179,7 +179,7 @@ export function PmgPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h2 className="text-xl font-bold text-garces-cherry">Programas de Mejoramiento Genetico</h2>
+            <h2 className="text-xl font-bold text-garces-cherry">Programas de Mejoramiento Genético</h2>
             <p className="text-xs text-muted-foreground">{rows.length} registros</p>
           </div>
         </div>

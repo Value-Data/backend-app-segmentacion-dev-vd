@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_role
+from app.core.deps import get_current_user, require_role, require_non_production
 from app.models.sistema import Usuario
 from app.models.laboratorio import MedicionLaboratorio, ClasificacionCluster
 from app.models.testblock import TestBlock, PosicionTestBlock, Planta
@@ -125,8 +125,9 @@ def reglas_as_dict(
 def seed_reglas_from_hardcoded(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
-    """Pobla la tabla reglas_cluster desde el dict RULES hardcodeado.
+    """Pobla la tabla reglas_cluster desde el dict RULES hardcodeado. EF-4: non-prod only.
 
     Solo crea reglas que no existan aun (por codigo_regla).
     """

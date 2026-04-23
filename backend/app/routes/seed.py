@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_role
+from app.core.deps import get_current_user, require_role, require_non_production
 from app.models.sistema import Usuario
 from app.models.maestras import (
     Especie, Portainjerto, Pmg, Vivero, Campo, Temporada, PmgEspecie, Cuartel,
@@ -127,8 +127,12 @@ def _find_or_create(db: Session, model, lookup_field: str, lookup_value, default
 def seed_demo(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
-    """Populate demo data following the agronomic flow. Idempotent: skips existing rows."""
+    """Populate demo data following the agronomic flow. Idempotent: skips existing rows.
+
+    EF-4: blocked in production (settings.ENV must be dev/staging).
+    """
 
     summary = {
         "especies": {"created": 0, "skipped": 0},
@@ -533,8 +537,12 @@ def seed_demo(
 def seed_susceptibilidades(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
-    """Seed susceptibilidades por especie — Cherry Plum, Nectarines, Duraznos."""
+    """Seed susceptibilidades por especie — Cherry Plum, Nectarines, Duraznos.
+
+    EF-4: blocked in production.
+    """
     from app.models.maestras import Susceptibilidad
 
     especies_db = {e.codigo: e.id_especie for e in db.query(Especie).all()}
@@ -669,8 +677,12 @@ def seed_susceptibilidades(
 def seed_maestros(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
-    """Seed maestros: 5 especies, 13 PMG, 7 portainjertos, 211 variedades."""
+    """Seed maestros: 5 especies, 13 PMG, 7 portainjertos, 211 variedades.
+
+    EF-4: blocked in production.
+    """
     from app.models.maestras import Pmg, Portainjerto
     from app.models.variedades import Variedad
 
@@ -838,6 +850,7 @@ def seed_maestros(
 
 @router.post("/seed-complementarios", tags=["Seed"])
 def seed_complementarios(
+    _guard: bool = Depends(require_non_production),
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
 ):
@@ -923,6 +936,7 @@ def seed_labores_planificacion(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
     """Import planned labors from Excel 'Planificación test block' — sheet 'BASE 2'."""
     import openpyxl

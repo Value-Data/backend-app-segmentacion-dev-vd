@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_role
+from app.core.deps import get_current_user, require_role, require_non_production
 from app.models.sistema import Usuario
 from app.models.testblock import TestBlock, PosicionTestBlock, Planta, HistorialPosicion
 from app.models.inventario import InventarioVivero, InventarioTestBlock
@@ -39,8 +39,11 @@ router = APIRouter(prefix="/testblocks", tags=["TestBlock"])
 def seed_lotes_demo(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin", "agronomo")),
+    _guard: bool = Depends(require_non_production),
 ):
     """Auto-crear lotes demo desde datos existentes de testblocks.
+
+    EF-4: non-prod only.
 
     Para cada testblock, agrupa posiciones por (variedad, portainjerto),
     crea un lote en inventario_vivero, y vincula las plantas existentes.

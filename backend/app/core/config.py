@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     COMPANY_NAME: str = "Garces Fruit"
     CURRENT_SEASON: str = "2024-2025"
     DEBUG: bool = False
+    ENV: str = "dev"  # "dev" | "staging" | "production" — gates destructive ops
 
     # Database - SQL Server Azure
     DB_SERVER: str = "tcp:valuedata.database.windows.net,1433"

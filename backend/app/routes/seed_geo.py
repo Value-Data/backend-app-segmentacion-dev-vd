@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_role
+from app.core.deps import get_current_user, require_role, require_non_production
 from app.models.sistema import Usuario
 from app.models.maestras import Pais, Region, Comuna
 
@@ -20,22 +20,23 @@ router = APIRouter(prefix="/seed", tags=["Seed"])
 # Paises relevantes para el sistema (ISO 3166-1 alpha-2)
 # ---------------------------------------------------------------------------
 PAISES = [
-    {"codigo": "CL", "nombre": "Chile",           "nombre_en": "Chile",           "orden": 1},
-    {"codigo": "AR", "nombre": "Argentina",        "nombre_en": "Argentina",       "orden": 2},
-    {"codigo": "BR", "nombre": "Brasil",           "nombre_en": "Brazil",          "orden": 3},
-    {"codigo": "PE", "nombre": "Peru",             "nombre_en": "Peru",            "orden": 4},
-    {"codigo": "US", "nombre": "Estados Unidos",   "nombre_en": "United States",   "orden": 5},
-    {"codigo": "ES", "nombre": "Espana",           "nombre_en": "Spain",           "orden": 6},
-    {"codigo": "AU", "nombre": "Australia",         "nombre_en": "Australia",       "orden": 7},
-    {"codigo": "NZ", "nombre": "Nueva Zelanda",    "nombre_en": "New Zealand",     "orden": 8},
-    {"codigo": "ZA", "nombre": "Sudafrica",        "nombre_en": "South Africa",    "orden": 9},
-    {"codigo": "IT", "nombre": "Italia",           "nombre_en": "Italy",           "orden": 10},
-    {"codigo": "FR", "nombre": "Francia",          "nombre_en": "France",          "orden": 11},
-    {"codigo": "CN", "nombre": "China",            "nombre_en": "China",           "orden": 12},
-    {"codigo": "JP", "nombre": "Japon",            "nombre_en": "Japan",           "orden": 13},
-    {"codigo": "MX", "nombre": "Mexico",           "nombre_en": "Mexico",          "orden": 14},
-    {"codigo": "CO", "nombre": "Colombia",         "nombre_en": "Colombia",        "orden": 15},
-    {"codigo": "UY", "nombre": "Uruguay",          "nombre_en": "Uruguay",         "orden": 16},
+    # PS-2: Chile es el país base del cliente, orden=0
+    {"codigo": "CL", "nombre": "Chile",           "nombre_en": "Chile",           "orden": 0},
+    {"codigo": "AR", "nombre": "Argentina",        "nombre_en": "Argentina",       "orden": 1},
+    {"codigo": "BR", "nombre": "Brasil",           "nombre_en": "Brazil",          "orden": 2},
+    {"codigo": "PE", "nombre": "Perú",             "nombre_en": "Peru",            "orden": 3},
+    {"codigo": "US", "nombre": "Estados Unidos",   "nombre_en": "United States",   "orden": 4},
+    {"codigo": "ES", "nombre": "España",           "nombre_en": "Spain",           "orden": 5},
+    {"codigo": "AU", "nombre": "Australia",         "nombre_en": "Australia",       "orden": 6},
+    {"codigo": "NZ", "nombre": "Nueva Zelanda",    "nombre_en": "New Zealand",     "orden": 7},
+    {"codigo": "ZA", "nombre": "Sudáfrica",        "nombre_en": "South Africa",    "orden": 8},
+    {"codigo": "IT", "nombre": "Italia",           "nombre_en": "Italy",           "orden": 9},
+    {"codigo": "FR", "nombre": "Francia",          "nombre_en": "France",          "orden": 10},
+    {"codigo": "CN", "nombre": "China",            "nombre_en": "China",           "orden": 11},
+    {"codigo": "JP", "nombre": "Japón",            "nombre_en": "Japan",           "orden": 12},
+    {"codigo": "MX", "nombre": "México",           "nombre_en": "Mexico",          "orden": 13},
+    {"codigo": "CO", "nombre": "Colombia",         "nombre_en": "Colombia",        "orden": 14},
+    {"codigo": "UY", "nombre": "Uruguay",          "nombre_en": "Uruguay",         "orden": 15},
 ]
 
 
@@ -223,8 +224,9 @@ def _find_or_create(db: Session, model, lookup_field: str, lookup_value, default
 def seed_regiones_comunas(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
-    """Seed paises, regiones and comunas of Chile. Idempotent."""
+    """Seed paises, regiones and comunas of Chile. Idempotent. EF-4: non-prod only."""
 
     summary = {
         "paises": {"created": 0, "skipped": 0},

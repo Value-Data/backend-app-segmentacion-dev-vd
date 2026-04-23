@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.sistema import Usuario
@@ -37,3 +38,21 @@ def require_role(*roles: str):
             )
         return user
     return checker
+
+
+def require_non_production():
+    """EF-4: block destructive seed/bulk endpoints in production.
+
+    Settings.ENV must be 'dev' or 'staging'. Any other value (e.g.
+    'production' or 'prod') → 403.
+    """
+    settings = get_settings()
+    if settings.ENV.lower() not in ("dev", "staging", "development", "test"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Operación bloqueada en entorno '{settings.ENV}'. "
+                "Seed/bulk re-population sólo está permitido en dev/staging."
+            ),
+        )
+    return True

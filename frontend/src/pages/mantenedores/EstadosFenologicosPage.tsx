@@ -170,7 +170,7 @@ export function EstadosFenologicosPage() {
   };
 
   const handleDelete = async (ef: EstadoFenologico) => {
-    if (confirm(`Eliminar estado fenologico "${ef.nombre}"?`)) {
+    if (confirm(`Eliminar estado fenológico "${ef.nombre}"?`)) {
       await remove(ef.id_estado);
     }
   };
@@ -452,7 +452,7 @@ export function EstadosFenologicosPage() {
         onSubmit={handleSubmit}
         fields={fields}
         initialData={editRow}
-        title={editRow ? "Editar Estado Fenologico" : "Nuevo Estado Fenologico"}
+        title={editRow ? "Editar Estado Fenológico" : "Nuevo Estado Fenológico"}
         isLoading={isCreating || isUpdating}
       />
     </div>

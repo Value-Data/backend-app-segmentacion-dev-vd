@@ -18,22 +18,22 @@ interface HubCard {
 
 const cards: HubCard[] = [
   { to: "/catalogos/especies", label: "Especies", desc: "Familias frutales", icon: Cherry, entity: "especies" },
-  { to: "/catalogos/variedades", label: "Variedades", desc: "Catalogo de variedades", icon: Grape, entity: "variedades" },
+  { to: "/catalogos/variedades", label: "Variedades", desc: "Catálogo de variedades", icon: Grape, entity: "variedades" },
   { to: "/catalogos/portainjertos", label: "Portainjertos", desc: "Patrones de injerto", icon: TreeDeciduous, entity: "portainjertos" },
-  { to: "/catalogos/pmg", label: "PMG", desc: "Programas geneticos", icon: FlaskConical, entity: "pmg" },
+  { to: "/catalogos/pmg", label: "PMG", desc: "Programas genéticos", icon: FlaskConical, entity: "pmg" },
   { to: "/catalogos/viveros", label: "Viveros", desc: "Proveedores de plantas", icon: Trees, entity: "viveros" },
   { to: "/catalogos/campos", label: "Campos", desc: "Ubicaciones de test", icon: MapPin, entity: "campos" },
   { to: "/catalogos/colores", label: "Colores", desc: "Fruto, pulpa, cubrimiento", icon: Palette, entity: "colores" },
   { to: "/catalogos/susceptibilidades", label: "Susceptibilidades", desc: "Enfermedades y plagas", icon: Bug, entity: "susceptibilidades" },
-  { to: "/catalogos/tipos-labor", label: "Tipos de Labor", desc: "Labores agricolas", icon: Hammer },
-  { to: "/catalogos/estados-fenologicos", label: "Estados Fenologicos", desc: "Ciclo fenologico por especie", icon: Flower2, entity: "estados-fenologicos" },
+  { to: "/catalogos/tipos-labor", label: "Tipos de Labor", desc: "Labores agrícolas", icon: Hammer },
+  { to: "/catalogos/estados-fenologicos", label: "Estados Fenológicos", desc: "Ciclo fenológico por especie", icon: Flower2, entity: "estados-fenologicos" },
   { to: "/catalogos/estados-planta", label: "Estados Planta", desc: "Alta, baja, replante...", icon: Leaf, entity: "estados-planta" },
-  { to: "/catalogos/paises", label: "Paises", desc: "Paises", icon: Globe, entity: "paises" },
-  { to: "/catalogos/origenes", label: "Origenes", desc: "Licenciantes y obtentores", icon: Navigation, entity: "origenes" },
-  { to: "/catalogos/temporadas", label: "Temporadas", desc: "Periodos de evaluacion", icon: Calendar, entity: "temporadas" },
+  { to: "/catalogos/paises", label: "Países", desc: "Países", icon: Globe, entity: "paises" },
+  { to: "/catalogos/origenes", label: "Orígenes", desc: "Licenciantes y obtentores", icon: Navigation, entity: "origenes" },
+  { to: "/catalogos/temporadas", label: "Temporadas", desc: "Períodos de evaluación", icon: Calendar, entity: "temporadas" },
   { to: "/catalogos/bodegas", label: "Bodegas", desc: "Almacenamiento de plantas", icon: Warehouse, entity: "bodegas" },
   { to: "/catalogos/regiones", label: "Regiones", desc: "16 regiones de Chile", icon: Map, entity: "regiones" },
-  { to: "/catalogos/comunas", label: "Comunas", desc: "Comunas por region", icon: Building2, entity: "comunas" },
+  { to: "/catalogos/comunas", label: "Comunas", desc: "Comunas por región", icon: Building2, entity: "comunas" },
 ];
 
 export function MantenedoresHub() {
@@ -60,7 +60,7 @@ export function MantenedoresHub() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-garces-cherry">Catalogos</h2>
+        <h2 className="text-2xl font-bold text-garces-cherry">Catálogos</h2>
         <p className="text-sm text-muted-foreground">Tablas maestras del sistema</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

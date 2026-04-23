@@ -28,7 +28,7 @@ export function OrigenesPage() {
 
   return (
     <GenericMantenedorPage
-      title="Origenes"
+      title="Orígenes"
       singularTitle="Origen"
       entidad="origenes"
       fields={fields}

@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_role
+from app.core.deps import get_current_user, require_role, require_non_production
 from app.models.sistema import Usuario
 from app.models.laboratorio import EjecucionLabor, RegistroFenologico, DetalleLabor
 from app.models.maestras import TipoLabor, EstadoFenologico, Especie
@@ -42,8 +42,9 @@ def list_tipos_labor(
 def seed_tipos_labor(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
-    """Seed basic tipos_labor if the table is empty. Admin only."""
+    """Seed basic tipos_labor if the table is empty. Admin only. EF-4: non-prod only."""
     existing = db.query(TipoLabor).count()
     if existing > 0:
         return {"message": f"Ya existen {existing} tipos de labor. No se inserto nada.", "created": 0}
@@ -212,8 +213,9 @@ SEED_DETALLES_LABOR: dict[str, dict[str, list[str]]] = {
 def seed_detalles_labor(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
-    """Seed detalles_labor (sub-items/instructions per labor type). Admin only."""
+    """Seed detalles_labor (sub-items/instructions per labor type). Admin only. EF-4: non-prod only."""
     existing = db.query(DetalleLabor).count()
     if existing > 0:
         return {"message": f"Ya existen {existing} detalles de labor. No se inserto nada.", "created": 0}
@@ -420,8 +422,13 @@ SEED_ESTADOS_FENOLOGICOS: dict[str, list[dict]] = {
 def seed_estados_fenologicos(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
     """Seed estados_fenologicos for 4 main species. Admin only.
+
+    EF-4: blocked in production — this is the endpoint QA flagged as
+    "expuesto a admin sin confirmación". Re-running could corrupt the 82
+    live states that labores/fenología comparativa/AI depend on.
 
     - Updates existing records for species that already have data (fills missing fields).
     - Inserts new records for species that have no data yet.
@@ -1401,11 +1408,12 @@ def backfill_lote(
 def seed_fenologia_demo(
     db: Session = Depends(get_db),
     user: Usuario = Depends(require_role("admin")),
+    _guard: bool = Depends(require_non_production),
 ):
     """Seed synthetic registros_fenologicos for 2 seasons (2024-2025 and 2025-2026).
 
     Creates realistic dates based on each estado's mes_orientativo for a sample
-    of positions from existing testblocks. Admin only.
+    of positions from existing testblocks. Admin only. EF-4: non-prod only.
     """
     from app.models.variedades import Variedad
 
