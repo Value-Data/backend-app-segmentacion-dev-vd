@@ -215,6 +215,12 @@ def list_fotos(
     ]
 
 
+# FIX-FOTOS: restrict uploads to real image types and cap size to prevent
+# arbitrary-binary uploads and OOM via huge files stored in the DB.
+ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp", "image/jpg"}
+MAX_FOTO_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
 @router.post("/variedades/{id_variedad}/fotos")
 def upload_foto(
     id_variedad: int,
@@ -227,8 +233,23 @@ def upload_foto(
     if not var:
         raise HTTPException(status_code=404, detail="Variedad no encontrada")
 
+    content_type = (file.content_type or "image/jpeg").lower()
+    if content_type not in ALLOWED_IMAGE_MIME:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Tipo de archivo no permitido: {content_type}. "
+                   f"Permitidos: {sorted(ALLOWED_IMAGE_MIME)}",
+        )
+
     content = file.file.read()
-    content_type = file.content_type or "image/jpeg"
+    if len(content) > MAX_FOTO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Archivo demasiado grande: {len(content)} bytes. "
+                   f"Máximo permitido: {MAX_FOTO_BYTES} bytes (5 MB).",
+        )
+    if len(content) == 0:
+        raise HTTPException(status_code=422, detail="Archivo vacío")
 
     foto = VariedadFoto(
         id_variedad=id_variedad,
